@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Table des Doubles</title>
+<meta name="description" content="Ton classeur de cartes, tes doubles sur la table. Échanges et ventes sécurisés entre collectionneurs (18+).">
+<meta name="theme-color" content="#0c2820">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><circle cx='16' cy='16' r='14' fill='%23d6453d' stroke='%23fff' stroke-width='3' stroke-dasharray='5 3'/></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Unbounded:wght@500;700&family=Figtree:wght@400;500;600;700&family=JetBrains+Mono:wght@500&display=swap">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="top">
+  <a href="#/" class="logo">Table des <b>Doubles</b></a>
+  <nav class="nav" id="nav">
+    <a href="#/classeur" data-r="classeur"><i>▦</i>Classeur</a>
+    <a href="#/table" data-r="table"><i>◉</i>La table</a>
+    <a href="#/offres" data-r="offres"><i>⇄</i>Offres<span class="dot" id="offdot" hidden></span></a>
+    <a href="#/forum" data-r="forum"><i>☰</i>Forum</a>
+    <a href="#/compte" data-r="compte"><i>●</i><span id="navme">Compte</span></a>
+  </nav>
+</header>
+<main id="view" class="wrap"></main>
+<footer class="wrap foot">
+  <a href="#/regles">Charte & sécurité</a> · <span>18 ans et plus</span> · <span>Cotes : Cardmarket via TCGdex</span>
+  <p>Site indépendant, non affilié à Nintendo, The Pokémon Company ou Creatures. Les noms et images des cartes appartiennent à leurs détenteurs.</p>
+</footer>
+<dialog id="dlg"><button class="x" data-close aria-label="Fermer">✕</button><div id="dbody"></div></dialog>
+<div class="toast" id="toast" role="status" hidden></div>
+<script type="module" src="app.js"></script>
+</body>
+</html>

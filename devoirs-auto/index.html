@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Mes devoirs malins</title>
+<meta name="theme-color" content="#5b4bdb">
+<link rel="manifest" href="manifest.json"><link rel="icon" href="icon.svg">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600&family=Nunito:wght@400;600;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="top">
+  <span class="logo">Mes devoirs <b>malins</b></span>
+  <button id="sync" class="ghost" title="Relire ONE">↻</button>
+</header>
+
+<main class="wrap">
+  <!-- Code famille -->
+  <section id="v-pin" hidden>
+    <h1>Bonjour Céleste 👋</h1>
+    <p class="mut">Entre le code famille.</p>
+    <form id="f-pin" class="row"><input id="pin" inputmode="numeric" autocomplete="off" placeholder="Code" required><button class="btn">Entrer</button></form>
+  </section>
+
+  <!-- Liste des devoirs -->
+  <section id="v-home" hidden>
+    <h1>Mes devoirs</h1>
+    <p id="status" class="mut small" aria-live="polite"></p>
+    <div class="actions">
+      <label class="btn">📷 Photo du cahier<input id="photo" type="file" accept="image/*" capture="environment" hidden></label>
+      <button id="add" class="btn alt">✏️ Ajouter</button>
+    </div>
+    <form id="f-add" class="card" hidden>
+      <input name="matiere" placeholder="Matière (ex : Histoire)" required>
+      <textarea name="consigne" rows="2" placeholder="Consigne (ex : Apprendre la leçon sur Louis XIV, évaluation)" required></textarea>
+      <label class="small mut">Pour le <input name="pour" type="date" required></label>
+      <button class="btn">Ajouter</button>
+    </form>
+    <ul id="list" class="list"></ul>
+    <p id="empty" class="mut" hidden>Aucun devoir à venir. Prends en photo ton cahier de textes 📷</p>
+  </section>
+
+  <!-- Entraînement -->
+  <section id="v-train" hidden>
+    <button id="back" class="ghost">← Retour</button>
+    <p id="t-kind" class="tag"></p>
+    <h1 id="t-title"></h1>
+    <details id="t-memo" class="card memo" open><summary>📌 À retenir</summary><ul></ul></details>
+    <div id="t-q" class="card"></div>
+    <div id="t-end" class="card end" hidden></div>
+  </section>
+</main>
+<script src="app.js"></script>
+</body>
+</html>

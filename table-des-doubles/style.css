@@ -148,3 +148,6 @@ dialog::backdrop{background:#000b;backdrop-filter:blur(3px)}
 .skel{aspect-ratio:63/88;border-radius:8px;background:linear-gradient(90deg,#ffffff08,#ffffff14,#ffffff08);background-size:200% 100%;animation:sk 1.2s infinite}
 @keyframes sk{to{background-position:-200% 0}}
 @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+.lang{display:inline-block;font:700 10px var(--mono);padding:1px 5px;border-radius:4px;background:var(--txt);color:var(--ink);letter-spacing:.04em;vertical-align:1px}
+.pickers{display:grid;grid-template-columns:minmax(140px,220px) minmax(0,1fr);gap:10px}
+@media (max-width:520px){.pickers{grid-template-columns:1fr}}

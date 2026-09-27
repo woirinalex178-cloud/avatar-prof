@@ -2,7 +2,9 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 import { SUPABASE_URL, SUPABASE_KEY } from './config.js';
 
 const sb = createClient(SUPABASE_URL, SUPABASE_KEY);
-const S = { user: null, profile: null, sets: [], cards: {}, bySet: {}, set: 'sv03.5', coll: {}, fee: 0.0001, filter: 'all', pseudos: {} };
+const S = { user: null, profile: null, sets: [], cards: {}, bySet: {}, set: null, lang: 'fr', coll: {}, fee: 0.0001, filter: 'all', pseudos: {}, prog: {} };
+const LANGS = { fr: 'Français', en: 'Anglais (US/UK)', ja: 'Japonais', de: 'Allemand', it: 'Italien', es: 'Espagnol', pt: 'Portugais' };
+const flag = l => `<span class="lang">${l === 'ja' ? 'JP' : l.toUpperCase()}</span>`;
 const COND = { NM: ['Near Mint', 'Comme neuve, aucun défaut visible', 1], EX: ['Excellent', 'Micro-défauts (léger blanchiment)', .85], GD: ['Bon', 'Usure visible, coins/bords marqués', .65], PL: ['Joué', 'Pliure, rayure ou usure forte', .4] };
 const STEPS = ['Offre', 'Acceptée', 'Payée', 'Expédiée', 'Reçue', 'Terminée'];
 
@@ -40,13 +42,23 @@ function guardInput(el, out) {
 
 // ---------- données ----------
 async function loadCatalog() {
-  const [{ data: sets }, { data: cards }, { data: st }] = await Promise.all([
-    sb.from('sets').select('*').order('sort'),
-    sb.from('cards').select('*').order('num'),
-    sb.from('settings').select('fee_rate').single()
-  ]);
-  S.sets = sets || []; S.fee = st?.fee_rate ?? S.fee;
-  for (const c of cards || []) { S.cards[c.id] = c; (S.bySet[c.set_id] ||= []).push(c); }
+  const page = n => sb.from('sets').select('id,lang,code,name,serie_id,serie_name,total,card_count,released').gt('card_count', 0).order('released', { ascending: false, nullsFirst: false }).order('id').range(n * 1000, n * 1000 + 999);
+  const [a, b, c, { data: st }] = await Promise.all([page(0), page(1), page(2), sb.from('settings').select('fee_rate').single()]);
+  S.sets = [...(a.data || []), ...(b.data || []), ...(c.data || [])]; S.fee = st?.fee_rate ?? S.fee;
+  try { S.lang = localStorage.getItem('tdd_lang') || S.lang; } catch { }
+  pickDefaultSet();
+}
+function pickDefaultSet() { if (!S.sets.some(s => s.id === S.set && s.lang === S.lang)) S.set = S.sets.find(s => s.lang === S.lang)?.id || null; }
+function remember(list) { for (const c of list || []) S.cards[c.id] = c; }
+async function loadSet(id) {
+  if (!id || S.bySet[id]) return;
+  const { data } = await sb.from('cards').select('*').eq('set_id', id).order('num', { nullsFirst: false }).order('local_id').limit(1000);
+  S.bySet[id] = data || []; remember(data);
+}
+async function loadProgress() {
+  if (!S.profile) return;
+  const { data } = await sb.rpc('my_progress');
+  S.prog = Object.fromEntries((data || []).map(r => [r.set_id, r.owned]));
 }
 const GUEST = 'tdd_guest';
 const guestColl = () => { try { return JSON.parse(localStorage.getItem(GUEST)) || {}; } catch { return {}; } };
@@ -54,6 +66,7 @@ async function loadCollection() {
   if (!S.profile) { S.coll = guestColl(); return; }
   const { data } = await sb.from('collection').select('card_id,qty');
   S.coll = Object.fromEntries((data || []).map(r => [r.card_id, r.qty]));
+  await loadProgress();
 }
 async function setQty(id, q) {
   q = Math.max(0, Math.min(99, q)); S.coll[id] = q;
@@ -90,17 +103,19 @@ function progress(setId) {
   const set = S.sets.find(s => s.id === setId), cs = S.bySet[setId] || [];
   let owned = 0, main = 0, value = 0, doubles = 0;
   for (const c of cs) { const q = S.coll[c.id] || 0; if (q) { owned++; if (c.num && c.num <= set.total) main++; } value += q * (c.price_eur || 0); doubles += Math.max(0, q - 1); }
-  return { set, cs, owned, main, value, doubles, pct: set ? Math.min(100, Math.round(main / set.total * 100)) : 0 };
+  return { set, cs, owned, main, value, doubles, pct: set?.total ? Math.min(100, Math.round(main / set.total * 100)) : 0 };
 }
+const setPct = s => s.total ? Math.min(100, Math.round((S.prog[s.id] || 0) / s.total * 100)) : 0;
 function trainer() {
   const all = Object.values(S.coll), uniq = all.filter(q => q > 0).length, dbl = all.reduce((a, q) => a + Math.max(0, q - 1), 0);
   const xp = uniq * 2 + dbl * 3 + (S.profile?.xp || 0);
   const lvl = Math.floor(Math.sqrt(xp / 15)) + 1, cur = 15 * (lvl - 1) ** 2, nxt = 15 * lvl ** 2;
-  const pr = S.sets.map(s => progress(s.id));
+  const pr = [progress(S.set), ...S.sets.filter(s => S.prog[s.id]).map(s => ({ pct: setPct(s) }))];
   const badges = [
     ['Première carte', uniq >= 1], ['50 cartes', uniq >= 50], ['Premier double', dbl >= 1],
     ['Moitié d\'un set', pr.some(p => p.pct >= 50)], ['Set complet', pr.some(p => p.pct >= 100)],
-    ['Premier échange', (S.profile?.trades_done || 0) >= 1], ['Marchand (10)', (S.profile?.trades_done || 0) >= 10]
+    ['Premier échange', (S.profile?.trades_done || 0) >= 1], ['Marchand (10)', (S.profile?.trades_done || 0) >= 10],
+    ['Polyglotte', new Set(Object.keys(S.coll).filter(k => S.coll[k] > 0).map(k => k.split(':')[0])).size >= 2]
   ];
   return { xp, lvl, pct: Math.round((xp - cur) / (nxt - cur) * 100), badges };
 }
@@ -115,13 +130,17 @@ async function route() {
 }
 
 async function home() {
-  const top = Object.values(S.cards).filter(c => c.image && c.price_eur).sort((a, b) => b.price_eur - a.price_eur).slice(0, 5);
-  const { count } = await sb.from('listings').select('id', { count: 'exact', head: true }).eq('status', 'active');
+  const [{ data: top0 }, { count }] = await Promise.all([
+    sb.from('cards').select('*').eq('lang', S.lang === 'ja' ? 'en' : S.lang).not('image', 'is', null).not('price_eur', 'is', null).order('price_eur', { ascending: false }).limit(5),
+    sb.from('listings').select('id', { count: 'exact', head: true }).eq('status', 'active')
+  ]);
+  const top = top0 || []; remember(top);
+  const nbCards = S.sets.reduce((a, s) => a + s.card_count, 0).toLocaleString('fr-FR');
   view.innerHTML = `<section class="hero">
     <div><h1>Ton classeur.<br>Tes doubles sur la <span style="color:var(--gold)">table</span>.</h1>
     <p class="lead">Coche les cartes que tu possèdes, suis la cote de ta collection, puis pose tes doubles sur la table pour les échanger ou les vendre en toute sécurité.</p>
     <div class="seg"><a class="btn" href="#/classeur">Remplir mon classeur</a><a class="btn ghost" href="#/table">Voir la table</a></div>
-    <div class="stats"><div><b>${Object.keys(S.cards).length}</b><span class="mut small">cartes au catalogue</span></div><div><b>${count ?? 0}</b><span class="mut small">doubles sur la table</span></div><div><b>${(S.fee * 100).toLocaleString('fr-FR')} %</b><span class="mut small">de commission</span></div></div></div>
+    <div class="stats"><div><b>${nbCards}</b><span class="mut small">cartes · ${S.sets.length} sets · ${Object.keys(LANGS).length} langues</span></div><div><b>${count ?? 0}</b><span class="mut small">doubles sur la table</span></div><div><b>${(S.fee * 100).toLocaleString('fr-FR')} %</b><span class="mut small">de commission</span></div></div></div>
     <div class="fan">${top.map((c, i) => `<img src="${c.image}/low.webp" alt="${esc(c.name)}" style="transform:translateX(-50%) rotate(${(i - 2) * 11}deg)">`).join('')}</div>
   </section>
   <div class="steps">
@@ -133,7 +152,17 @@ async function home() {
   <div class="grid">${top.map(c => `<a class="tile" href="#/table" data-card="${c.id}">${img(c)}<div class="meta"><span class="nm">${esc(c.name)}</span><span class="v">${eur(c.price_eur)}</span></div></a>`).join('') || '<p class="mut">Catalogue en cours de chargement…</p>'}</div>`;
 }
 
+function setPicker() {
+  const sets = S.sets.filter(s => s.lang === S.lang), groups = {};
+  for (const s of sets) (groups[s.serie_name || 'Autres'] ||= []).push(s);
+  return `<div class="pickers">
+    <label class="f">Langue<select id="plang">${Object.entries(LANGS).map(([k, n]) => `<option value="${k}" ${k === S.lang ? 'selected' : ''}>${n} (${S.sets.filter(s => s.lang === k).length} sets)</option>`).join('')}</select></label>
+    <label class="f">Extension<select id="pset">${Object.entries(groups).map(([g, ss]) => `<optgroup label="${esc(g)}">${ss.map(s => `<option value="${s.id}" ${s.id === S.set ? 'selected' : ''}>${esc(s.name)}${s.released ? ' · ' + s.released.slice(0, 4) : ''}${S.prog[s.id] ? ` · ${setPct(s)}%` : ''}</option>`).join('')}</optgroup>`).join('')}</select></label>
+  </div>`;
+}
 async function classeur() {
+  if (!S.set) { view.innerHTML = '<div class="empty">Catalogue en cours d\'import, reviens dans quelques minutes.</div>'; return; }
+  await loadSet(S.set);
   const p = progress(S.set), t = trainer();
   const list = p.cs.filter(c => { const q = S.coll[c.id] || 0; return S.filter === 'all' || (S.filter === 'own' && q) || (S.filter === 'miss' && !q) || (S.filter === 'dbl' && q > 1); });
   view.innerHTML = `
@@ -142,7 +171,8 @@ async function classeur() {
     <div class="dash">
       <div class="ring" style="--p:${p.pct}"><span>${p.pct}%<small>${p.main}/${p.set?.total ?? '?'}</small></span></div>
       <div>
-        <div class="seg" id="sets">${S.sets.map(s => `<button data-set="${s.id}" aria-pressed="${s.id === S.set}">${esc(s.name)}</button>`).join('')}</div>
+        ${setPicker()}
+        <p class="small mut" style="margin:6px 0 0">${flag(S.lang)} ${esc(p.set?.serie_name || '')} · ${esc(p.set?.name)} · ${p.set?.released ? new Date(p.set.released).toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' }) : ''}${S.lang === 'ja' ? ' · cotes japonaises non disponibles' : ''}</p>
         <div class="kpis" style="margin-top:12px"><div><b>${eur(p.value)}</b><span>valeur de ce set</span></div><div><b>${p.owned}</b><span>cartes différentes</span></div><div><b>${p.doubles}</b><span>doubles</span></div><div><b>Niv. ${t.lvl}</b><span>dresseur · ${t.xp} XP</span></div></div>
         <div class="xp"><i style="width:${t.pct}%"></i></div>
         <div class="badges">${t.badges.map(([n, on]) => `<span class="bdg ${on ? 'on' : ''}">${on ? '★' : '☆'} ${n}</span>`).join('')}</div>
@@ -160,7 +190,7 @@ async function classeur() {
 }
 
 async function fetchListings(filter = {}) {
-  let q = sb.from('listings').select('*, card:cards(*)').eq('status', 'active').order('created_at', { ascending: false }).limit(200);
+  let q = sb.from('listings').select('*, card:cards(*, set:sets(name,serie_name))').eq('status', 'active').order('created_at', { ascending: false }).limit(200);
   if (filter.card) q = q.eq('card_id', filter.card);
   const { data, error } = await q; if (error) throw error;
   await pseudos((data || []).map(l => l.user_id));
@@ -168,7 +198,7 @@ async function fetchListings(filter = {}) {
 }
 async function table() {
   view.innerHTML = `<div class="felt"><div class="bar">
-    <div class="seg" id="tset"><button data-ts="" aria-pressed="${!S.tset}">Tous les sets</button>${S.sets.map(s => `<button data-ts="${s.id}" aria-pressed="${S.tset === s.id}">${esc(s.name)}</button>`).join('')}</div>
+    <div class="seg" id="tset"><button data-ts="" aria-pressed="${!S.tset}">Toutes langues</button>${Object.keys(LANGS).map(k => `<button data-ts="${k}" aria-pressed="${S.tset === k}">${k === 'ja' ? 'JP' : k.toUpperCase()}</button>`).join('')}</div>
     <input class="grow" id="tq" placeholder="Chercher une carte…" aria-label="Chercher" value="${esc(S.tq || '')}">
     <select id="tsort" aria-label="Trier" style="width:auto"><option value="new">Plus récentes</option><option value="cheap">Prix ↑</option><option value="deal">Meilleure affaire</option><option value="miss">Il me manque</option></select>
   </div><div class="grid" id="lgrid">${'<div class="skel"></div>'.repeat(6)}</div></div>`;
@@ -178,7 +208,7 @@ async function table() {
 }
 function drawListings() {
   const q = (S.tq || '').toLowerCase(), so = S.tsort || 'new';
-  let ls = S.listings.filter(l => (!S.tset || l.card.set_id === S.tset) && l.card.name.toLowerCase().includes(q));
+  let ls = S.listings.filter(l => (!S.tset || l.card.lang === S.tset) && `${l.card.name} ${l.card.set?.name} ${l.card.set?.serie_name}`.toLowerCase().includes(q));
   if (so === 'cheap') ls.sort((a, b) => (a.price ?? 1e9) - (b.price ?? 1e9));
   if (so === 'deal') ls.sort((a, b) => ((a.price ?? 1e9) / (a.card.price_eur || 1e9)) - ((b.price ?? 1e9) / (b.card.price_eur || 1e9)));
   if (so === 'miss') ls = ls.filter(l => !S.coll[l.card_id]);
@@ -187,6 +217,7 @@ function drawListings() {
     return `<button class="tile lcard" data-l="${l.id}">${l.photo_path ? `<img class="cimg" loading="lazy" src="${photoUrl(l.photo_path)}" alt="Photo vendeur ${esc(l.card.name)}">` : img(l.card)}
     ${!S.coll[l.card_id] && !mine ? '<span class="pill p-miss badge-miss">Il te manque</span>' : ''}
     <div class="meta"><span class="nm">${esc(l.card.name)}</span><span class="v">${l.price ? eur(l.price) : 'Échange'}</span></div>
+    <div class="seller"><span>${flag(l.card.lang)} ${esc(l.card.set?.name || '')}</span></div>
     <div class="seller"><span><span class="pill p-${l.condition}">${l.condition}</span> ${l.trade_ok ? '<span class="pill p-tr">échange</span>' : ''}</span>${d != null ? `<span class="delta ${d > 0 ? 'up' : 'dn'}">${d > 0 ? '+' : ''}${Math.round(d * 100)}% cote</span>` : ''}</div>
     <div class="seller"><span>${mine ? 'Ton annonce' : esc(S.pseudos[l.user_id]?.pseudo || '')}</span><span>${S.pseudos[l.user_id]?.trades_done ? S.pseudos[l.user_id].trades_done + ' échanges' : 'nouveau'}</span></div></button>`;
   }).join('') || `<div class="empty" style="grid-column:1/-1">Aucun double sur la table pour l'instant. <a href="#/classeur">Pose les tiens depuis ton classeur.</a></div>`;
@@ -195,7 +226,7 @@ function drawListings() {
 function listingModal(l) {
   const c = l.card, s = S.pseudos[l.user_id] || {}, mine = l.user_id === S.user?.id;
   modal(`<div class="split"><div>${l.photo_path ? `<img class="cimg" src="${photoUrl(l.photo_path)}" alt="Photo du vendeur">` : img(c, true)}${l.photo_path ? `<p class="small mut">Photo du vendeur · <a href="${c.image}/high.webp" target="_blank" rel="noopener">voir la carte officielle</a></p>` : ''}</div>
-  <div><p class="mut small">${esc(S.sets.find(x => x.id === c.set_id)?.name)} · ${c.local_id} · ${esc(c.rarity || '')}</p><h2 style="margin:4px 0 12px">${esc(c.name)}</h2>
+  <div><p class="mut small">${flag(c.lang)} ${LANGS[c.lang]} · ${esc(S.sets.find(x => x.id === c.set_id)?.name)} · ${c.local_id} · ${esc(c.rarity || '')}</p><h2 style="margin:4px 0 12px">${esc(c.name)}</h2>
   <dl class="kv"><dt>Prix</dt><dd>${l.price ? eur(l.price) : 'Échange uniquement'}</dd><dt>Cote (tendance)</dt><dd>${eur(c.price_eur)}</dd><dt>État</dt><dd><span class="pill p-${l.condition}">${l.condition}</span> ${COND[l.condition][0]}</dd><dt>Échange</dt><dd>${l.trade_ok ? 'accepté' : 'non'}</dd><dt>Vendeur</dt><dd>${esc(s.pseudo)} · ${s.trades_done || 0} échange(s) · ${esc(s.region || '')}</dd></dl>
   ${l.note ? `<p class="panel small" style="margin-top:12px">${esc(l.note)}</p>` : ''}
   <div id="ofr" style="margin-top:16px">${mine ? `<button class="btn ghost" data-rmlist="${l.id}">Retirer de la table</button>` : `<div class="acts">${l.price ? `<button class="btn" data-buy="${l.id}">Acheter ${eur(l.price)}</button>` : ''}${l.trade_ok ? `<button class="btn ghost" data-trade="${l.id}">Proposer un échange</button>` : ''}<button class="btn ghost sm" data-report="listing:${l.id}">Signaler</button></div>`}</div>
@@ -293,7 +324,7 @@ function offerCard(o, X) {
   if (['accepted', 'paid'].includes(o.status)) b('dispute', 'Ouvrir un litige', 'ghost');
   const labels = { declined: 'Refusée', cancelled: 'Annulée', disputed: 'Litige ouvert : l\'équipe examine le dossier, l\'argent reste bloqué.' };
   return `<div class="panel offer"><div>${img(c)}</div><div>
-    <h3>${esc(c.name)} <span class="pill p-${o.listing.condition}">${o.listing.condition}</span></h3>
+    <h3>${flag(c.lang)} ${esc(c.name)} <span class="pill p-${o.listing.condition}">${o.listing.condition}</span></h3>
     <p class="small" style="margin:4px 0">${seller ? `<b>${esc(other)}</b> te propose` : `Tu proposes à <b>${esc(other)}</b>`} : ${gives}${o.fee ? ` <span class="mut">· commission ${eur(o.fee)}</span>` : ''}</p>
     ${labels[o.status] ? `<p class="small"><span class="pill p-PL">${o.status}</span> ${labels[o.status]}</p>` : `<div class="track">${STEPS.map((s, i) => `<span class="${i < st ? 'done' : i === st ? 'now' : ''}">${s}</span>`).join('')}</div>`}
     ${o.seller_tracking ? `<p class="small mut">Suivi vendeur : <span class="mono">${esc(o.seller_tracking)}</span></p>` : ''}${o.buyer_tracking ? `<p class="small mut">Suivi acheteur : <span class="mono">${esc(o.buyer_tracking)}</span></p>` : ''}
@@ -330,7 +361,7 @@ async function forum() {
   const { data } = await sb.from('posts').select('*').order('created_at', { ascending: false }).limit(80);
   await pseudos((data || []).map(p => p.user_id));
   view.innerHTML = `<h2>Le forum de la table</h2><div class="panel">
-  ${S.profile ? `<form class="form" id="pf"><textarea id="pb" maxlength="600" placeholder="Une question sur une cote, une carte recherchée, un conseil d'état ?"></textarea><div class="bar" style="margin:0"><select id="ps" style="width:auto"><option value="">Général</option>${S.sets.map(s => `<option value="${s.id}">${esc(s.name)}</option>`).join('')}</select><button class="btn">Publier</button></div><p class="err" id="perr"></p></form>` : `<p class="mut">Lecture libre. <a href="#/compte">Connecte-toi</a> pour participer.</p>`}
+  ${S.profile ? `<form class="form" id="pf"><textarea id="pb" maxlength="600" placeholder="Une question sur une cote, une carte recherchée, un conseil d'état ?"></textarea><div class="bar" style="margin:0"><select id="ps" style="width:auto"><option value="">Général</option>${S.sets.filter(s => s.lang === S.lang).slice(0, 80).map(s => `<option value="${s.id}">${esc(s.name)}</option>`).join('')}</select><button class="btn">Publier</button></div><p class="err" id="perr"></p></form>` : `<p class="mut">Lecture libre. <a href="#/compte">Connecte-toi</a> pour participer.</p>`}
   ${(data || []).map(p => { const u = S.pseudos[p.user_id]; return `<div class="post">${av(u?.pseudo)}<div><b>${esc(u?.pseudo || '?')}</b> <span class="small mut">${new Date(p.created_at).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' })}${p.set_id ? ' · ' + esc(S.sets.find(s => s.id === p.set_id)?.name) : ''}</span><div style="white-space:pre-wrap">${esc(p.body)}</div>${p.user_id === S.user?.id ? `<button class="btn ghost sm" data-delpost="${p.id}">Supprimer</button>` : `<button class="btn ghost sm" data-report="post:${p.id}" style="margin-top:4px">Signaler</button>`}</div></div>`; }).join('') || '<div class="empty">Sois le premier à lancer une discussion.</div>'}</div>`;
   const f = $('#pf'); if (!f) return;
   $('#pb').oninput = () => guardInput($('#pb'), $('#perr'));
@@ -430,7 +461,12 @@ document.addEventListener('click', async e => {
   else if (d.delpost) { await sb.from('posts').delete().eq('id', d.delpost); forum(); }
 });
 document.addEventListener('input', e => { if (e.target.id === 'tq') { S.tq = e.target.value; drawListings(); } });
-document.addEventListener('change', e => { if (e.target.id === 'tsort') { S.tsort = e.target.value; drawListings(); } });
+document.addEventListener('change', e => {
+  const id = e.target.id;
+  if (id === 'tsort') { S.tsort = e.target.value; drawListings(); }
+  if (id === 'plang') { S.lang = e.target.value; try { localStorage.setItem('tdd_lang', S.lang); } catch { } pickDefaultSet(); classeur(); }
+  if (id === 'pset') { S.set = e.target.value; classeur(); }
+});
 document.addEventListener('submit', async e => {
   const f = e.target.closest('[data-chat]'); if (!f) return; e.preventDefault();
   const inp = f.querySelector('input'), out = $('#e-' + f.dataset.chat);

@@ -1,0 +1,3 @@
+{ "name": "Table des Doubles", "short_name": "Doubles", "description": "Ton classeur de cartes et tes doubles à échanger en sécurité.",
+  "start_url": "/#/classeur", "display": "standalone", "background_color": "#08140f", "theme_color": "#0c2820", "lang": "fr",
+  "icons": [{ "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }] }

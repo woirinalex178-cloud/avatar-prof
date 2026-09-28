@@ -151,3 +151,4 @@ dialog::backdrop{background:#000b;backdrop-filter:blur(3px)}
 .lang{display:inline-block;font:700 10px var(--mono);padding:1px 5px;border-radius:4px;background:var(--txt);color:var(--ink);letter-spacing:.04em;vertical-align:1px}
 .pickers{display:grid;grid-template-columns:minmax(140px,220px) minmax(0,1fr);gap:10px}
 @media (max-width:520px){.pickers{grid-template-columns:1fr}}
+.jp{display:block;font-size:11px;color:var(--mut);line-height:1.2;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}

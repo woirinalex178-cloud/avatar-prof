@@ -1,5 +1,6 @@
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/+esm';
 import { SUPABASE_URL, SUPABASE_KEY } from './config.js';
+import { openAuth } from './auth.js';
 
 const sb = createClient(SUPABASE_URL, SUPABASE_KEY);
 const S = { user: null, profile: null, sets: [], cards: {}, bySet: {}, set: null, lang: 'fr', coll: {}, fee: 0.0001, filter: 'all', pseudos: {}, prog: {} };
@@ -22,6 +23,7 @@ const nm = c => c?.name_fr || c?.name || '?';
 const jp = c => c?.name_fr ? `<small class="jp">${esc(c.name)}</small>` : '';
 const setName = s => s ? (s.name_fr || s.name) : '';
 const stars = p => p?.reviews_count ? `★ ${p.rating} (${p.reviews_count})` : 'nouveau';
+const authBadge = l => l.auth_score != null ? `<span class="pill ${l.auth_score >= 75 ? 'p-NM' : l.auth_score >= 50 ? 'p-GD' : 'p-PL'}" title="Contrôle photo d'authenticité">IA ${l.auth_score}</span>` : '';
 const photoUrl = p => sb.storage.from('photos').getPublicUrl(p).data.publicUrl;
 const color = s => `hsl(${[...s].reduce((a, c) => a + c.charCodeAt(0), 0) * 37 % 360} 70% 70%)`;
 const av = p => `<div class="av" style="background:${color(p || '?')}">${esc((p || '?').slice(0, 2).toUpperCase())}</div>`;
@@ -143,7 +145,7 @@ async function home() {
   view.innerHTML = `<section class="hero">
     <div><h1>Ton classeur.<br>Tes doubles sur la <span style="color:var(--gold)">table</span>.</h1>
     <p class="lead">Coche les cartes que tu possèdes, suis la cote de ta collection, puis pose tes doubles sur la table pour les échanger ou les vendre en toute sécurité.</p>
-    <div class="seg"><a class="btn" href="#/classeur">Remplir mon classeur</a><a class="btn ghost" href="#/table">Voir la table</a><button class="btn ghost" data-scan>📷 Scanner une carte</button></div>
+    <div class="seg"><a class="btn" href="#/classeur">Remplir mon classeur</a><a class="btn ghost" href="#/table">Voir la table</a><button class="btn ghost" data-scan>📷 Scanner / 🔍 Authentifier</button></div>
     <div class="stats"><div><b>${nbCards}</b><span class="mut small">cartes · ${S.sets.length} sets · ${Object.keys(LANGS).length} langues</span></div><div><b>${count ?? 0}</b><span class="mut small">doubles sur la table</span></div><div><b>0 %</b><span class="mut small">de frais vendeur</span></div></div></div>
     <div class="fan">${top.map((c, i) => `<img src="${c.image}/low.webp" alt="${esc(nm(c))}" style="transform:translateX(-50%) rotate(${(i - 2) * 11}deg)">`).join('')}</div>
   </section>
@@ -222,7 +224,7 @@ function drawListings() {
     ${!S.coll[l.card_id] && !mine ? '<span class="pill p-miss badge-miss">Il te manque</span>' : ''}
     <div class="meta"><span class="nm">${esc(nm(l.card))}</span><span class="v">${l.price ? eur(l.price) : 'Échange'}</span></div>
     <div class="seller"><span>${flag(l.card.lang)} ${esc(setName(l.card.set))}</span></div>
-    <div class="seller"><span><span class="pill p-${l.condition}">${l.condition}</span> ${l.trade_ok ? '<span class="pill p-tr">échange</span>' : ''}</span>${d != null ? `<span class="delta ${d > 0 ? 'up' : 'dn'}">${d > 0 ? '+' : ''}${Math.round(d * 100)}% cote</span>` : ''}</div>
+    <div class="seller"><span><span class="pill p-${l.condition}">${l.condition}</span> ${l.trade_ok ? '<span class="pill p-tr">échange</span>' : ''} ${authBadge(l)}</span>${d != null ? `<span class="delta ${d > 0 ? 'up' : 'dn'}">${d > 0 ? '+' : ''}${Math.round(d * 100)}% cote</span>` : ''}</div>
     <div class="seller"><span>${mine ? 'Ton annonce' : esc(S.pseudos[l.user_id]?.pseudo || '')}</span><span>${stars(S.pseudos[l.user_id])}${S.pseudos[l.user_id]?.verified ? ' ✔' : ''}</span></div></button>`;
   }).join('') || `<div class="empty" style="grid-column:1/-1">Aucun double sur la table pour l'instant. <a href="#/classeur">Pose les tiens depuis ton classeur.</a></div>`;
 }
@@ -233,6 +235,7 @@ function listingModal(l) {
   <div><p class="mut small">${flag(c.lang)} ${LANGS[c.lang]} · ${esc(setName(S.sets.find(x => x.id === c.set_id)))} · ${c.local_id} · ${esc(c.rarity || '')}</p><h2 style="margin:4px 0 12px">${esc(nm(c))}</h2>${jp(c)}
   <dl class="kv"><dt>Prix</dt><dd>${l.price ? eur(l.price) : 'Échange uniquement'}</dd><dt>Cote (tendance)</dt><dd>${eur(c.price_eur)}</dd><dt>État</dt><dd><span class="pill p-${l.condition}">${l.condition}</span> ${COND[l.condition][0]}</dd><dt>Échange</dt><dd>${l.trade_ok ? 'accepté' : 'non'}</dd><dt>Vendeur</dt><dd>${esc(s.pseudo)} · ${stars(s)} · ${s.trades_done || 0} transaction(s)${s.verified ? ' · ✔ identité vérifiée' : ''} · ${esc(s.region || '')}</dd></dl>
   ${l.note ? `<p class="panel small" style="margin-top:12px">${esc(l.note)}</p>` : ''}
+  ${l.auth_score != null ? `<div class="panel small" style="margin-top:10px">${authBadge(l)} <b>Contrôle photo d'authenticité : ${l.auth_score}/100</b> — ${esc(l.auth_report?.meta?.verdict || '')} (fiabilité ${esc(l.auth_report?.meta?.confidence || '?')}). <span class="mut">Indicatif, tu pourras refaire le contrôle à la réception.</span></div>` : ''}
   ${l.photo_path && l.verify_code ? `<p class="small mut">Code de vérification attendu sur la photo : <b class="mono">${esc(l.verify_code)}</b>. S'il n'y est pas, signale l'annonce.</p>` : ''}
   <div id="ofr" style="margin-top:16px">${mine ? `<button class="btn ghost" data-rmlist="${l.id}">Retirer de la table</button>` : `<div class="acts">${l.price ? `<button class="btn" data-buy="${l.id}">Acheter ${eur(l.price)}</button>` : ''}${l.trade_ok ? `<button class="btn ghost" data-trade="${l.id}">Proposer un échange</button>` : ''}<button class="btn ghost sm" data-report="listing:${l.id}">Signaler</button></div>`}</div>
   <p class="small mut" style="margin-top:14px">🔒 Paiement et échange uniquement dans l'appli. Ne partage jamais tes coordonnées : sans transaction dans l'appli, pas de protection.</p></div></div>`);
@@ -321,8 +324,8 @@ async function scanSearch(extra = []) {
   const { data, error } = await sb.rpc('scan_match', { p_num: v[1], p_total: v[2] ? +v[2] : null, p_words: words, p_lang: S.lang });
   if (error) return $('#scs').textContent = error.message;
   remember(data);
-  $('#scs').textContent = data.length ? 'Touche la bonne carte pour l\'ajouter à ton classeur :' : 'Aucune carte trouvée. Vérifie le numéro.';
-  $('#scr').innerHTML = data.map(c => `<button class="tile" data-scanadd="${c.id}">${img(c)}<div class="meta"><span class="nm">${flag(c.lang)} ${esc(nm(c))}</span></div><div class="small mut">${esc(c.set_name)} · ${c.local_id}${S.coll[c.id] ? ' · déjà ×' + S.coll[c.id] : ''}</div></button>`).join('');
+  $('#scs').textContent = data.length ? 'Touche la bonne carte pour l\'ajouter à ton classeur, ou « Authentifier » pour vérifier qu\'elle est vraie :' : 'Aucune carte trouvée. Vérifie le numéro.';
+  $('#scr').innerHTML = data.map(c => `<div class="tile"><button class="tile" data-scanadd="${c.id}" title="Ajouter au classeur">${img(c)}<div class="meta"><span class="nm">${flag(c.lang)} ${esc(nm(c))}</span></div><div class="small mut">${esc(c.set_name)} · ${c.local_id}${S.coll[c.id] ? ' · déjà ×' + S.coll[c.id] : ''}</div></button><button class="btn sm ghost" data-auth="${c.id}">🔍 Authentifier</button></div>`).join('');
 }
 
 // ---------- offres ----------
@@ -345,7 +348,7 @@ async function offres() {
   const tab = S.otab || 'in', list = (os || []).filter(o => tab === 'in' ? o.seller_id === S.user.id : o.buyer_id === S.user.id);
   view.innerHTML = `<h2>Mes offres</h2><div class="seg" id="otab" style="margin-bottom:16px"><button data-ot="in" aria-pressed="${tab === 'in'}">Reçues</button><button data-ot="out" aria-pressed="${tab === 'out'}">Envoyées</button></div>
   ${list.map(o => offerCard(o, X)).join('') || '<div class="empty">Aucune offre ici pour le moment.</div>'}`;
-  list.forEach(o => loadChat(o.id));
+  remember(list.map(o => o.listing.card)); list.forEach(o => loadChat(o.id));
   $('#offdot').hidden = true;
 }
 function offerCard(o, X) {
@@ -359,7 +362,7 @@ function offerCard(o, X) {
   if (o.status === 'paid') {
     if (seller && !o.seller_shipped) b('ship', 'J\'ai expédié (n° de suivi)');
     if (!seller && needB && !o.buyer_shipped) b('ship', 'J\'ai expédié mes cartes (n° de suivi)');
-    if (!seller && o.seller_shipped && !o.buyer_received) b('receive', 'J\'ai reçu la carte');
+    if (!seller && o.seller_shipped && !o.buyer_received) { A.push(`<button class="btn sm ghost" data-auth="${c.id}" data-oid="${o.id}">🔍 Vérifier la carte reçue</button>`); b('receive', 'J\'ai reçu la carte'); }
     if (seller && needB && o.buyer_shipped && !o.seller_received) b('receive', 'J\'ai reçu les cartes');
   }
   if (['accepted', 'paid'].includes(o.status)) b('dispute', 'Ouvrir un litige', 'ghost');
@@ -420,10 +423,11 @@ async function forum() {
 async function compte() {
   if (S.profile) {
     const t = trainer(), { data: ls } = await sb.from('listings').select('*, card:cards(*)').eq('user_id', S.user.id).in('status', ['active', 'reserved']).order('created_at', { ascending: false });
+    remember((ls || []).map(l => l.card));
     view.innerHTML = `<div class="panel" style="display:flex;gap:16px;align-items:center;flex-wrap:wrap">${av(S.profile.pseudo)}<div style="flex:1"><h2 style="margin:0">${esc(S.profile.pseudo)}</h2><p class="mut small" style="margin:2px 0">Niveau ${t.lvl} · ${S.profile.trades_done} échange(s) · ${esc(S.profile.region || '')}</p></div><button class="btn ghost" id="logout">Se déconnecter</button></div>
     <div class="panel" style="margin-top:12px"><h3>Vendre contre de l'argent</h3>${S.profile.payouts_enabled ? '<p class="small">✔ Compte vendeur vérifié : tu reçois tes paiements automatiquement.</p>' : `<p class="small mut">Pour recevoir de l'argent, notre partenaire de paiement Stripe vérifie ton identité (18+). Tes coordonnées bancaires restent chez Stripe, jamais chez nous. Les échanges carte contre carte n'en ont pas besoin.</p><button class="btn sm" data-connect>Activer mes ventes</button>`}</div>
     <div class="panel" style="margin-top:12px"><h3>Installer l'appli</h3>${S.install ? '<button class="btn sm" id="install">Installer sur cet appareil</button>' : '<p class="small mut">iPhone : bouton Partager puis « Sur l\'écran d\'accueil ». Android : menu ⋮ puis « Installer l\'application ».</p>'}</div>
-    <h2>Mes doubles sur la table</h2><div class="grid">${(ls || []).map(l => `<div class="tile">${l.photo_path ? `<img class="cimg" src="${photoUrl(l.photo_path)}" alt="">` : img(l.card)}<div class="meta"><span class="nm">${esc(nm(l.card))}</span><span class="v">${l.price ? eur(l.price) : 'Échange'}</span></div><div class="seller small"><span class="pill p-${l.condition}">${l.condition}</span>${l.status === 'reserved' ? '<span class="pill p-tr">réservée</span>' : `<button class="btn ghost sm" data-rmlist="${l.id}">Retirer</button>`}</div></div>`).join('') || '<div class="empty" style="grid-column:1/-1">Aucun double posé. <a href="#/classeur">Va dans ton classeur</a> et touche « Poser » sur une carte en double.</div>'}</div>`;
+    <h2>Mes doubles sur la table</h2><div class="grid">${(ls || []).map(l => `<div class="tile">${l.photo_path ? `<img class="cimg" src="${photoUrl(l.photo_path)}" alt="">` : img(l.card)}<div class="meta"><span class="nm">${esc(nm(l.card))}</span><span class="v">${l.price ? eur(l.price) : 'Échange'}</span></div><div class="seller small"><span class="pill p-${l.condition}">${l.condition}</span>${authBadge(l) || `<button class="btn ghost sm" data-auth="${l.card_id}" data-lid="${l.id}">🔍 Authentifier</button>`}${l.status === 'reserved' ? '<span class="pill p-tr">réservée</span>' : `<button class="btn ghost sm" data-rmlist="${l.id}">Retirer</button>`}</div></div>`).join('') || '<div class="empty" style="grid-column:1/-1">Aucun double posé. <a href="#/classeur">Va dans ton classeur</a> et touche « Poser » sur une carte en double.</div>'}</div>`;
     if ($('#install')) $('#install').onclick = async () => { S.install.prompt(); S.install = null; compte(); };
     $('#logout').onclick = async () => { await sb.auth.signOut(); await loadSession(); location.hash = '#/'; };
     return;
@@ -480,6 +484,7 @@ function regles() {
    <li><b>Envoi suivi obligatoire.</b> Numéro de suivi requis pour marquer une carte expédiée. Protection : sleeve + toploader + enveloppe rigide.</li>
    <li><b>État honnête.</b> NM = comme neuve, EX = micro-défauts, GD = usure visible, PL = abîmée. Photo de ta propre carte recommandée.</li>
    <li><b>Litige.</b> Carte non reçue ou non conforme : ouvre un litige depuis l'offre. L'argent reste bloqué pendant l'examen.</li>
+   <li><b>Contrôle d'authenticité.</b> Chaque carte peut passer un contrôle photo (couleurs comparées à l'officielle, texte, dos, test de la lampe). Le score est affiché sur l'annonce, et l'acheteur peut refaire le contrôle à la réception avant de confirmer. Il est indicatif et ne remplace pas une expertise.</li>
    <li><b>Contrefaçons interdites.</b> Toute fausse carte signalée entraîne l'exclusion définitive.</li>
   </ol>
   <h3>Frais</h3><p class="mut">Vendeur : 0 %. Acheteur : protection acheteur de ${eur(S.st.buyer_fixed ?? 0.5)} + ${((S.st.buyer_rate ?? 0.03) * 100).toLocaleString('fr-FR')} % du prix, qui finance le paiement sécurisé et la médiation. Échanges carte contre carte : gratuits pendant la bêta. Tant qu'un des deux membres a moins de 3 transactions réussies, une transaction est plafonnée à ${eur(S.st.new_account_cap ?? 100)}.</p>
@@ -488,7 +493,7 @@ function regles() {
 
 // ---------- événements ----------
 document.addEventListener('click', async e => {
-  const t = e.target.closest('[data-set],[data-f],[data-tog],[data-iq],[data-dq],[data-put],[data-l],[data-buy],[data-trade],[data-rmlist],[data-report],[data-act],[data-ot],[data-am],[data-ts],[data-card],[data-close],[data-delpost],[data-scan],[data-scanadd],[data-connect]');
+  const t = e.target.closest('[data-set],[data-f],[data-tog],[data-iq],[data-dq],[data-put],[data-l],[data-buy],[data-trade],[data-rmlist],[data-report],[data-act],[data-ot],[data-am],[data-ts],[data-card],[data-close],[data-delpost],[data-scan],[data-scanadd],[data-connect],[data-auth]');
   if (!t) return;
   const d = t.dataset;
   if (d.set) { S.set = d.set; classeur(); }
@@ -508,6 +513,7 @@ document.addEventListener('click', async e => {
   else if (d.ts !== undefined) { S.tset = d.ts || null; document.querySelectorAll('#tset button').forEach(b => b.setAttribute('aria-pressed', b === t)); drawListings(); }
   else if (d.card) { S.tq = S.cards[d.card]?.name || ''; }
   else if ('close' in d) close();
+  else if (d.auth) openAuth(S.cards[d.auth], { modal, $, esc, nm, sb, toast, shrink, loadTesseract, loggedIn: () => !!S.profile }, { listingId: d.lid, offerId: d.oid });
   else if ('scan' in d) scanModal();
   else if (d.scanadd) { await setQty(d.scanadd, (S.coll[d.scanadd] || 0) + 1); toast(`${nm(S.cards[d.scanadd])} ajoutée au classeur (×${S.coll[d.scanadd]})`); await scanSearch(); if (location.hash.startsWith('#/classeur')) { S.bySet[S.cards[d.scanadd].set_id] = null; } }
   else if ('connect' in d) { const { data, error } = await sb.functions.invoke('payments/connect'); if (error || !data?.url) return toast(data?.error || 'Activation des ventes bientôt disponible.', true); location.href = data.url; }

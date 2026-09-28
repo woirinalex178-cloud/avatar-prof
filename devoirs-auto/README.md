@@ -11,7 +11,7 @@ Devoirs de Céleste → entraînement adapté, **automatiquement**. Coût : **0 
 ## 3 façons de récupérer les devoirs
 1. **ONE (auto)** : à l'ouverture, l'app lit le « Cahier de textes » avec ton compte parent.
 2. **📷 Photo du cahier papier** : Céleste photographie sa page, l'IA lit les devoirs.
-3. **✏️ Saisie** : 10 secondes à la main.
+3. **✏️ Texte libre** : « pour jeudi apprendre les fractions, évaluation vendredi… » — l'IA découpe en devoirs. Sert aussi à préciser une photo pas claire.
 
 Chaque nouveau devoir est préparé tout seul. Scores gardés sur l'appareil.
 

@@ -1,12 +1,12 @@
-// POST { action: 'read', image } -> lit une photo du cahier de textes papier
+// POST { action: 'read', image?, texte? } -> lit la photo du cahier et/ou le texte libre
 // POST { action: 'make', devoir } -> fabrique l'entraînement adapté
 import { checkPin, gemini } from './_lib.js';
 
 const NIVEAU = 'CM2 (programme officiel français, cycle 3)';
 
-const READ = `Tu lis la photo d'un cahier de textes d'une élève de ${NIVEAU}.
-Extrais chaque devoir. Date du jour : {TODAY}. Si une date est "lundi", "demain"... convertis en AAAA-MM-JJ.
-Réponds en JSON : {"devoirs":[{"matiere":"","consigne":"texte exact","pour":"AAAA-MM-JJ ou vide"}]}`;
+const READ = `Tu reçois les devoirs d'une élève de ${NIVEAU} : une photo de son cahier de textes et/ou un texte écrit par elle ou ses parents.
+Le texte est prioritaire : il précise ou corrige la photo. Extrais chaque devoir séparément, reformulé clairement. Date du jour : {TODAY} ({JOUR}). Si une date est "lundi", "demain"... convertis en AAAA-MM-JJ (le prochain jour correspondant).
+Réponds en JSON : {"devoirs":[{"matiere":"","consigne":"consigne claire et complète","pour":"AAAA-MM-JJ ou vide"}]}`;
 
 const MAKE = `Tu es un professeur des écoles bienveillant. Élève : Céleste, ${NIVEAU}.
 Devoir noté : matière "{MAT}", consigne "{TXT}", à rendre le {POUR} (aujourd'hui {TODAY}).
@@ -36,12 +36,15 @@ export default async function handler(req, res) {
   if (!checkPin(req, res)) return;
   const today = new Date().toISOString().slice(0, 10);
   try {
-    const { action, image, devoir } = req.body || {};
-    if (action === 'read') {
-      const [meta, data] = String(image || '').split(',');
-      const mime = meta.match(/data:(.*?);/)?.[1] || 'image/jpeg';
-      const out = await gemini([{ text: READ.replace('{TODAY}', today) }, { inline_data: { mime_type: mime, data } }], { temperature: 0.1 });
-      return res.json(out);
+    const { action, image, texte, devoir } = req.body || {};
+    if (action === 'read' && (image || texte)) {
+      const parts = [{ text: READ.replace('{TODAY}', today).replace('{JOUR}', new Date().toLocaleDateString('fr-FR', { weekday: 'long' })) }];
+      if (texte) parts.push({ text: 'Texte : ' + String(texte).slice(0, 2000) });
+      if (image) {
+        const [meta, data] = String(image).split(',');
+        parts.push({ inline_data: { mime_type: meta.match(/data:(.*?);/)?.[1] || 'image/jpeg', data } });
+      }
+      return res.json(await gemini(parts, { temperature: 0.1 }));
     }
     if (action === 'make' && devoir?.consigne) {
       const p = MAKE.replace('{MAT}', devoir.matiere || '?').replace('{TXT}', devoir.consigne.slice(0, 1500))

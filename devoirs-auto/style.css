@@ -37,3 +37,7 @@ input,textarea{width:100%;border:2px solid var(--line);border-radius:12px;paddin
 .spin{display:inline-block;width:14px;height:14px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:s 1s linear infinite;vertical-align:-2px}
 @keyframes s{to{transform:rotate(360deg)}}
 :focus-visible{outline:3px solid var(--pri);outline-offset:2px}
+.hero{display:flex;align-items:center;gap:16px;margin:14px 0;padding:22px;border-radius:22px;background:var(--pri);color:#fff;cursor:pointer;box-shadow:0 8px 24px #5b4bdb40}
+.hero:active{transform:scale(.98)}
+.hero-ico{font-size:44px;line-height:1}.hero b{display:block;font:600 21px var(--disp)}.hero small{opacity:.85}
+textarea{resize:vertical}

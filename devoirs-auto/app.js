@@ -108,24 +108,25 @@ function compress(file) {
   });
 }
 
+// Photo et/ou texte libre -> l'IA en extrait la liste des devoirs.
+async function lire(image) {
+  const texte = $('#txt').value.trim();
+  if (!image && !texte) return;
+  status(image ? 'Je lis ta photo…' : 'Je lis ton texte…');
+  try {
+    const r = await api('generate', { action: 'read', image, texte });
+    const n = addDevoirs((r.devoirs || []).map(d => ({ ...d, source: image ? 'photo' : 'texte' })));
+    if (n) $('#txt').value = '';
+    status(n ? `${n} devoir(s) trouvé(s) ✔ Je prépare tes entraînements…`
+      : 'Aucun nouveau devoir trouvé. Écris-le avec tes mots dans la zone de texte.');
+  } catch (err) { status('⚠️ ' + err.message); }
+}
+
 $('#photo').onchange = async e => {
   const f = e.target.files[0]; e.target.value = '';
-  if (!f) return;
-  status('Je lis ta photo…');
-  try {
-    const r = await api('generate', { action: 'read', image: await compress(f) });
-    const n = addDevoirs((r.devoirs || []).map(d => ({ ...d, source: 'photo' })));
-    status(n ? `${n} devoir(s) trouvé(s) ✔` : 'Aucun nouveau devoir lu. Essaie une photo plus nette ou ajoute-le à la main.');
-  } catch (err) { status('⚠️ ' + err.message); }
+  if (f) lire(await compress(f));
 };
-
-$('#add').onclick = () => { const f = $('#f-add'); f.hidden = !f.hidden; f.pour.value ||= today(); };
-$('#f-add').onsubmit = e => {
-  e.preventDefault();
-  const f = e.target;
-  addDevoirs([{ matiere: f.matiere.value.trim(), consigne: f.consigne.value.trim(), pour: f.pour.value, source: 'main' }]);
-  f.reset(); f.hidden = true;
-};
+$('#f-txt').onsubmit = e => { e.preventDefault(); lire(); };
 
 // ---------- Entraînement ----------
 const norm = s => String(s ?? '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')

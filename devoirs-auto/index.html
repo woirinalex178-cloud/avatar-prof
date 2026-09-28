@@ -28,15 +28,15 @@
   <section id="v-home" hidden>
     <h1>Mes devoirs</h1>
     <p id="status" class="mut small" aria-live="polite"></p>
-    <div class="actions">
-      <label class="btn">📷 Photo du cahier<input id="photo" type="file" accept="image/*" capture="environment" hidden></label>
-      <button id="add" class="btn alt">✏️ Ajouter</button>
-    </div>
-    <form id="f-add" class="card" hidden>
-      <input name="matiere" placeholder="Matière (ex : Histoire)" required>
-      <textarea name="consigne" rows="2" placeholder="Consigne (ex : Apprendre la leçon sur Louis XIV, évaluation)" required></textarea>
-      <label class="small mut">Pour le <input name="pour" type="date" required></label>
-      <button class="btn">Ajouter</button>
+    <label class="hero">
+      <span class="hero-ico">📷</span>
+      <span><b>Photo du cahier de textes</b><small>Touche ici pour prendre la photo</small></span>
+      <input id="photo" type="file" accept="image/*" capture="environment" hidden>
+    </label>
+    <form id="f-txt" class="card">
+      <label for="txt"><b>✏️ Ou dis-le avec tes mots</b> <span class="small mut">(aussi pour préciser une photo pas claire)</span></label>
+      <textarea id="txt" rows="3" placeholder="Ex : pour jeudi apprendre la leçon sur les fractions, évaluation vendredi en histoire sur Louis XIV, exercices 3 et 4 page 52"></textarea>
+      <button class="btn">Ajouter ces devoirs</button>
     </form>
     <ul id="list" class="list"></ul>
     <p id="empty" class="mut" hidden>Aucun devoir à venir. Prends en photo ton cahier de textes 📷</p>

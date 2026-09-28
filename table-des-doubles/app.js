@@ -1,6 +1,7 @@
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/+esm';
 import { SUPABASE_URL, SUPABASE_KEY } from './config.js';
 import { openAuth } from './auth.js';
+import * as Game from './game.js';
 
 const sb = createClient(SUPABASE_URL, SUPABASE_KEY);
 const S = { user: null, profile: null, sets: [], cards: {}, bySet: {}, set: null, lang: 'fr', coll: {}, fee: 0.0001, filter: 'all', pseudos: {}, prog: {} };
@@ -112,22 +113,29 @@ function progress(setId) {
   return { set, cs, owned, main, value, doubles, pct: set?.total ? Math.min(100, Math.round(main / set.total * 100)) : 0 };
 }
 const setPct = s => s.total ? Math.min(100, Math.round((S.prog[s.id] || 0) / s.total * 100)) : 0;
-function trainer() {
-  const all = Object.values(S.coll), uniq = all.filter(q => q > 0).length, dbl = all.reduce((a, q) => a + Math.max(0, q - 1), 0);
-  const xp = uniq * 2 + dbl * 3 + (S.profile?.xp || 0);
-  const lvl = Math.floor(Math.sqrt(xp / 15)) + 1, cur = 15 * (lvl - 1) ** 2, nxt = 15 * lvl ** 2;
-  const pr = [progress(S.set), ...S.sets.filter(s => S.prog[s.id]).map(s => ({ pct: setPct(s) }))];
-  const badges = [
-    ['Première carte', uniq >= 1], ['50 cartes', uniq >= 50], ['Premier double', dbl >= 1],
-    ['Moitié d\'un set', pr.some(p => p.pct >= 50)], ['Set complet', pr.some(p => p.pct >= 100)],
-    ['Premier échange', (S.profile?.trades_done || 0) >= 1], ['Marchand (10)', (S.profile?.trades_done || 0) >= 10],
-    ['Polyglotte', new Set(Object.keys(S.coll).filter(k => S.coll[k] > 0).map(k => k.split(':')[0])).size >= 2]
-  ];
-  return { xp, lvl, pct: Math.round((xp - cur) / (nxt - cur) * 100), badges };
+// trophées : infos des cartes du classeur (mises en cache) -> statistiques -> badges
+S.info = {};
+async function gameState() {
+  const ids = Object.keys(S.coll).filter(k => S.coll[k] > 0), miss = ids.filter(k => !S.info[k]);
+  for (let i = 0; i < miss.length; i += 1000) { const { data } = await sb.rpc('coll_info', { p_ids: miss.slice(i, i + 1000) }); for (const r of data || []) S.info[r.id] = r; }
+  const st = Game.stats(ids.map(k => S.info[k]).filter(Boolean), S.coll, S.profile);
+  S.ev = Game.evaluate(st); return { st, ev: S.ev };
+}
+async function checkUnlock() {
+  const { ev } = await gameState();
+  if (!Game.G.flags.seeded) { Game.newlyUnlocked(ev); Game.flag('seeded'); return; }
+  Game.celebrate(Game.newlyUnlocked(ev), esc);
+}
+async function trophees() {
+  const { st, ev } = await gameState(), dl = Game.daily();
+  view.innerHTML = `<div class="felt"><div class="dash"><div class="ring" style="--p:${Math.round(ev.got.length / ev.total * 100)}"><span>${ev.got.length}<small>/ ${ev.total}</small></span></div>
+    <div><h1 style="font-size:24px">${esc(ev.title)}</h1><p class="mut" style="margin:4px 0">Niveau ${ev.lvl} · ${ev.xp} XP · 🔥 ${st.streak} jour(s) de suite</p><div class="xp"><i style="width:${ev.pct}%"></i></div>
+    <p class="small" style="margin:10px 0 0">🎯 Défi du jour : ajoute ${dl.n} cartes à ton classeur — ${dl.done ? '<b class="dn">réussi ✔</b>' : `${dl.cur}/${dl.n}`}</p></div></div></div>
+  ${Game.renderTrophies(ev, st, esc)}`;
 }
 
 // ---------- vues ----------
-const routes = { '': home, classeur, table, offres, forum, compte, regles };
+const routes = { '': home, trophees, classeur, table, offres, forum, compte, regles };
 async function route() {
   const r = location.hash.replace(/^#\/?/, '').split('/')[0];
   document.querySelectorAll('#nav a').forEach(a => a.classList.toggle('on', a.dataset.r === r));
@@ -169,7 +177,8 @@ function setPicker() {
 async function classeur() {
   if (!S.set) { view.innerHTML = '<div class="empty">Catalogue en cours d\'import, reviens dans quelques minutes.</div>'; return; }
   await loadSet(S.set);
-  const p = progress(S.set), t = trainer();
+  Game.visit();
+  const p = progress(S.set), { st, ev: t } = await gameState(), dl = Game.daily();
   const list = p.cs.filter(c => { const q = S.coll[c.id] || 0; return S.filter === 'all' || (S.filter === 'own' && q) || (S.filter === 'miss' && !q) || (S.filter === 'dbl' && q > 1); });
   view.innerHTML = `
   ${S.profile ? '' : `<div class="banner"><span>Mode invité : ton classeur est enregistré sur cet appareil. Crée ton compte pour le sauvegarder et échanger.</span><a class="btn sm" href="#/compte">Créer mon compte</a></div>`}
@@ -179,9 +188,10 @@ async function classeur() {
       <div>
         ${setPicker()}
         <p class="small mut" style="margin:6px 0 0">${flag(S.lang)} ${esc(p.set?.serie_name || '')} · ${esc(setName(p.set))} · ${p.set?.released ? new Date(p.set.released).toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' }) : ''}${S.lang === 'ja' ? ' · cotes japonaises non disponibles' : ''}</p>
-        <div class="kpis" style="margin-top:12px"><div><b>${eur(p.value)}</b><span>valeur de ce set</span></div><div><b>${p.owned}</b><span>cartes différentes</span></div><div><b>${p.doubles}</b><span>doubles</span></div><div><b>Niv. ${t.lvl}</b><span>dresseur · ${t.xp} XP</span></div></div>
+        <div class="kpis" style="margin-top:12px"><div><b>${eur(p.value)}</b><span>valeur de ce set</span></div><div><b>${p.owned}</b><span>cartes différentes</span></div><div><b>${p.doubles}</b><span>doubles</span></div><div><b>Niv. ${t.lvl}</b><span>${esc(t.title)} · ${t.xp} XP</span></div><div><b>🔥 ${st.streak}</b><span>jour(s) de suite</span></div></div>
         <div class="xp"><i style="width:${t.pct}%"></i></div>
-        <div class="badges">${t.badges.map(([n, on]) => `<span class="bdg ${on ? 'on' : ''}">${on ? '★' : '☆'} ${n}</span>`).join('')}</div>
+        <p class="small" style="margin:8px 0 0">🎯 Défi du jour : ajoute ${dl.n} cartes — ${dl.done ? '<b class="dn">réussi ✔</b>' : `${dl.cur}/${dl.n}`}</p>
+        <div class="badges">${t.got.slice(-5).reverse().map(b => `<span class="bdg on">${b.ic} ${esc(b.name)}</span>`).join('')}<a class="bdg" href="#/trophees">🏆 ${t.got.length}/${t.total} trophées →</a></div>
       </div>
     </div>
   </div>
@@ -311,7 +321,7 @@ function scanModal() {
       await loadTesseract();
       const { data: { text } } = await Tesseract.recognize(await shrink(f), 'eng');
       const m = [...text.matchAll(/(\d{1,3})\s*\/\s*(\d{2,3})/g)].pop(), words = (text.match(/[A-Za-zÀ-ÿ-]{4,}/g) || []).slice(0, 15);
-      if (m) $('#scn').value = `${m[1]}/${m[2]}`;
+      if (m) { $('#scn').value = `${m[1]}/${m[2]}`; Game.track('scan'); }
       await scanSearch(words);
     } catch (err) { $('#scs').textContent = err.message; }
   };
@@ -422,9 +432,9 @@ async function forum() {
 // ---------- compte ----------
 async function compte() {
   if (S.profile) {
-    const t = trainer(), { data: ls } = await sb.from('listings').select('*, card:cards(*)').eq('user_id', S.user.id).in('status', ['active', 'reserved']).order('created_at', { ascending: false });
+    const t = S.ev || { lvl: 1 }, { data: ls } = await sb.from('listings').select('*, card:cards(*)').eq('user_id', S.user.id).in('status', ['active', 'reserved']).order('created_at', { ascending: false });
     remember((ls || []).map(l => l.card));
-    view.innerHTML = `<div class="panel" style="display:flex;gap:16px;align-items:center;flex-wrap:wrap">${av(S.profile.pseudo)}<div style="flex:1"><h2 style="margin:0">${esc(S.profile.pseudo)}</h2><p class="mut small" style="margin:2px 0">Niveau ${t.lvl} · ${S.profile.trades_done} échange(s) · ${esc(S.profile.region || '')}</p></div><button class="btn ghost" id="logout">Se déconnecter</button></div>
+    view.innerHTML = `<div class="panel" style="display:flex;gap:16px;align-items:center;flex-wrap:wrap">${av(S.profile.pseudo)}<div style="flex:1"><h2 style="margin:0">${esc(S.profile.pseudo)}</h2><p class="mut small" style="margin:2px 0"><a href="#/trophees">Niveau ${t.lvl}${t.title ? ' · ' + esc(t.title) : ''}</a> · ${S.profile.trades_done} échange(s) · ${esc(S.profile.region || '')}</p></div><button class="btn ghost" id="logout">Se déconnecter</button></div>
     <div class="panel" style="margin-top:12px"><h3>Vendre contre de l'argent</h3>${S.profile.payouts_enabled ? '<p class="small">✔ Compte vendeur vérifié : tu reçois tes paiements automatiquement.</p>' : `<p class="small mut">Pour recevoir de l'argent, notre partenaire de paiement Stripe vérifie ton identité (18+). Tes coordonnées bancaires restent chez Stripe, jamais chez nous. Les échanges carte contre carte n'en ont pas besoin.</p><button class="btn sm" data-connect>Activer mes ventes</button>`}</div>
     <div class="panel" style="margin-top:12px"><h3>Installer l'appli</h3>${S.install ? '<button class="btn sm" id="install">Installer sur cet appareil</button>' : '<p class="small mut">iPhone : bouton Partager puis « Sur l\'écran d\'accueil ». Android : menu ⋮ puis « Installer l\'application ».</p>'}</div>
     <h2>Mes doubles sur la table</h2><div class="grid">${(ls || []).map(l => `<div class="tile">${l.photo_path ? `<img class="cimg" src="${photoUrl(l.photo_path)}" alt="">` : img(l.card)}<div class="meta"><span class="nm">${esc(nm(l.card))}</span><span class="v">${l.price ? eur(l.price) : 'Échange'}</span></div><div class="seller small"><span class="pill p-${l.condition}">${l.condition}</span>${authBadge(l) || `<button class="btn ghost sm" data-auth="${l.card_id}" data-lid="${l.id}">🔍 Authentifier</button>`}${l.status === 'reserved' ? '<span class="pill p-tr">réservée</span>' : `<button class="btn ghost sm" data-rmlist="${l.id}">Retirer</button>`}</div></div>`).join('') || '<div class="empty" style="grid-column:1/-1">Aucun double posé. <a href="#/classeur">Va dans ton classeur</a> et touche « Poser » sur une carte en double.</div>'}</div>`;
@@ -498,8 +508,8 @@ document.addEventListener('click', async e => {
   const d = t.dataset;
   if (d.set) { S.set = d.set; classeur(); }
   else if (d.f) { S.filter = d.f; classeur(); }
-  else if (d.tog) { if (!S.coll[d.tog]) { await setQty(d.tog, 1); classeur(); } else if (S.coll[d.tog] > 1) listForm(d.tog); }
-  else if (d.iq) { await setQty(d.iq, (S.coll[d.iq] || 0) + 1); classeur(); }
+  else if (d.tog) { if (!S.coll[d.tog]) { await setQty(d.tog, 1); Game.track('add'); await classeur(); checkUnlock(); } else if (S.coll[d.tog] > 1) listForm(d.tog); }
+  else if (d.iq) { await setQty(d.iq, (S.coll[d.iq] || 0) + 1); Game.track('add'); await classeur(); checkUnlock(); }
   else if (d.dq) { await setQty(d.dq, (S.coll[d.dq] || 0) - 1); classeur(); }
   else if (d.put) listForm(d.put);
   else if (d.l) listingModal(S.listings.find(l => l.id === d.l));
@@ -513,9 +523,9 @@ document.addEventListener('click', async e => {
   else if (d.ts !== undefined) { S.tset = d.ts || null; document.querySelectorAll('#tset button').forEach(b => b.setAttribute('aria-pressed', b === t)); drawListings(); }
   else if (d.card) { S.tq = S.cards[d.card]?.name || ''; }
   else if ('close' in d) close();
-  else if (d.auth) openAuth(S.cards[d.auth], { modal, $, esc, nm, sb, toast, shrink, loadTesseract, loggedIn: () => !!S.profile }, { listingId: d.lid, offerId: d.oid });
+  else if (d.auth) openAuth(S.cards[d.auth], { modal, $, esc, nm, sb, toast, shrink, loadTesseract, loggedIn: () => !!S.profile, done: () => { Game.track('auth'); checkUnlock(); } }, { listingId: d.lid, offerId: d.oid });
   else if ('scan' in d) scanModal();
-  else if (d.scanadd) { await setQty(d.scanadd, (S.coll[d.scanadd] || 0) + 1); toast(`${nm(S.cards[d.scanadd])} ajoutée au classeur (×${S.coll[d.scanadd]})`); await scanSearch(); if (location.hash.startsWith('#/classeur')) { S.bySet[S.cards[d.scanadd].set_id] = null; } }
+  else if (d.scanadd) { await setQty(d.scanadd, (S.coll[d.scanadd] || 0) + 1); Game.track('add'); checkUnlock(); toast(`${nm(S.cards[d.scanadd])} ajoutée au classeur (×${S.coll[d.scanadd]})`); await scanSearch(); if (location.hash.startsWith('#/classeur')) { S.bySet[S.cards[d.scanadd].set_id] = null; } }
   else if ('connect' in d) { const { data, error } = await sb.functions.invoke('payments/connect'); if (error || !data?.url) return toast(data?.error || 'Activation des ventes bientôt disponible.', true); location.href = data.url; }
   else if (d.delpost) { await sb.from('posts').delete().eq('id', d.delpost); forum(); }
 });
@@ -552,7 +562,9 @@ if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').cat
 window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); S.install = e; });
 sb.auth.onAuthStateChange((ev) => { if (ev === 'SIGNED_IN' && !S.user) loadSession().then(() => { realtime(); route(); }); });
 window.addEventListener('hashchange', route);
+{ let n = 0, tm; $('.logo').addEventListener('click', () => { n++; clearTimeout(tm); tm = setTimeout(() => n = 0, 2500); if (n >= 7) { n = 0; Game.flag('logo'); checkUnlock(); } }); }
 view.innerHTML = '<div class="empty">Chargement de la table…</div>';
 await Promise.all([loadCatalog(), loadSession()]);
 realtime();
 route();
+checkUnlock();

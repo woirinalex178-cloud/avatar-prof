@@ -138,6 +138,7 @@ export function openAuth(card, H, opts = {}) {
       const { data, error } = await H.sb.from('auth_checks').insert({ card_id: card.id, listing_id: opts.listingId || null, offer_id: opts.offerId || null, score, report: rep }).select('id').single();
       if (!error && opts.listingId) { const r = await H.sb.rpc('attach_auth', { p_listing: opts.listingId, p_check: data.id }); if (!r.error) H.toast('Résultat ajouté à ton annonce'); }
     }
+    H.done?.();
     if (opts.offerId && score < 50) box.insertAdjacentHTML('beforeend', `<p class="small">⚠️ Ne confirme pas la réception : ouvre un litige depuis l'offre. L'argent reste bloqué.</p>`);
     H.$('#agogo').disabled = false; H.$('#agogo').textContent = 'Relancer l\'analyse';
   };

@@ -48,7 +48,7 @@ export function stats(rows, coll, profile) {
   st.bestPct = Math.max(0, ...pcts); st.setsHalf = pcts.filter(p => p >= .5).length; st.setsFull = pcts.filter(p => p >= 1).length;
   const rc = k => Object.entries(st.rar).filter(([r]) => r.includes(k)).reduce((a, [, n]) => a + n, 0);
   st.holo = rc('holo'); st.ultra = rc('ultra'); st.ir = rc('illustration'); st.sir = rc('special illustration') + rc('spéciale'); st.hyper = rc('hyper') + rc('secret') + rc('gold');
-  st.trades = profile?.trades_done || 0; st.streak = streak(); st.c = G.count; st.f = G.flags;
+  st.trades = profile?.trades_done || 0; st.fil = profile?.filleuls || 0; st.streak = streak(); st.c = G.count; st.f = G.flags;
   return st;
 }
 
@@ -99,6 +99,9 @@ export const BADGES = {
     T('t1', '🤝', 'Première poignée de main', 'Termine une transaction.', 1, s => s.trades >= 1, s => P(s.trades, 1)),
     T('t10', '🏪', 'Marchand', '10 transactions terminées.', 2, s => s.trades >= 10, s => P(s.trades, 10)),
     T('t50', '🎩', 'Négociant légendaire', '50 transactions terminées.', 4, s => s.trades >= 50, s => P(s.trades, 50)),
+    T('amb1', '📣', 'Ambassadeur', 'Parraine 1 collectionneur actif.', 1, s => s.fil >= 1, s => P(s.fil, 1)),
+    T('amb5', '🎺', 'Ambassadeur d\'argent', '5 filleuls actifs.', 2, s => s.fil >= 5, s => P(s.fil, 5)),
+    T('amb20', '👑', 'Ambassadeur légendaire', '20 filleuls actifs.', 4, s => s.fil >= 20, s => P(s.fil, 20)),
     T('scan10', '📷', 'Œil de lynx', 'Scanne 10 cartes.', 1, s => (s.c.scan || 0) >= 10, s => P(s.c.scan || 0, 10)),
     T('auth1', '🔍', 'Détective', 'Fais un contrôle d\'authenticité.', 1, s => (s.c.auth || 0) >= 1),
     T('st7', '📅', 'Assidu', 'Ouvre ton classeur 7 jours de suite.', 2, s => s.streak >= 7, s => P(s.streak, 7)),

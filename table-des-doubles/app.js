@@ -86,6 +86,7 @@ async function pseudos(ids) {
   const miss = [...new Set(ids)].filter(i => i && !S.pseudos[i]);
   if (miss.length) { const { data } = await sb.from('public_profiles').select('*').in('id', miss); for (const p of data || []) S.pseudos[p.id] = p; }
 }
+try { const r = new URLSearchParams(location.search).get('ref'); if (r) localStorage.setItem('sc_ref', r.toUpperCase()); } catch {}
 async function loadSession() {
   const { data: { session } } = await sb.auth.getSession();
   S.user = session?.user || null; S.profile = null;
@@ -96,6 +97,10 @@ async function loadSession() {
       const r = await sb.from('profiles').insert({ id: S.user.id, pseudo: md.pseudo, birthdate: md.birthdate, region: md.region || null }).select().single();
       if (r.error) toast(r.error.message, true); else p = r.data;
     }
+    if (p && !p.referred_by) { let r = null; try { r = localStorage.getItem('sc_ref'); } catch {}
+      if (r && r !== p.ref_code) { const { error } = await sb.rpc('apply_referral', { code: r }); try { localStorage.removeItem('sc_ref'); } catch {}
+        if (!error) { p.referred_by = true; p.free_trades++; toast('🎁 Parrainage validé : 1 échange offert en plus !'); } } }
+    if (p) { const { data: pp } = await sb.from('public_profiles').select('filleuls').eq('id', p.id).maybeSingle(); p.filleuls = pp?.filleuls || 0; }
     S.profile = p;
     if (p) { // importe le classeur invité
       const g = guestColl(), rows = Object.entries(g).filter(([, q]) => q > 0).map(([card_id, qty]) => ({ user_id: S.user.id, card_id, qty }));
@@ -166,7 +171,7 @@ async function home() {
   </section>
   <section class="panel manifeste"><h2>Un espace réservé aux passionnés</h2><ul>
     <li><b>🃏 Pas de revendeurs pros ni de spéculateurs.</b> Ici, des passionnés qui complètent leurs classeurs : on ne pose que ses doubles (30 annonces max).</li>
-    <li><b>⇄ L'échange d'abord.</b> Carte contre carte, gratuit.</li>
+    <li><b>⇄ L'échange d'abord.</b> Carte contre carte, gratuit pendant la bêta (puis 0,99 €). 3 échanges offerts à l'inscription, +1 par ami parrainé.</li>
     <li><b>0 % vendeur, zéro pub.</b> Tes données ne sont jamais vendues.</li>
     <li><b>▦ Chaque membre a un classeur.</b> On voit qui collectionne vraiment.</li>
   </ul></section>
@@ -449,10 +454,15 @@ async function compte() {
     remember((ls || []).map(l => l.card));
     view.innerHTML = `<div class="panel" style="display:flex;gap:16px;align-items:center;flex-wrap:wrap">${av(S.profile.pseudo)}<div style="flex:1"><h2 style="margin:0">${esc(S.profile.pseudo)}</h2><p class="mut small" style="margin:2px 0"><a href="#/trophees">Niveau ${t.lvl}${t.title ? ' · ' + esc(t.title) : ''}</a> · ${S.profile.trades_done} échange(s) · ${esc(S.profile.region || '')}</p></div><button class="btn ghost" id="logout">Se déconnecter</button></div>
     <div class="panel" style="margin-top:12px"><h3>Vendre contre de l'argent</h3>${S.profile.payouts_enabled ? '<p class="small">✔ Compte vendeur vérifié : tu reçois tes paiements automatiquement.</p>' : `<p class="small mut">Pour recevoir de l'argent, notre partenaire de paiement Stripe vérifie ton identité (18+). Tes coordonnées bancaires restent chez Stripe, jamais chez nous. Les échanges carte contre carte n'en ont pas besoin.</p><button class="btn sm" data-connect>Activer mes ventes</button>`}</div>
+    <div class="panel" style="margin-top:12px"><h3>🎁 Parraine un collectionneur</h3><p class="small mut">Ton ami reçoit 1 échange offert à l'inscription, toi 1 aussi dès sa première transaction réussie. (Échanges gratuits pendant la bêta, puis 0,99 €.)</p>
+      <div class="acts"><input readonly id="reflink" value="${location.origin}/?ref=${S.profile.ref_code}" style="flex:1;min-width:200px"><button class="btn sm" id="refshare">Partager</button></div>
+      <p class="small">Code : <b>${S.profile.ref_code}</b> · ${S.profile.filleuls || 0} filleul(s) actif(s) · ${S.profile.free_trades} échange(s) offert(s)</p></div>
     <div class="panel" style="margin-top:12px"><h3>Installer l'appli</h3>${S.install ? '<button class="btn sm" id="install">Installer sur cet appareil</button>' : '<p class="small mut">iPhone : bouton Partager puis « Sur l\'écran d\'accueil ». Android : menu ⋮ puis « Installer l\'application ».</p>'}</div>
     <div class="panel" style="margin-top:12px"><h3>Mes données</h3><p class="small mut">Tes droits RGPD : récupère toutes tes données ou supprime ton compte. <a href="#/legal/confidentialite">En savoir plus</a></p>
       <div class="acts"><button class="btn sm ghost" data-export>📥 Télécharger mes données</button><button class="btn sm ghost" data-delacct style="color:#ff8a80">Supprimer mon compte</button></div></div>
     <h2>Mes doubles sur la table</h2><div class="grid">${(ls || []).map(l => `<div class="tile">${l.photo_path ? `<img class="cimg" src="${photoUrl(l.photo_path)}" alt="">` : img(l.card)}<div class="meta"><span class="nm">${esc(nm(l.card))}</span><span class="v">${l.price ? eur(l.price) : 'Échange'}</span></div><div class="seller small"><span class="pill p-${l.condition}">${l.condition}</span>${authBadge(l) || `<button class="btn ghost sm" data-auth="${l.card_id}" data-lid="${l.id}">🔍 Authentifier</button>`}${l.status === 'reserved' ? '<span class="pill p-tr">réservée</span>' : `<button class="btn ghost sm" data-rmlist="${l.id}">Retirer</button>`}</div></div>`).join('') || '<div class="empty" style="grid-column:1/-1">Aucun double posé. <a href="#/classeur">Va dans ton classeur</a> et touche « Poser » sur une carte en double.</div>'}</div>`;
+    $('#refshare').onclick = async () => { const url = $('#reflink').value, text = 'Rejoins-moi sur Sharing Cards, l\'espace des collectionneurs Pokémon :';
+      if (navigator.share) { try { await navigator.share({ title: 'Sharing Cards', text, url }); } catch {} } else { await navigator.clipboard?.writeText(url); toast('Lien copié !'); } };
     if ($('#install')) $('#install').onclick = async () => { S.install.prompt(); S.install = null; compte(); };
     $('#logout').onclick = async () => { await sb.auth.signOut(); await loadSession(); location.hash = '#/'; };
     return;
@@ -514,7 +524,7 @@ function regles() {
    <li><b>Contrôle d'authenticité.</b> Chaque carte peut passer un contrôle photo (couleurs comparées à l'officielle, texte, dos, test de la lampe). Le score est affiché sur l'annonce, et l'acheteur peut refaire le contrôle à la réception avant de confirmer. Il est indicatif et ne remplace pas une expertise.</li>
    <li><b>Contrefaçons interdites.</b> Toute fausse carte signalée entraîne l'exclusion définitive.</li>
   </ol>
-  <h3>Frais</h3><p class="mut">Vendeur : 0 %. Acheteur : protection acheteur de ${eur(S.st.buyer_fixed ?? 0.5)} + ${((S.st.buyer_rate ?? 0.03) * 100).toLocaleString('fr-FR')} % du prix, qui finance le paiement sécurisé et la médiation. Échanges carte contre carte : gratuits pendant la bêta. Tant qu'un des deux membres a moins de 3 transactions réussies, une transaction est plafonnée à ${eur(S.st.new_account_cap ?? 100)}.</p>
+  <h3>Frais</h3><p class="mut">Vendeur : 0 %. Acheteur : protection acheteur de ${eur(S.st.buyer_fixed ?? 0.5)} + ${((S.st.buyer_rate ?? 0.03) * 100).toLocaleString('fr-FR')} % du prix, qui finance le paiement sécurisé et la médiation. Échanges carte contre carte : gratuits pendant la bêta, puis 0,99 € par personne. 3 échanges offerts à l'inscription, +1 par ami parrainé (après sa première transaction réussie). Tant qu'un des deux membres a moins de 3 transactions réussies, une transaction est plafonnée à ${eur(S.st.new_account_cap ?? 100)}.</p>
   <p class="mut small">Le détail juridique est dans les <a href="#/legal/cgu">CGU</a> et les <a href="#/legal/cgv">conditions de vente</a>.</p>
   <h3>Données</h3><p class="mut">Ta date de naissance reste privée. Ton pseudo, ta région et ton nombre d'échanges sont publics. Ton adresse postale n'est jamais affichée publiquement.</p></div>`;
 }

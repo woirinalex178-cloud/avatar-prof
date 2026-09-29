@@ -26,14 +26,17 @@ Le seul endroit en France qui réunit :
 
 | # | Action | Effort | Impact | Vise |
 |---|---|---|---|---|
-| 1 | Mettre l'**échange gratuit** en avant partout (accueil, partage) | faible | fort | Vinted, Cardmarket |
+| 1 | Mettre en avant l'**échange gratuit pendant la bêta** (puis 0,99 €, 3 offerts + 1 par filleul) | fait | fort | Vinted, Cardmarket |
 | 2 | **Import CSV** depuis Collectr / Dragon Shield | moyen | fort | apps classeur |
-| 3 | **Parrainage** + trophée « Ambassadeur » | faible | fort | groupes FB/Discord |
+| 3 | **Parrainage** (lien `?ref=`, 1 échange offert chacun, trophées Ambassadeur) | fait | fort | groupes FB/Discord |
 | 4 | **Boutiques locales** : affiche QR code, ligues, tournois | faible (0 €) | moyen | Leboncoin |
 | 5 | TikTok/Shorts **« Vraie ou fausse ? »** avec le test d'authenticité | faible | fort | Vinted |
 | 6 | **Liste de souhaits** + alerte quand la carte arrive sur la table | moyen | fort | Cardmarket |
 | 7 | **Défi de la semaine** sur une extension (classement) | moyen | moyen | tous |
 | 8 | **Transparence** : frais et cotes affichés, zéro pub, données non vendues | fait | moyen | eBay, Vinted |
+
+## C'est quoi l'import Collectr / Dragon Shield ?
+Collectr et Dragon Shield sont des applis gratuites où beaucoup de collectionneurs ont **déjà saisi toute leur collection** (souvent des centaines de cartes). Elles permettent d'exporter cette liste en fichier (CSV = tableau Excel). Un bouton « Importer » chez nous lirait ce fichier et remplirait le classeur en 10 secondes, au lieu de tout recocher : ça lève le principal frein pour qu'ils viennent chez nous. À faire quand on aura un exemple de fichier exporté.
 
 ## Sources
 - https://margeoapp.com/blog/vendre-sur-ebay-france-debutant-2026 (frais eBay FR)

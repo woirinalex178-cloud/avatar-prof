@@ -66,12 +66,21 @@ Le service d'e-mails fourni par défaut n'envoie que 2 à 3 mails par heure : le
 2. **Add new secret** : nom `STRIPE_SECRET_KEY`, valeur = la clé `sk_test_…`. **Save**.
 3. **Add new secret** : nom `CRON_SECRET`, valeur = un mot de passe inventé et long (ex. `doubles-2026-xK9pQ`). **Save**.
 
-### 3.e Le webhook (Stripe prévient l'appli quand quelqu'un a payé)
-1. Stripe → **Développeurs** → **Webhooks** → **Ajouter un endpoint** (ou « Add destination »).
-2. URL : `https://zfnjljfmhlnctlidtvqm.supabase.co/functions/v1/payments/webhook`
-3. Événements : coche `checkout.session.completed` et `account.updated`. Pour ce dernier, coche aussi l'option « comptes connectés » si elle est proposée.
-4. Valide. Sur la page du webhook : **Clé de signature** → **Révéler**, puis copie la clé (`whsec_…`).
-5. Supabase → **Edge Functions** → **Secrets** → nouveau secret `STRIPE_WEBHOOK_SECRET` = `whsec_…`. **Save**.
+### 3.e Les webhooks (Stripe prévient l'appli) — 2 destinations
+Stripe sépare « Votre compte » (paiements) et « Comptes connectés » (vendeurs). Il en faut une de chaque, même URL :
+`https://zfnjljfmhlnctlidtvqm.supabase.co/functions/v1/payments/webhook`
+
+**Destination 1 : Votre compte**
+1. Stripe → Développeurs → Webhooks → **Ajouter une destination** → **Votre compte** → Continuer.
+2. Coche `checkout.session.completed` → Continuer → **Endpoint webhook** → colle l'URL → Créer.
+3. **Clé secrète de signature** → Révéler → copie `whsec_…`.
+4. Supabase → Edge Functions → Secrets → `STRIPE_WEBHOOK_SECRET` = cette clé → Save.
+
+**Destination 2 : Comptes connectés**
+1. **Ajouter une destination** → **Comptes connectés** → Continuer.
+2. Coche `account.updated` → Continuer → **Endpoint webhook** → même URL → Créer.
+3. Révèle et copie cette 2e clé `whsec_…` (différente).
+4. Supabase → Secrets → `STRIPE_WEBHOOK_SECRET_CONNECT` = cette clé → Save.
 
 ### 3.f Me prévenir
 - Écris-moi « Stripe OK ». J'active alors les paiements réels (en mode test) et le versement automatique aux vendeurs, puis je fais un test complet.

@@ -44,7 +44,8 @@ Le service d'e-mails fourni par défaut n'envoie que 2 à 3 mails par heure : le
 
 ---
 
-## ÉTAPE 3 — Vrais paiements Stripe en mode test (40 min, gratuit)
+## ÉTAPE 3 — Vrais paiements Stripe en mode test ✅ FAIT (paiements activés le 29/09)
+Pour tester : le vendeur va dans **Compte → Activer mes ventes** (Stripe propose « Utiliser des données de test »), puis l'acheteur paie avec la carte `4242 4242 4242 4242`.
 
 ### 3.a Créer le compte
 1. Va sur https://dashboard.stripe.com/register et crée un compte (e-mail et mot de passe).
@@ -99,7 +100,10 @@ Stripe sépare « Votre compte » (paiements) et « Comptes connectés » (vende
 ## ÉTAPE 5 — Avant d'ouvrir au public (administratif, gratuit)
 1. **Micro-entreprise** : https://autoentrepreneur.urssaf.fr → **Créer mon auto-entreprise**. Activité : « plateforme de mise en relation, commerce en ligne ». Environ 15 min, puis réception du numéro SIRET sous 1 à 4 semaines.
 2. **Nom libre ?** https://data.inpi.fr → recherche « Table des Doubles » en marques. Si rien d'identique en classes 9/35/42 : OK. (Le dépôt de marque est payant, 190 € : pas obligatoire pour démarrer.)
-3. **Textes légaux** : dis-moi « rédige les CGU » et je te prépare les CGU/CGV, les mentions légales et la politique de confidentialité (RGPD). Il faudra ton SIRET et une adresse.
+3. **Textes légaux** ✅ rédigés (page « Infos légales » en bas du site). Il te reste à remplir **une seule fois** le haut du fichier `legal.js` (je peux le faire si tu me donnes les infos) :
+   - ton prénom NOM, ton n° SIRET, ton adresse postale, un e-mail de contact ;
+   - un **médiateur de la consommation** (obligatoire dès que tu vends un service à des particuliers ; environ 50 à 150 €/an, ex. CM2C, Medicys) ;
+   - conseil : faire relire les textes gratuitement (permanences juridiques de ta mairie, de la CCI ou de l'ordre des avocats).
 4. **Stripe en mode réel** : finaliser l'activation Stripe (pièce d'identité, IBAN, SIRET). Ensuite, je passe l'appli en paiements réels.
 5. **DAC7** (plus tard) : chaque année en janvier, déclarer aux impôts les vendeurs qui ont fait plus de 30 ventes ou 2 000 €. L'appli pourra générer le fichier.
 

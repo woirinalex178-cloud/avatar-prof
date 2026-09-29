@@ -176,3 +176,9 @@ a.bdg{text-decoration:none;color:var(--gold);border-style:solid}
 @keyframes pop{from{transform:translateX(-50%) scale(.6);opacity:0}}
 @keyframes fly{to{transform:rotate(var(--a)) translateY(-70px);opacity:0}}
 @media (prefers-reduced-motion:reduce){.unlock,.burst i{animation:none}}
+/* pages légales */
+.legal h2{font-size:18px;margin:26px 0 8px;padding-top:10px;border-top:1px solid var(--line)}
+.legal h4{margin:14px 0 4px;font:600 14px var(--body);color:var(--gold)}
+.legal p,.legal li{font-size:14px;line-height:1.6;max-width:72ch}
+.legal section.focus h2{color:var(--gold)}
+.legal nav .bdg{font-size:12px}

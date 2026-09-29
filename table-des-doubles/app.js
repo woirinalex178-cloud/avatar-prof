@@ -2,6 +2,7 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 import { SUPABASE_URL, SUPABASE_KEY } from './config.js';
 import { openAuth } from './auth.js';
 import * as Game from './game.js';
+import { renderLegal } from './legal.js';
 
 const sb = createClient(SUPABASE_URL, SUPABASE_KEY);
 const S = { user: null, profile: null, sets: [], cards: {}, bySet: {}, set: null, lang: 'fr', coll: {}, fee: 0.0001, filter: 'all', pseudos: {}, prog: {} };
@@ -135,7 +136,12 @@ async function trophees() {
 }
 
 // ---------- vues ----------
-const routes = { '': home, trophees, classeur, table, offres, forum, compte, regles };
+function legal() {
+  const sub = location.hash.split('/')[2];
+  view.innerHTML = renderLegal(esc, sub);
+  if (sub) document.getElementById('lg-' + sub)?.scrollIntoView();
+}
+const routes = { '': home, trophees, legal, classeur, table, offres, forum, compte, regles };
 async function route() {
   const r = location.hash.replace(/^#\/?/, '').split('/')[0];
   document.querySelectorAll('#nav a').forEach(a => a.classList.toggle('on', a.dataset.r === r));
@@ -437,6 +443,8 @@ async function compte() {
     view.innerHTML = `<div class="panel" style="display:flex;gap:16px;align-items:center;flex-wrap:wrap">${av(S.profile.pseudo)}<div style="flex:1"><h2 style="margin:0">${esc(S.profile.pseudo)}</h2><p class="mut small" style="margin:2px 0"><a href="#/trophees">Niveau ${t.lvl}${t.title ? ' · ' + esc(t.title) : ''}</a> · ${S.profile.trades_done} échange(s) · ${esc(S.profile.region || '')}</p></div><button class="btn ghost" id="logout">Se déconnecter</button></div>
     <div class="panel" style="margin-top:12px"><h3>Vendre contre de l'argent</h3>${S.profile.payouts_enabled ? '<p class="small">✔ Compte vendeur vérifié : tu reçois tes paiements automatiquement.</p>' : `<p class="small mut">Pour recevoir de l'argent, notre partenaire de paiement Stripe vérifie ton identité (18+). Tes coordonnées bancaires restent chez Stripe, jamais chez nous. Les échanges carte contre carte n'en ont pas besoin.</p><button class="btn sm" data-connect>Activer mes ventes</button>`}</div>
     <div class="panel" style="margin-top:12px"><h3>Installer l'appli</h3>${S.install ? '<button class="btn sm" id="install">Installer sur cet appareil</button>' : '<p class="small mut">iPhone : bouton Partager puis « Sur l\'écran d\'accueil ». Android : menu ⋮ puis « Installer l\'application ».</p>'}</div>
+    <div class="panel" style="margin-top:12px"><h3>Mes données</h3><p class="small mut">Tes droits RGPD : récupère toutes tes données ou supprime ton compte. <a href="#/legal/confidentialite">En savoir plus</a></p>
+      <div class="acts"><button class="btn sm ghost" data-export>📥 Télécharger mes données</button><button class="btn sm ghost" data-delacct style="color:#ff8a80">Supprimer mon compte</button></div></div>
     <h2>Mes doubles sur la table</h2><div class="grid">${(ls || []).map(l => `<div class="tile">${l.photo_path ? `<img class="cimg" src="${photoUrl(l.photo_path)}" alt="">` : img(l.card)}<div class="meta"><span class="nm">${esc(nm(l.card))}</span><span class="v">${l.price ? eur(l.price) : 'Échange'}</span></div><div class="seller small"><span class="pill p-${l.condition}">${l.condition}</span>${authBadge(l) || `<button class="btn ghost sm" data-auth="${l.card_id}" data-lid="${l.id}">🔍 Authentifier</button>`}${l.status === 'reserved' ? '<span class="pill p-tr">réservée</span>' : `<button class="btn ghost sm" data-rmlist="${l.id}">Retirer</button>`}</div></div>`).join('') || '<div class="empty" style="grid-column:1/-1">Aucun double posé. <a href="#/classeur">Va dans ton classeur</a> et touche « Poser » sur une carte en double.</div>'}</div>`;
     if ($('#install')) $('#install').onclick = async () => { S.install.prompt(); S.install = null; compte(); };
     $('#logout').onclick = async () => { await sb.auth.signOut(); await loadSession(); location.hash = '#/'; };
@@ -468,7 +476,7 @@ function profileFields() {
   <div class="row2"><label class="f">Date de naissance<input type="date" id="abd" required max="${max.toISOString().slice(0, 10)}"></label>
   <label class="f">Région<select id="areg"><option value="">—</option>${['Auvergne-Rhône-Alpes', 'Bourgogne-Franche-Comté', 'Bretagne', 'Centre-Val de Loire', 'Corse', 'Grand Est', 'Hauts-de-France', 'Île-de-France', 'Normandie', 'Nouvelle-Aquitaine', 'Occitanie', 'Pays de la Loire', 'Provence-Alpes-Côte d\'Azur', 'Outre-mer', 'Belgique', 'Suisse'].map(r => `<option>${r}</option>`).join('')}</select></label></div>
   <label class="ck"><input type="checkbox" id="a18" required> Je certifie avoir 18 ans ou plus.</label>
-  <label class="ck"><input type="checkbox" id="arules" required> J'accepte la <a href="#/regles" target="_blank">charte</a> : pas d'échange de coordonnées, toutes les transactions passent par l'appli.</label>`;
+  <label class="ck"><input type="checkbox" id="arules" required> J'accepte les <a href="#/legal/cgu" target="_blank">CGU</a>, les <a href="#/legal/cgv" target="_blank">conditions de vente</a> et la <a href="#/legal/confidentialite" target="_blank">politique de confidentialité</a> : pas d'échange de coordonnées, toutes les transactions passent par l'appli.</label>`;
 }
 function readProfileFields(err) {
   const pseudo = $('#apseudo').value.trim(), birthdate = $('#abd').value, region = $('#areg').value || null;
@@ -498,12 +506,37 @@ function regles() {
    <li><b>Contrefaçons interdites.</b> Toute fausse carte signalée entraîne l'exclusion définitive.</li>
   </ol>
   <h3>Frais</h3><p class="mut">Vendeur : 0 %. Acheteur : protection acheteur de ${eur(S.st.buyer_fixed ?? 0.5)} + ${((S.st.buyer_rate ?? 0.03) * 100).toLocaleString('fr-FR')} % du prix, qui finance le paiement sécurisé et la médiation. Échanges carte contre carte : gratuits pendant la bêta. Tant qu'un des deux membres a moins de 3 transactions réussies, une transaction est plafonnée à ${eur(S.st.new_account_cap ?? 100)}.</p>
+  <p class="mut small">Le détail juridique est dans les <a href="#/legal/cgu">CGU</a> et les <a href="#/legal/cgv">conditions de vente</a>.</p>
   <h3>Données</h3><p class="mut">Ta date de naissance reste privée. Ton pseudo, ta région et ton nombre d'échanges sont publics. Ton adresse postale n'est jamais affichée publiquement.</p></div>`;
+}
+
+// ---------- RGPD ----------
+async function exportData() {
+  const me = S.user.id, q = (t, f) => f(sb.from(t).select('*')).then(r => r.data || []);
+  const [profil, classeur, annonces, offres, messages, avis, forum, controles] = await Promise.all([
+    q('profiles', x => x.eq('id', me)), q('collection', x => x.eq('user_id', me)), q('listings', x => x.eq('user_id', me)),
+    q('offers', x => x.or(`buyer_id.eq.${me},seller_id.eq.${me}`)), q('messages', x => x.eq('sender_id', me)),
+    q('reviews', x => x.or(`author_id.eq.${me},target_id.eq.${me}`)), q('posts', x => x.eq('user_id', me)), q('auth_checks', x => x.eq('user_id', me))]);
+  const data = { exporte_le: new Date().toISOString(), email: S.user.email, profil, classeur, annonces, offres, messages, avis, forum, controles_authenticite: controles };
+  const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })), download: `mes-donnees-table-des-doubles.json` });
+  a.click(); URL.revokeObjectURL(a.href); toast('Fichier de tes données téléchargé');
+}
+function deleteAccount() {
+  modal(`<form class="form" id="delf"><h2 style="margin:0">Supprimer mon compte</h2>
+  <p class="small">Ton classeur, tes annonces, tes messages du forum et tes contrôles seront effacés. Ton profil sera anonymisé. Les transactions terminées restent conservées sans ton nom (obligation comptable). <b>C'est définitif.</b></p>
+  <p class="small mut">Pense à <button type="button" class="btn sm ghost" data-export>télécharger tes données</button> avant.</p>
+  <label class="f">Pour confirmer, tape ton pseudo : <b>${esc(S.profile.pseudo)}</b><input id="delp" autocomplete="off"></label>
+  <p class="err" id="derr"></p><button class="btn red">Supprimer définitivement</button></form>`);
+  $('#delf').onsubmit = async e => {
+    e.preventDefault(); if ($('#delp').value.trim() !== S.profile.pseudo) return $('#derr').textContent = 'Le pseudo ne correspond pas.';
+    const { error } = await sb.rpc('delete_my_account'); if (error) return $('#derr').textContent = errMsg(error);
+    await sb.auth.signOut(); try { localStorage.clear(); } catch { } close(); await loadSession(); toast('Ton compte a été supprimé.'); location.hash = '#/';
+  };
 }
 
 // ---------- événements ----------
 document.addEventListener('click', async e => {
-  const t = e.target.closest('[data-set],[data-f],[data-tog],[data-iq],[data-dq],[data-put],[data-l],[data-buy],[data-trade],[data-rmlist],[data-report],[data-act],[data-ot],[data-am],[data-ts],[data-card],[data-close],[data-delpost],[data-scan],[data-scanadd],[data-connect],[data-auth]');
+  const t = e.target.closest('[data-set],[data-f],[data-tog],[data-iq],[data-dq],[data-put],[data-l],[data-buy],[data-trade],[data-rmlist],[data-report],[data-act],[data-ot],[data-am],[data-ts],[data-card],[data-close],[data-delpost],[data-scan],[data-scanadd],[data-connect],[data-auth],[data-export],[data-delacct]');
   if (!t) return;
   const d = t.dataset;
   if (d.set) { S.set = d.set; classeur(); }
@@ -524,6 +557,8 @@ document.addEventListener('click', async e => {
   else if (d.card) { S.tq = S.cards[d.card]?.name || ''; }
   else if ('close' in d) close();
   else if (d.auth) openAuth(S.cards[d.auth], { modal, $, esc, nm, sb, toast, shrink, loadTesseract, loggedIn: () => !!S.profile, done: () => { Game.track('auth'); checkUnlock(); } }, { listingId: d.lid, offerId: d.oid });
+  else if ('export' in d) exportData();
+  else if ('delacct' in d) deleteAccount();
   else if ('scan' in d) scanModal();
   else if (d.scanadd) { await setQty(d.scanadd, (S.coll[d.scanadd] || 0) + 1); Game.track('add'); checkUnlock(); toast(`${nm(S.cards[d.scanadd])} ajoutée au classeur (×${S.coll[d.scanadd]})`); await scanSearch(); if (location.hash.startsWith('#/classeur')) { S.bySet[S.cards[d.scanadd].set_id] = null; } }
   else if ('connect' in d) { const { data, error } = await sb.functions.invoke('payments/connect'); if (error || !data?.url) return toast(data?.error || 'Activation des ventes bientôt disponible.', true); location.href = data.url; }

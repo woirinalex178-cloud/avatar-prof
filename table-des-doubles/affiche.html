@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Affiche Sharing Cards</title>
+<link rel="icon" type="image/png" href="img/favicon.png">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Unbounded:wght@500;700&family=Figtree:wght@400;600;700&display=swap">
+<style>
+  @page { size: A4; margin: 0 }
+  * { box-sizing: border-box }
+  body { margin: 0; background: #555; font-family: Figtree, sans-serif; -webkit-print-color-adjust: exact; print-color-adjust: exact }
+  .a4 { width: 210mm; height: 297mm; margin: 10mm auto; background: radial-gradient(ellipse at 50% 20%, #1f5c47, #0c2820 70%); color: #eef3ee; display: flex; flex-direction: column; align-items: center; padding: 14mm 14mm 10mm; position: relative; overflow: hidden }
+  .a4::before { content: ""; position: absolute; inset: 6mm; border: 2px solid #e0b85c; border-radius: 8mm; pointer-events: none }
+  .ban { width: 100%; border-radius: 5mm; box-shadow: 0 4mm 10mm #0008 }
+  h1 { font: 700 30pt/1.1 Unbounded, sans-serif; text-align: center; margin: 9mm 0 3mm }
+  h1 span { color: #e0b85c }
+  .sub { font-size: 14pt; color: #cfe3da; text-align: center; margin: 0 0 7mm }
+  ul { list-style: none; padding: 0; margin: 0 0 7mm; display: grid; gap: 3mm; font-size: 13pt; width: 100% }
+  li { background: #0005; border: 1px solid #e0b85c55; border-radius: 3mm; padding: 3mm 5mm }
+  li b { color: #f3d892 }
+  .qr { display: flex; align-items: center; gap: 8mm; background: #fff; color: #0c2820; border-radius: 5mm; padding: 5mm 7mm; box-shadow: 0 3mm 8mm #0008 }
+  .qr img { width: 55mm; height: 55mm }
+  .qr b { font: 700 18pt Unbounded, sans-serif; display: block }
+  .foot { margin-top: auto; font-size: 9pt; color: #9fb8ad; text-align: center }
+  .print { position: fixed; top: 12px; right: 12px; padding: 10px 16px; border: 0; border-radius: 8px; background: #e0b85c; font-weight: 700; cursor: pointer }
+  @media print { body { background: none } .a4 { margin: 0 } .print { display: none } }
+  @media (max-width: 800px) { .a4 { transform: scale(.45); transform-origin: top center; margin-bottom: -150mm } }
+</style>
+</head>
+<body>
+<button class="print" onclick="print()">🖨️ Imprimer</button>
+<div class="a4">
+  <img class="ban" src="img/banner.webp" alt="Sharing Cards">
+  <h1>Tes doubles valent<br>une <span>nouvelle carte</span>.</h1>
+  <p class="sub">L'espace <b>par et pour les collectionneurs</b> de cartes Pokémon. 18 ans et plus.</p>
+  <ul>
+    <li>🃏 <b>Ton classeur</b> : coche tes cartes, suis leur cote, débloque des trophées.</li>
+    <li>⇄ <b>Échange carte contre carte</b>, gratuit pendant la bêta.</li>
+    <li>🔒 <b>0 % de frais vendeur</b>, paiement bloqué jusqu'à réception, test anti-contrefaçon.</li>
+  </ul>
+  <div class="qr"><img src="img/qr-boutique.png" alt="QR code vers Sharing Cards"><div><b>Scanne-moi</b>et pose tes doubles sur la table.<br><small>table-des-doubles.vercel.app</small></div></div>
+  <p class="foot">Site indépendant, non affilié à Nintendo, The Pokémon Company ou Creatures.</p>
+</div>
+</body>
+</html>

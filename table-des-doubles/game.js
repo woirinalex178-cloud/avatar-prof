@@ -108,6 +108,7 @@ export const BADGES = {
     T('st30', '🗓️', 'Inarrêtable', '30 jours de suite.', 4, s => s.streak >= 30, s => P(s.streak, 30))
   ],
   'Secrets': [
+    T('x_catch', '🫧', 'Attrapeur', 'Attrape 10 créatures qui traversent le site.', 3, s => (s.c.catch || 0) >= 10, s => P(s.c.catch || 0, 10), 'Certaines choses passent… si l\'on est assez vif.'),
     T('x_eevee', '🦊', 'Évolitions au complet', 'Les 8 évolutions d\'Évoli.', 4, s => all(s, EEVEE), null, 'Un petit renard aux huit destins…'),
     T('x_birds', '🐦', 'Trio céleste', 'Artikodin, Électhor et Sulfura.', 3, s => all(s, BIRDS), null, 'Glace, foudre et feu volent ensemble.'),
     T('x_gene', '🧬', 'Génétique', 'Mew et Mewtwo.', 3, s => has(s, 'mewtwo') && s.names.some(n => /\bmew\b/.test(n) && !n.includes('mewtwo')), null, 'L\'original et sa copie.'),

@@ -3,6 +3,10 @@ import { SUPABASE_URL, SUPABASE_KEY } from './config.js';
 import { openAuth } from './auth.js';
 import * as Game from './game.js';
 import { renderLegal } from './legal.js';
+import { playIntro } from './intro.js';
+import { initCritters } from './critters.js';
+import { initFx, refreshFx } from './fx.js';
+playIntro();
 
 const sb = createClient(SUPABASE_URL, SUPABASE_KEY);
 const S = { user: null, profile: null, sets: [], cards: {}, bySet: {}, set: null, lang: 'fr', coll: {}, fee: 0.0001, filter: 'all', pseudos: {}, prog: {} };
@@ -152,6 +156,7 @@ async function route() {
   document.querySelectorAll('#nav a').forEach(a => a.classList.toggle('on', a.dataset.r === r));
   close(); window.scrollTo(0, 0);
   try { await (routes[r] || home)(); } catch (e) { console.error(e); view.innerHTML = `<div class="empty">Erreur de chargement. ${esc(e.message)}</div>`; }
+  refreshFx(view);
 }
 
 async function home() {
@@ -167,7 +172,7 @@ async function home() {
     <p class="lead">Coche les cartes que tu possèdes, suis la cote de ta collection, puis pose tes doubles sur la table pour les échanger ou les vendre en toute sécurité.</p>
     <div class="seg"><a class="btn" href="#/classeur">Remplir mon classeur</a><a class="btn ghost" href="#/table">Voir la table</a><button class="btn ghost" data-scan>📷 Scanner / 🔍 Authentifier</button></div>
     <div class="stats"><div><b>${nbCards}</b><span class="mut small">cartes · ${S.sets.length} sets · ${Object.keys(LANGS).length} langues</span></div><div><b>${count ?? 0}</b><span class="mut small">doubles sur la table</span></div><div><b>0 %</b><span class="mut small">de frais vendeur</span></div></div></div>
-    <div class="fan">${top.map((c, i) => `<img src="${c.image}/low.webp" alt="${esc(nm(c))}" style="transform:translateX(-50%) rotate(${(i - 2) * 11}deg)">`).join('')}</div>
+    <div class="fan">${top.map((c, i) => `<img src="${c.image}/low.webp" alt="${esc(nm(c))}" style="--r:${(i - 2) * 11}deg">`).join('')}</div>
   </section>
   <section class="panel manifeste"><h2>Un espace réservé aux passionnés</h2><ul>
     <li><b>🃏 Pas de revendeurs pros ni de spéculateurs.</b> Ici, des passionnés qui complètent leurs classeurs : on ne pose que ses doubles (30 annonces max).</li>
@@ -617,6 +622,12 @@ window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); S.inst
 sb.auth.onAuthStateChange((ev) => { if (ev === 'SIGNED_IN' && !S.user) loadSession().then(() => { realtime(); route(); }); });
 window.addEventListener('hashchange', route);
 { let n = 0, tm; $('.logo').addEventListener('click', () => { n++; clearTimeout(tm); tm = setTimeout(() => n = 0, 2500); if (n >= 7) { n = 0; Game.flag('logo'); checkUnlock(); } }); }
+document.addEventListener('click', e => { if (e.target.closest('[data-intro]')) { e.preventDefault(); playIntro(true); } });
+initFx();
+initCritters({
+  getCard: () => { const l = Object.values(S.cards).filter(c => c.image); const c = l[Math.floor(Math.random() * l.length)]; return c ? c.image + '/low.webp' : null; },
+  onCatch: () => { Game.track('catch'); checkUnlock(); }
+});
 view.innerHTML = '<div class="empty">Chargement de la table…</div>';
 await Promise.all([loadCatalog(), loadSession()]);
 realtime();

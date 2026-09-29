@@ -109,6 +109,17 @@ Stripe sépare « Votre compte » (paiements) et « Comptes connectés » (vende
 
 ---
 
+## ÉTAPE 5 bis — Les boutiques de cartes près de chez toi (0 €)
+1. Ouvre https://table-des-doubles.vercel.app/affiche.html → bouton **🖨️ Imprimer** (A4 couleur, ~0,50 € en reprographie). Le QR code mène au site.
+2. Liste 5 à 10 boutiques (Google Maps : « cartes Pokémon », « jeux de société », « boutique manga »).
+3. Passe en semaine, pas le samedi (le vendeur a le temps). Phrase d'accroche :
+   > « Bonjour, je lance Sharing Cards, un site gratuit pour que les collectionneurs échangent leurs doubles en sécurité. Ça ramène du monde qui cherche des boosters. Je peux laisser une affiche près des cartes ? »
+4. Propose en échange : leur boutique citée sur le site (plus tard, une page « Boutiques partenaires ») et un tournoi / soirée d'échange organisé chez eux.
+5. Note dans un tableau : boutique, date, réponse, contact du gérant.
+6. Les visites venues de l'affiche arrivent avec `?src=boutique` : je pourrai les compter plus tard.
+
+---
+
 ## ÉTAPE 6 — Quand il y a du monde (payant, optionnel)
 1. **Nom de domaine** (~10 €/an, ex. table-des-doubles.fr chez OVH ou Gandi) → je le branche sur Vercel.
 2. **Resend** (gratuit, 3 000 mails/mois) avec ce domaine → je réactive la confirmation par e-mail.

@@ -22,9 +22,10 @@
 - **Vercel** : équipe `team_rtfEEmT0BrvApJexTj1FsiDo`, projet `table-des-doubles` (`prj_KNpBSY9eunXrqV8ThzHV79GRFuB9`). Déployer via `create_deployment` gitSource (org woirinalex178-cloud, repo avatar-prof, ref = branche, sha) + `projectSettings.rootDirectory = "table-des-doubles"`.
 
 ## Front (JS vanilla, sans build)
-`index.html`, `style.css` (thème tapis vert/or), `app.js` (routeur, vues), `auth.js` (authenticité photo), `game.js` (51 badges dont 3 Ambassadeur, XP, défis), `legal.js` (7 textes légaux), `sw.js` (cache `tdd-v8`), `manifest.json`, `img/` (logo, bannière, icônes, og).
+`index.html`, `style.css` (thème tapis vert/or), `app.js` (routeur, vues), `auth.js` (authenticité photo), `game.js` (51 badges dont 3 Ambassadeur, XP, défis), `legal.js` (7 textes légaux), `sw.js` (cache `tdd-v9`), `intro.js` (cinématique dragon original, 1re visite, `localStorage sc_intro`, lien « Revoir l'intro » `[data-intro]`), `critters.js` (8 créatures SVG originales, attraper = badge secret `x_catch`), `fx.js` (tilt 3D + holo sur `.tile`, apparitions `.rv`, braises canvas, compteurs), `affiche.html` + `img/qr-boutique.png`, `manifest.json`, `img/` (logo, bannière, icônes, og).
 
 ## Décisions prises
+- **Aucun visuel Pokémon officiel en décoration** (risque Nintendo) : dragon et créatures sont des créations originales ; seules les images de cartes du catalogue sont utilisées.
 - Frais façon Vinted : vendeur 0 %, acheteur 0,50 € + 3 %. Échanges gratuits (bêta).
 - 18+, aucune coordonnée, tout passe par l'appli, séquestre, auto-libération 7 j.
 - Positionnement : **réservé aux collectionneurs passionnés** (règles anti-revendeurs en base).

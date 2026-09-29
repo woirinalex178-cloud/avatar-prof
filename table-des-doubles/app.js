@@ -156,13 +156,20 @@ async function home() {
   ]);
   const top = top0 || []; remember(top);
   const nbCards = S.sets.reduce((a, s) => a + s.card_count, 0).toLocaleString('fr-FR');
-  view.innerHTML = `<section class="hero">
-    <div><h1>Ton classeur.<br>Tes doubles sur la <span style="color:var(--gold)">table</span>.</h1>
+  view.innerHTML = `<div class="banner"><img src="img/banner.webp" alt="Sharing Cards — Collectionnez. Échangez. Partagez." width="2000" height="745"></div>
+  <section class="hero">
+    <div><h1>Par des collectionneurs,<br>pour des <span style="color:var(--gold)">collectionneurs</span>.</h1>
     <p class="lead">Coche les cartes que tu possèdes, suis la cote de ta collection, puis pose tes doubles sur la table pour les échanger ou les vendre en toute sécurité.</p>
     <div class="seg"><a class="btn" href="#/classeur">Remplir mon classeur</a><a class="btn ghost" href="#/table">Voir la table</a><button class="btn ghost" data-scan>📷 Scanner / 🔍 Authentifier</button></div>
     <div class="stats"><div><b>${nbCards}</b><span class="mut small">cartes · ${S.sets.length} sets · ${Object.keys(LANGS).length} langues</span></div><div><b>${count ?? 0}</b><span class="mut small">doubles sur la table</span></div><div><b>0 %</b><span class="mut small">de frais vendeur</span></div></div></div>
     <div class="fan">${top.map((c, i) => `<img src="${c.image}/low.webp" alt="${esc(nm(c))}" style="transform:translateX(-50%) rotate(${(i - 2) * 11}deg)">`).join('')}</div>
   </section>
+  <section class="panel manifeste"><h2>Un espace réservé aux passionnés</h2><ul>
+    <li><b>🃏 Pas de revendeurs pros ni de spéculateurs.</b> Ici, des passionnés qui complètent leurs classeurs : on ne pose que ses doubles (30 annonces max).</li>
+    <li><b>⇄ L'échange d'abord.</b> Carte contre carte, gratuit.</li>
+    <li><b>0 % vendeur, zéro pub.</b> Tes données ne sont jamais vendues.</li>
+    <li><b>▦ Chaque membre a un classeur.</b> On voit qui collectionne vraiment.</li>
+  </ul></section>
   <div class="steps">
     <div class="panel step"><b>1 · Collectionne</b>Coche tes cartes. Sans compte, ton classeur reste sur ton téléphone. Suis ta progression et la valeur de ta collection.</div>
     <div class="panel step"><b>2 · Pose tes doubles</b>Chaque double devient une annonce en un clic : état, photo, prix conseillé d'après la cote.</div>
@@ -241,7 +248,7 @@ function drawListings() {
     <div class="meta"><span class="nm">${esc(nm(l.card))}</span><span class="v">${l.price ? eur(l.price) : 'Échange'}</span></div>
     <div class="seller"><span>${flag(l.card.lang)} ${esc(setName(l.card.set))}</span></div>
     <div class="seller"><span><span class="pill p-${l.condition}">${l.condition}</span> ${l.trade_ok ? '<span class="pill p-tr">échange</span>' : ''} ${authBadge(l)}</span>${d != null ? `<span class="delta ${d > 0 ? 'up' : 'dn'}">${d > 0 ? '+' : ''}${Math.round(d * 100)}% cote</span>` : ''}</div>
-    <div class="seller"><span>${mine ? 'Ton annonce' : esc(S.pseudos[l.user_id]?.pseudo || '')}</span><span>${stars(S.pseudos[l.user_id])}${S.pseudos[l.user_id]?.verified ? ' ✔' : ''}</span></div></button>`;
+    <div class="seller"><span>${mine ? 'Ton annonce' : esc(S.pseudos[l.user_id]?.pseudo || '')}</span><span>${stars(S.pseudos[l.user_id])}${S.pseudos[l.user_id]?.verified ? ' ✔' : ''}${S.pseudos[l.user_id]?.passionne ? ' 🏅' : ''}</span></div></button>`;
   }).join('') || `<div class="empty" style="grid-column:1/-1">Aucun double sur la table pour l'instant. <a href="#/classeur">Pose les tiens depuis ton classeur.</a></div>`;
 }
 
@@ -249,7 +256,7 @@ function listingModal(l) {
   const c = l.card, s = S.pseudos[l.user_id] || {}, mine = l.user_id === S.user?.id;
   modal(`<div class="split"><div>${l.photo_path ? `<img class="cimg" src="${photoUrl(l.photo_path)}" alt="Photo du vendeur">` : img(c, true)}${l.photo_path ? `<p class="small mut">Photo du vendeur · <a href="${c.image}/high.webp" target="_blank" rel="noopener">voir la carte officielle</a></p>` : ''}</div>
   <div><p class="mut small">${flag(c.lang)} ${LANGS[c.lang]} · ${esc(setName(S.sets.find(x => x.id === c.set_id)))} · ${c.local_id} · ${esc(c.rarity || '')}</p><h2 style="margin:4px 0 12px">${esc(nm(c))}</h2>${jp(c)}
-  <dl class="kv"><dt>Prix</dt><dd>${l.price ? eur(l.price) : 'Échange uniquement'}</dd><dt>Cote (tendance)</dt><dd>${eur(c.price_eur)}</dd><dt>État</dt><dd><span class="pill p-${l.condition}">${l.condition}</span> ${COND[l.condition][0]}</dd><dt>Échange</dt><dd>${l.trade_ok ? 'accepté' : 'non'}</dd><dt>Vendeur</dt><dd>${esc(s.pseudo)} · ${stars(s)} · ${s.trades_done || 0} transaction(s)${s.verified ? ' · ✔ identité vérifiée' : ''} · ${esc(s.region || '')}</dd></dl>
+  <dl class="kv"><dt>Prix</dt><dd>${l.price ? eur(l.price) : 'Échange uniquement'}</dd><dt>Cote (tendance)</dt><dd>${eur(c.price_eur)}</dd><dt>État</dt><dd><span class="pill p-${l.condition}">${l.condition}</span> ${COND[l.condition][0]}</dd><dt>Échange</dt><dd>${l.trade_ok ? 'accepté' : 'non'}</dd><dt>Vendeur</dt><dd>${esc(s.pseudo)} · ${stars(s)} · ${s.trades_done || 0} transaction(s)${s.verified ? ' · ✔ identité vérifiée' : ''}${s.passionne ? '<span class="badge-coll">🏅 Collectionneur passionné</span>' : ''} · ${esc(s.region || '')}</dd></dl>
   ${l.note ? `<p class="panel small" style="margin-top:12px">${esc(l.note)}</p>` : ''}
   ${l.auth_score != null ? `<div class="panel small" style="margin-top:10px">${authBadge(l)} <b>Contrôle photo d'authenticité : ${l.auth_score}/100</b> — ${esc(l.auth_report?.meta?.verdict || '')} (fiabilité ${esc(l.auth_report?.meta?.confidence || '?')}). <span class="mut">Indicatif, tu pourras refaire le contrôle à la réception.</span></div>` : ''}
   ${l.photo_path && l.verify_code ? `<p class="small mut">Code de vérification attendu sur la photo : <b class="mono">${esc(l.verify_code)}</b>. S'il n'y est pas, signale l'annonce.</p>` : ''}
@@ -481,7 +488,7 @@ function profileFields() {
 function readProfileFields(err) {
   const pseudo = $('#apseudo').value.trim(), birthdate = $('#abd').value, region = $('#areg').value || null;
   const age = (Date.now() - new Date(birthdate)) / 31557600000;
-  if (!birthdate || age < 18) { err.textContent = 'La Table des Doubles est réservée aux 18 ans et plus.'; return null; }
+  if (!birthdate || age < 18) { err.textContent = 'Sharing Cards est réservé aux 18 ans et plus.'; return null; }
   if (contactViolation(pseudo)) { err.textContent = 'Ce pseudo ressemble à une coordonnée. Choisis-en un autre.'; return null; }
   return { pseudo, birthdate, region };
 }
@@ -494,7 +501,9 @@ function completeProfile() {
 
 function regles() {
   view.innerHTML = `<div class="panel" style="max-width:760px;margin:auto"><h2 style="margin-top:0">Charte & sécurité</h2>
+  <p class="mut">Sharing Cards est un espace <b>par et pour les collectionneurs</b>. Pas de boutique, pas de revendeur professionnel.</p>
   <ol class="rules">
+   <li><b>Collectionneurs uniquement.</b> On ne pose que ses doubles : la carte doit être au moins en ×2 dans ton classeur. Maximum 3 annonces par carte et 30 annonces actives. Les professionnels et revendeurs de stock ne sont pas admis.</li>
    <li><b>18 ans et plus.</b> Les comptes et les transactions sont réservés aux majeurs. Les versements aux vendeurs exigeront une vérification d'identité par notre prestataire de paiement.</li>
    <li><b>Tout passe par l'appli.</b> Offres, messages, paiement et suivi. Une transaction conclue ailleurs n'est pas protégée et entraîne la suspension du compte.</li>
    <li><b>Aucune coordonnée.</b> Téléphone, e-mail, réseaux sociaux, liens, IBAN, rendez-vous en main propre : bloqués automatiquement dans les annonces, messages et forum.</li>

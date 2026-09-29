@@ -17,7 +17,7 @@ h3{font-size:15px}
 .mut{color:var(--mut)}.small{font-size:13px}.mono{font-family:var(--mono)}
 /* header */
 .top{position:sticky;top:0;z-index:20;display:flex;align-items:center;justify-content:space-between;gap:16px;padding:12px 16px;padding-top:calc(12px + env(safe-area-inset-top,0px));background:#08140fe6;backdrop-filter:blur(8px);border-bottom:1px solid var(--line)}
-.logo{font:700 18px var(--disp);color:var(--txt);text-decoration:none;white-space:nowrap}.logo b{color:var(--gold)}
+.logo{font:700 18px var(--disp);color:var(--txt);text-decoration:none;white-space:nowrap;display:flex;align-items:center;gap:8px}.logo b{color:var(--gold)}.logo img{width:36px;height:36px;border-radius:8px}
 .nav{display:flex;gap:4px}
 .nav a{color:var(--mut);text-decoration:none;padding:7px 12px;border-radius:99px;font-weight:600;font-size:14px;display:flex;align-items:center;gap:6px;position:relative}
 .nav a i{font-style:normal;font-size:13px}
@@ -182,3 +182,10 @@ a.bdg{text-decoration:none;color:var(--gold);border-style:solid}
 .legal p,.legal li{font-size:14px;line-height:1.6;max-width:72ch}
 .legal section.focus h2{color:var(--gold)}
 .legal nav .bdg{font-size:12px}
+.banner{margin-top:14px;border-radius:18px;overflow:hidden;box-shadow:0 10px 30px #0006}
+.banner img{display:block;width:100%;height:auto}
+@media (max-width:600px){.banner img{height:170px;object-fit:cover;object-position:22% center}}
+.manifeste{margin-block:18px}.manifeste h2{margin-top:0}
+.manifeste ul{list-style:none;padding:0;margin:0;display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
+.manifeste li{color:var(--mut);font-size:14px}.manifeste li b{display:block;color:var(--txt);margin-bottom:4px}
+.badge-coll{display:inline-block;background:var(--gold);color:#1a1300;font-weight:700;font-size:12px;border-radius:99px;padding:2px 9px;margin-left:6px}

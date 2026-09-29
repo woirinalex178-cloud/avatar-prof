@@ -1,7 +1,7 @@
 // Textes légaux. À COMPLÉTER : remplis l'objet LEGAL une fois la micro-entreprise créée.
 // Modèles rédigés pour une place de marché entre particuliers en France. À faire relire par un professionnel avant l'ouverture au public.
 export const LEGAL = {
-  site: 'Table des Doubles', url: 'https://table-des-doubles.vercel.app',
+  site: 'Sharing Cards', url: 'https://table-des-doubles.vercel.app',
   editeur: '[À COMPLÉTER : prénom NOM]', statut: 'Entrepreneur individuel (micro-entreprise)',
   siret: '[À COMPLÉTER : n° SIRET]', adresse: '[À COMPLÉTER : adresse postale]',
   email: '[À COMPLÉTER : e-mail de contact]', directeur: '[À COMPLÉTER : prénom NOM]',
@@ -26,6 +26,7 @@ const SECTIONS = [
 <h4>4. Compte</h4><p>Un seul compte par personne. Le membre garde ses identifiants secrets et est responsable de l'activité de son compte. Le pseudo ne doit pas contenir de coordonnées ni porter atteinte aux droits d'autrui.</p>
 <h4>5. Règles de la place de marché</h4><ul>
 <li><b>Tout passe par l'appli</b> : offres, messages, paiement, suivi d'envoi. Il est interdit de conclure ou de proposer une transaction en dehors de ${L.site}.</li>
+<li><b>Collectionneurs uniquement</b> : ${L.site} est réservé aux particuliers collectionneurs. Seuls les doubles peuvent être mis en vente ou à l'échange (carte présente au moins en ×2 dans le classeur), dans la limite de 3 annonces par carte et 30 annonces actives. Les professionnels et l'activité de revente habituelle sont interdits ; l'éditeur peut fermer un compte qui détourne le service à cette fin.</li>
 <li><b>Aucune coordonnée</b> : téléphone, e-mail, adresse, réseaux sociaux, liens, IBAN ou rendez-vous « en main propre » sont interdits dans les annonces, messages, pseudos et forum. Un filtre automatique les bloque.</li>
 <li><b>Annonces honnêtes</b> : carte réellement possédée, état décrit fidèlement (NM, EX, GD, PL), photo de la carte réelle avec le code de vérification lorsqu'elle est demandée.</li>
 <li><b>Contrefaçons, reproductions et « proxies » interdits</b>, ainsi que toute carte volée ou tout objet autre qu'une carte à collectionner.</li>
@@ -52,6 +53,7 @@ const SECTIONS = [
 ['plateforme', 'Fonctionnement de la plateforme', `
 <p>Informations fournies en application de l'article L111-7 du Code de la consommation.</p>
 <ul><li><b>Qui vend :</b> des particuliers. Le droit de la consommation (garanties légales, rétractation) ne s'applique pas aux ventes entre particuliers.</li>
+<li><b>Qui peut vendre :</b> uniquement des particuliers collectionneurs, pour leurs doubles (au moins ×2 dans le classeur ; 3 annonces maximum par carte, 30 annonces actives). Aucun vendeur professionnel n'est accepté.</li>
 <li><b>Classement des annonces :</b> par défaut de la plus récente à la plus ancienne. Tris proposés : prix croissant, « meilleure affaire » (prix rapporté à la cote), « il me manque » (cartes absentes de ton classeur). Aucun vendeur ne peut payer pour être mieux classé.</li>
 <li><b>Rémunération de la plateforme :</b> uniquement la protection acheteur (0,50 € + 3 %). Aucune commission vendeur, aucune publicité.</li>
 <li><b>Avis :</b> seuls les membres ayant terminé une transaction ensemble peuvent se noter. Les avis ne sont ni achetés ni filtrés, sauf contenu illicite.</li>

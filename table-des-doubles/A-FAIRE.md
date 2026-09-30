@@ -120,8 +120,13 @@ Stripe sépare « Votre compte » (paiements) et « Comptes connectés » (vende
 
 ---
 
-## ÉTAPE 5 ter — Envois (plus tard, optionnel)
-1. **Étiquettes affranchies dans l'appli** (comme Vinted) : nécessite la micro-entreprise + un compte Boxtal ou Sendcloud (payant à l'étiquette, refacturé à l'acheteur). Dis-moi quand c'est prêt.
+## ÉTAPE 5 ter — Activer les vrais bordereaux (après le SIRET)
+Aujourd'hui les bordereaux sont des **bordereaux d'essai** (marqués TEST) : tout le parcours marche, mais ils ne sont pas valables à la Poste.
+1. Crée un compte **Boxtal Pro** gratuit : https://www.boxtal.com (inscription professionnelle, avec ton SIRET).
+2. Ajoute un moyen de paiement (carte ou recharge) : Boxtal débite chaque étiquette achetée ; l'argent vient du port payé par les membres.
+3. Dans Boxtal, cherche la section **API / Développeurs** et génère tes **clés API**.
+4. Supabase → Edge Functions → Secrets : `BOXTAL_KEY` et `BOXTAL_SECRET` (ne me les envoie pas dans le chat).
+5. Dis-moi « Boxtal OK » : je branche les vrais tarifs, les vrais points relais et le suivi automatique (une session).
 2. **Suivi automatique des colis** : crée une clé gratuite sur https://developer.laposte.fr (API « Suivi »), colle-la dans Supabase → Secrets sous le nom `LAPOSTE_KEY`, et dis-le-moi : l'appli vérifiera seule que le colis est livré.
 
 ---

@@ -27,8 +27,15 @@
 - `profiles` : avatar (`k:h`, 8 créatures × 8 teintes via `critterSVG`), bio, fav, theme, show_collection, show_badges, badges (sync `rpc set_badges` dans `checkUnlock`). Filtre anti-coordonnées sur pseudo/bio/fav.
 - Page publique `#/membre/<id>` (`public_collection` respecte show_collection). Guide `#/guide` (`guide.js`).
 
+## Bordereaux prépayés (ajout 01/10)
+- `offers.ship_mode` (manual/relay/home) + `ship_price` (trigger `offers_ship_price`, tarifs `settings.ship_relay/ship_home`), ajouté au checkout Stripe.
+- Table `shipments` (1 par envoi). Vente payée → colis vendeur créé payé (trigger `offers_paid_shipment`). Échange → `rpc order_label(offer, mode)` puis `payments/label` (Stripe) → webhook met `paid`.
+- Edge `shipping` : `/relays?zip=`, `/create` (génère le PDF dans le bucket privé `labels`, renseigne le suivi dans l'offre), `/webhook` (à brancher). Fournisseur **Test** actif ; **Boxtal** = stub à coder quand `BOXTAL_KEY/SECRET` existent (devis, commande, points relais, suivi).
+- `addresses.relay` = point relais de réception choisi (Compte ou formulaire d'achat).
+- Sources des fonctions : `supabase/functions/payments`, `supabase/functions/shipping`.
+
 ## Front (JS vanilla, sans build)
-`index.html`, `style.css` (thème tapis vert/or), `app.js` (routeur, vues), `auth.js` (authenticité photo), `game.js` (51 badges dont 3 Ambassadeur, XP, défis), `legal.js` (7 textes légaux), `sw.js` (cache `tdd-v10`), `intro.js` (cinématique dragon original, 1re visite, `localStorage sc_intro`, lien « Revoir l'intro » `[data-intro]`), `critters.js` (8 créatures SVG originales, attraper = badge secret `x_catch`), `fx.js` (tilt 3D + holo sur `.tile`, apparitions `.rv`, braises canvas, compteurs), `affiche.html` + `img/qr-boutique.png`, `manifest.json`, `img/` (logo, bannière, icônes, og).
+`index.html`, `style.css` (thème tapis vert/or), `app.js` (routeur, vues), `auth.js` (authenticité photo), `game.js` (51 badges dont 3 Ambassadeur, XP, défis), `legal.js` (7 textes légaux), `sw.js` (cache `tdd-v12`), `intro.js` (cinématique dragon original, 1re visite, `localStorage sc_intro`, lien « Revoir l'intro » `[data-intro]`), `critters.js` (8 créatures SVG originales, attraper = badge secret `x_catch`), `fx.js` (tilt 3D + holo sur `.tile`, apparitions `.rv`, braises canvas, compteurs), `affiche.html` + `img/qr-boutique.png`, `manifest.json`, `img/` (logo, bannière, icônes, og).
 
 ## Décisions prises
 - **Aucun visuel Pokémon officiel en décoration** (risque Nintendo) : dragon et créatures sont des créations originales ; seules les images de cartes du catalogue sont utilisées.

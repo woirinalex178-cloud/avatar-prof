@@ -293,9 +293,9 @@ async function tradeForm(l) {
   $('#ofr').oninput = calc; calc();
   $('#sendoffer').onclick = async () => { const { ids, cash } = calc(); if (!ids.length && !cash) return $('#oerr').textContent = 'Ajoute au moins un double ou un montant.'; await sendOffer(l, cash, ids); };
 }
-async function sendOffer(l, cash, ids = []) {
+async function sendOffer(l, cash, ids = [], ship_mode = 'manual') {
   if (needAccount()) return;
-  const { error } = await sb.from('offers').insert({ listing_id: l.id, buyer_id: S.user.id, seller_id: S.user.id, cash, offered_listing_ids: ids });
+  const { error } = await sb.from('offers').insert({ listing_id: l.id, buyer_id: S.user.id, seller_id: S.user.id, cash, offered_listing_ids: ids, ship_mode });
   if (error) return toast(errMsg(error), true);
   close(); toast('Offre envoyée ! Suis-la dans « Offres ».');
 }
@@ -385,7 +385,7 @@ async function offres() {
   const tab = S.otab || 'in', list = (os || []).filter(o => tab === 'in' ? o.seller_id === S.user.id : o.buyer_id === S.user.id);
   view.innerHTML = `<h2>Mes offres</h2><div class="seg" id="otab" style="margin-bottom:16px"><button data-ot="in" aria-pressed="${tab === 'in'}">Reçues</button><button data-ot="out" aria-pressed="${tab === 'out'}">Envoyées</button></div>
   ${list.map(o => offerCard(o, X)).join('') || '<div class="empty">Aucune offre ici pour le moment.</div>'}`;
-  remember(list.map(o => o.listing.card)); list.forEach(o => loadChat(o.id));
+  remember(list.map(o => o.listing.card)); list.forEach(o => loadChat(o.id)); fillShips();
   $('#offdot').hidden = true;
 }
 function offerCard(o, X) {
@@ -397,7 +397,6 @@ function offerCard(o, X) {
   if (o.status === 'accepted' && !seller) { b('pay', `Payer ${eur(o.cash + o.fee)}${S.st.payments_live ? '' : ' (mode test)'}`); b('cancel', 'Annuler', 'ghost'); }
   if (o.status === 'accepted' && seller) A.push('<span class="small mut">En attente du paiement de l\'acheteur.</span>');
   if (o.status === 'paid') {
-    if ((seller && !o.seller_shipped) || (!seller && needB && !o.buyer_shipped)) A.push(`<button class="btn sm" data-prep="${o.id}">📦 Préparer l'envoi</button>`);
     if (seller && !o.seller_shipped) b('ship', 'J\'ai expédié (n° de suivi)', 'ghost');
     if (!seller && needB && !o.buyer_shipped) b('ship', 'J\'ai expédié mes cartes (n° de suivi)', 'ghost');
     if (!seller && o.seller_shipped && !o.buyer_received) { A.push(`<button class="btn sm ghost" data-auth="${c.id}" data-oid="${o.id}">🔍 Vérifier la carte reçue</button>`); b('receive', 'J\'ai reçu la carte'); }
@@ -410,6 +409,7 @@ function offerCard(o, X) {
     <p class="small" style="margin:4px 0">${seller ? `<b>${esc(other)}</b> te propose` : `Tu proposes à <b>${esc(other)}</b>`} : ${gives}${o.fee ? ` <span class="mut">· protection acheteur ${eur(o.fee)}</span>` : ''}</p>
     ${labels[o.status] ? `<p class="small"><span class="pill p-PL">${o.status}</span> ${labels[o.status]}</p>` : `<div class="track">${STEPS.map((s, i) => `<span class="${i < st ? 'done' : i === st ? 'now' : ''}">${s}</span>`).join('')}</div>`}
     ${o.seller_tracking ? `<p class="small mut">Suivi vendeur : <span class="mono">${esc(o.seller_tracking)}</span></p>` : ''}${o.buyer_tracking ? `<p class="small mut">Suivi acheteur : <span class="mono">${esc(o.buyer_tracking)}</span></p>` : ''}
+    ${o.status === 'paid' && ((seller && !o.seller_received) || (!seller && needB)) ? `<div class="shipbox" data-shipo="${o.id}" data-shipped="${(seller ? o.seller_shipped : o.buyer_shipped) ? 1 : 0}"></div>` : ''}
     <div class="acts">${A.join('')}</div>
     ${o.status === 'completed' && !S.reviewed?.has(o.id) ? `<form class="chatf" data-review="${o.id}" data-target="${seller ? o.buyer_id : o.seller_id}" style="margin-top:10px"><select aria-label="Note" style="width:auto">${[5, 4, 3, 2, 1].map(n => `<option value="${n}">${'★'.repeat(n)}</option>`).join('')}</select><input placeholder="Avis sur ${esc(other)} (optionnel)" maxlength="300"><button class="btn sm">Noter</button></form>` : ''}
     <div class="chat"><div class="msgs" id="m-${o.id}"></div><form class="chatf" data-chat="${o.id}"><input placeholder="Message (pas de coordonnées)" maxlength="500" aria-label="Message"><button class="btn sm">Envoyer</button></form><p class="err" id="e-${o.id}"></p></div>
@@ -476,7 +476,8 @@ async function compte() {
       <form class="form" id="adf"><div class="row2"><label class="f">Nom et prénom<input id="adn" required minlength="2" maxlength="80"></label><label class="f">Pays<input id="adc" required value="France" maxlength="60"></label></div>
         <label class="f">Adresse<input id="ad1" required minlength="3" maxlength="120"></label><label class="f">Complément (bâtiment, étage…)<input id="ad2" maxlength="120"></label>
         <div class="row2"><label class="f">Code postal<input id="adz" required pattern="[A-Za-z0-9 \-]{3,10}"></label><label class="f">Ville<input id="adv" required maxlength="80"></label></div>
-        <p class="err" id="aerr"></p><button class="btn sm">Enregistrer mon adresse</button></form></div>
+        <p class="err" id="aerr"></p><button class="btn sm">Enregistrer mon adresse</button></form>
+      <p class="small" style="margin-top:12px">📍 Mon point relais de réception : <b id="myrelay">—</b> <button class="btn sm ghost" data-pickrelay>Choisir</button></p></div>
     <div class="panel" style="margin-top:12px"><h3>Vendre contre de l'argent</h3>${S.profile.payouts_enabled ? '<p class="small">✔ Compte vendeur vérifié : tu reçois tes paiements automatiquement.</p>' : `<p class="small mut">Pour recevoir de l'argent, notre partenaire de paiement Stripe vérifie ton identité (18+). Tes coordonnées bancaires restent chez Stripe, jamais chez nous. Les échanges carte contre carte n'en ont pas besoin.</p><button class="btn sm" data-connect>Activer mes ventes</button>`}</div>
     <div class="panel" style="margin-top:12px"><h3>🎁 Parraine un collectionneur</h3><p class="small mut">Ton ami reçoit 1 échange offert à l'inscription, toi 1 aussi dès sa première transaction réussie. (Échanges gratuits pendant la bêta, puis 0,99 €.)</p>
       <div class="acts"><input readonly id="reflink" value="${location.origin}/?ref=${S.profile.ref_code}" style="flex:1;min-width:200px"><button class="btn sm" id="refshare">Partager</button></div>
@@ -489,7 +490,7 @@ async function compte() {
       if (navigator.share) { try { await navigator.share({ title: 'Sharing Cards', text, url }); } catch {} } else { await navigator.clipboard?.writeText(url); toast('Lien copié !'); } };
     if ($('#install')) $('#install').onclick = async () => { S.install.prompt(); S.install = null; compte(); };
     S.pav = S.profile.avatar ? [+S.profile.avatar[0], +S.profile.avatar[2]] : null; drawAvPick();
-    sb.from('addresses').select('*').eq('user_id', S.user.id).maybeSingle().then(({ data: a }) => { if (a) [['adn', 'name'], ['adc', 'country'], ['ad1', 'line1'], ['ad2', 'line2'], ['adz', 'zip'], ['adv', 'city']].forEach(([i, k]) => $('#' + i).value = a[k] || ''); });
+    sb.from('addresses').select('*').eq('user_id', S.user.id).maybeSingle().then(({ data: a }) => { if (a?.relay) $('#myrelay').textContent = a.relay.name; if (a) [['adn', 'name'], ['adc', 'country'], ['ad1', 'line1'], ['ad2', 'line2'], ['adz', 'zip'], ['adv', 'city']].forEach(([i, k]) => $('#' + i).value = a[k] || ''); });
     $('#pfav').addEventListener('focus', async () => { if ($('#pknames').children.length) return; const { data } = await sb.from('pokemon_names').select('fr').order('species'); $('#pknames').innerHTML = (data || []).map(r => `<option value="${esc(r.fr)}">`).join(''); }, { once: true });
     $('#pf').onsubmit = async e => { e.preventDefault(); const bio = $('#pbio').value.trim(), fav = $('#pfav').value.trim();
       if (contactViolation(bio) || contactViolation(fav)) return $('#perr').textContent = 'Pas de coordonnées dans la bio.';
@@ -600,12 +601,16 @@ document.addEventListener('click', async e => {
   else if (d.dq) { await setQty(d.dq, (S.coll[d.dq] || 0) - 1); classeur(); }
   else if (d.put) listForm(d.put);
   else if (d.l) listingModal(S.listings.find(l => l.id === d.l));
-  else if (d.buy) { const l = S.listings.find(x => x.id === d.buy); if (!needAccount()) { const f = buyerFee(l.price); $('#ofr').innerHTML = `<div class="panel"><dl class="kv"><dt>Carte</dt><dd>${eur(l.price)}</dd><dt>Protection acheteur</dt><dd>${eur(f)}</dd><dt><b>Total</b></dt><dd><b>${eur(l.price + f)}</b></dd></dl><p class="small mut">Le vendeur accepte d'abord. Tu paies ensuite : l'argent reste bloqué jusqu'à ce que tu confirmes la réception (ou ${S.st.auto_release_days || 7} jours après l'envoi sans litige).</p><button class="btn" id="cbuy">Confirmer l'offre d'achat</button></div>`; $('#cbuy').onclick = () => sendOffer(l, l.price); } }
+  else if (d.buy) { const l = S.listings.find(x => x.id === d.buy); if (!needAccount()) buyForm(l); }
   else if (d.trade) tradeForm(S.listings.find(x => x.id === d.trade));
   else if (d.rmlist) { const { error } = await sb.from('listings').update({ status: 'removed' }).eq('id', d.rmlist); if (error) toast(errMsg(error), true); else { toast('Annonce retirée'); close(); route(); } }
   else if (d.report) { if (needAccount()) return; const [type, id] = d.report.split(':'); const { error } = await sb.from('reports').insert({ target_type: type, target_id: id }); toast(error ? errMsg(error) : 'Merci, signalement envoyé à la modération'); }
   else if (d.act) act(d.o, d.act);
   else if (d.prep) prepShip(d.prep);
+  else if (d.dl) dlLabel(d.dl);
+  else if (d.paylbl) payLabel(d.paylbl);
+  else if (d.ordlbl) { const [oid, mode] = d.ordlbl.split(':'); const { data, error } = await sb.rpc('order_label', { p_offer: oid, p_mode: mode }); if (error) return toast(errMsg(error), true); payLabel(data.id); }
+  else if ('pickrelay' in d) pickRelay();
   else if ('label' in d) printLabel();
   else if (d.avk !== undefined) { S.pav = [+d.avk, S.pav?.[1] ?? 0]; drawAvPick(); }
   else if (d.avh !== undefined) { S.pav = [S.pav?.[0] ?? 0, +d.avh]; drawAvPick(); }
@@ -718,4 +723,65 @@ function printLabel() {
   <div class="l"><div class="f"><b>Expéditeur :</b><br>${L.from || '—'}</div><div>À :</div><div class="t">${L.to}</div>
   <div class="r"><span class="np">NE PAS PLIER</span><span>Sharing Cards · réf. ${L.ref}</span></div></div><script>onload=()=>print()<\/script>`);
   w.document.close();
+}
+
+// ---------- livraison : bordereaux prépayés ----------
+const SHIP = () => [['relay', '📍', 'Point relais', S.st.ship_relay ?? 3.9, 'Bordereau prépayé fourni, dépôt en relais'], ['home', '🏠', 'Colissimo domicile', S.st.ship_home ?? 6.9, 'Bordereau prépayé, assuré, remise à domicile'], ['manual', '✉️', 'Lettre suivie', 0, 'Le vendeur achète l\'envoi lui-même (moins cher, sans bordereau fourni)']];
+function buyForm(l) {
+  const f = buyerFee(l.price), rec = l.price >= 50 ? 'home' : 'relay';
+  $('#ofr').innerHTML = `<div class="panel"><h3 style="margin:0 0 8px">Livraison</h3><div class="shipopts">${SHIP().map(([k, i, n, p, d]) => `<label class="shipopt"><input type="radio" name="shm" value="${k}" ${k === rec ? 'checked' : ''}><span><b>${i} ${n}</b> <span class="mono">${p ? eur(p) : 'à voir avec le vendeur'}</span>${k === rec ? ' <span class="pill p-NM">conseillé</span>' : ''}<small>${d}</small></span></label>`).join('')}</div>
+    <p class="small" id="relayline" style="margin:8px 0 0"></p>
+    <dl class="kv" style="margin-top:12px"><dt>Carte</dt><dd>${eur(l.price)}</dd><dt>Protection acheteur</dt><dd>${eur(f)}</dd><dt>Livraison</dt><dd id="shp"></dd><dt><b>Total</b></dt><dd><b id="tot"></b></dd></dl>
+    <p class="small mut">Le vendeur accepte d'abord. Tu paies ensuite : l'argent reste bloqué jusqu'à ce que tu confirmes la réception. Le bordereau est généré pour le vendeur, rien à faire de ton côté.</p>
+    <button class="btn" id="cbuy">Confirmer l'offre d'achat</button><p class="err" id="berr"></p></div>`;
+  const upd = async () => { const m = $('#ofr input[name=shm]:checked').value, p = SHIP().find(x => x[0] === m)[3];
+    $('#shp').textContent = p ? eur(p) : '—'; $('#tot').textContent = eur(l.price + f + p);
+    if (m === 'relay') { const { data: a } = await sb.from('addresses').select('relay').eq('user_id', S.user.id).maybeSingle(); $('#relayline').innerHTML = `📍 Ton point relais : <b>${esc(a?.relay?.name || 'pas encore choisi')}</b> <button class="btn sm ghost" data-pickrelay>${a?.relay ? 'Changer' : 'Choisir'}</button>`; }
+    else $('#relayline').innerHTML = ''; };
+  $('#ofr').onchange = upd; upd();
+  $('#cbuy').onclick = async () => { const m = $('#ofr input[name=shm]:checked').value;
+    if (m !== 'manual') { const { data: a } = await sb.from('addresses').select('relay').eq('user_id', S.user.id).maybeSingle();
+      if (!a) return $('#berr').innerHTML = 'Renseigne d\'abord ton adresse dans <a href="#/compte">Compte</a>.';
+      if (m === 'relay' && !a.relay) return $('#berr').textContent = 'Choisis ton point relais.'; }
+    sendOffer(l, l.price, [], m); };
+}
+async function pickRelay() {
+  const { data: a } = await sb.from('addresses').select('zip').eq('user_id', S.user.id).maybeSingle();
+  if (!a) return toast('Renseigne d\'abord ton adresse dans Compte.', true);
+  const box = document.createElement('div'); box.className = 'relaypick panel';
+  box.innerHTML = `<div class="acts"><input id="rzip" value="${esc(a.zip)}" inputmode="numeric" style="max-width:140px" aria-label="Code postal"><button class="btn sm" id="rgo">Chercher</button><button class="btn sm ghost" id="rx">Fermer</button></div><div id="rlist" class="small mut">…</div>`;
+  document.body.appendChild(box);
+  const go = async () => { const { data, error } = await sb.functions.invoke('shipping/relays?zip=' + encodeURIComponent($('#rzip').value), { method: 'GET' });
+    if (error || data?.error) return $('#rlist').textContent = data?.error || 'Recherche indisponible.';
+    $('#rlist').innerHTML = (data.test ? '<p class="small">Mode test : points relais fictifs.</p>' : '') + data.relays.map((r, i) => `<button class="relay" data-i="${i}"><b>${esc(r.name)}</b><span>${esc(r.address)} · ${esc(r.distance || '')}</span></button>`).join('');
+    $('#rlist').onclick = async e => { const b = e.target.closest('.relay'); if (!b) return; const r = data.relays[+b.dataset.i];
+      const { error } = await sb.from('addresses').update({ relay: { id: r.id, name: r.name, address: r.address } }).eq('user_id', S.user.id);
+      if (error) return toast(errMsg(error), true); box.remove(); toast('Point relais enregistré'); if ($('#myrelay')) $('#myrelay').textContent = r.name; $('#ofr')?.dispatchEvent(new Event('change')); }; };
+  $('#rgo').onclick = go; $('#rx').onclick = () => box.remove(); go();
+}
+async function fillShips() {
+  const boxes = [...document.querySelectorAll('.shipbox')]; if (!boxes.length) return;
+  const { data: sh } = await sb.from('shipments').select('*').in('offer_id', boxes.map(b => b.dataset.shipo)).eq('sender_id', S.user.id);
+  const by = Object.fromEntries((sh || []).map(x => [x.offer_id, x]));
+  const TR = ['Étiquette créée', 'Déposé', 'En transit', 'Livré'], idx = { created: -1, label_ready: 0, in_transit: 2, delivered: 3 };
+  for (const b of boxes) {
+    const x = by[b.dataset.shipo], oid = b.dataset.shipo;
+    if (x?.label_path) b.innerHTML = `<div class="shipok"><button class="btn" data-dl="${x.id}">📄 Télécharger mon bordereau</button><span class="small">Suivi : <span class="mono">${esc(x.tracking)}</span>${x.provider === 'test' ? ' <span class="pill p-GD">test</span>' : ''}</span></div>
+      <div class="track">${TR.map((t, i) => `<span class="${i <= idx[x.status] ? 'done' : ''}">${t}</span>`).join('')}</div><p class="small mut">Emballe la carte (sleeve → toploader → cartons), colle le bordereau et dépose le colis. <a href="#/guide">Guide</a></p>`;
+    else if (!x && b.dataset.shipped === '1') b.remove();
+    else if (x?.paid) b.innerHTML = `<button class="btn" data-dl="${x.id}">📄 Générer mon bordereau</button> <span class="small mut">${x.mode === 'relay' ? 'Point relais' : 'Colissimo'} · payé</span>`;
+    else if (x) b.innerHTML = `<button class="btn" data-paylbl="${x.id}">Payer mon bordereau (${eur(x.price)})</button> <span class="small mut">${x.mode === 'relay' ? '📍 Point relais' : '🏠 Colissimo'}</span>`;
+    else b.innerHTML = `<p class="small" style="margin:0 0 6px"><b>📦 Ton envoi</b> : choisis comment expédier.</p><div class="acts">${SHIP().filter(s => s[0] !== 'manual').map(([k, i, n, p]) => `<button class="btn sm" data-ordlbl="${oid}:${k}">${i} ${n} · ${eur(p)}</button>`).join('')}<button class="btn sm ghost" data-prep="${oid}">✉️ Je m'en occupe</button></div>`;
+  }
+}
+async function payLabel(id) {
+  const { data, error } = await sb.functions.invoke('payments/label', { body: { shipment_id: id } });
+  if (error || data?.error) return toast(data?.error || 'Paiement indisponible.', true);
+  if (data.paid) return dlLabel(id); location.href = data.url;
+}
+async function dlLabel(id) {
+  toast('Préparation du bordereau…');
+  const { data, error } = await sb.functions.invoke('shipping/create', { body: { shipment_id: id } });
+  if (error || data?.error) return toast(data?.error || 'Bordereau indisponible, réessaie.', true);
+  window.open(data.url, '_blank'); fillShips();
 }

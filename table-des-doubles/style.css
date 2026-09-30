@@ -352,3 +352,13 @@ dialog::backdrop{background:#000a;backdrop-filter:blur(6px)}
 /* niveaux d'ombre cohérents */
 .panel{border-radius:16px}
 .offer,.post{transition:transform .2s,box-shadow .2s}
+/* livraison */
+.shipopts{display:grid;gap:8px}
+.shipopt{display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border-radius:12px;background:#0006;border:1px solid #ffffff18;box-shadow:0 2px 0 #0008;cursor:pointer;transition:border-color .2s,box-shadow .2s,transform .12s}
+.shipopt:has(input:checked){border-color:var(--gold);box-shadow:0 0 0 2px #e0b85c33,0 6px 16px #0007;transform:translateY(-1px)}
+.shipopt input{width:auto;margin-top:3px}.shipopt small{display:block;color:var(--mut)}
+.shipbox{margin:10px 0;padding:12px;border-radius:14px;background:linear-gradient(160deg,#e0b85c1a,#0000);border:1px dashed #e0b85c66}
+.shipok{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.relaypick{position:fixed;z-index:60;left:50%;top:50%;transform:translate(-50%,-50%);width:min(460px,calc(100% - 24px));max-height:80vh;overflow:auto;box-shadow:var(--sh3)}
+.relay{display:block;width:100%;text-align:left;margin-top:8px;padding:10px 12px;border-radius:12px;background:#0006;border:1px solid #ffffff18;box-shadow:0 2px 0 #0008}
+.relay:hover{border-color:var(--gold)}.relay span{display:block;color:var(--mut);font-size:12px}

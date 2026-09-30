@@ -4,7 +4,7 @@ const STEPS = [
   ['✅', 'Acceptation', 'Le propriétaire accepte. Les cartes concernées sont réservées.'],
   ['🔒', 'Paiement bloqué', 'Achat : tu paies dans l\'appli, l\'argent est bloqué (séquestre). Échange pur : l\'acceptation suffit.'],
   ['🏠', 'Adresses', 'L\'adresse de l\'autre membre apparaît, uniquement pour cette transaction.'],
-  ['📦', 'Envoi suivi sous 5 jours', 'Étiquette à imprimer depuis l\'offre, envoi suivi obligatoire, numéro saisi dans l\'appli.'],
+  ['📦', 'Envoi sous 5 jours', 'Bordereau prépayé téléchargeable dans l\'offre (point relais ou Colissimo) : on l\'imprime, on le colle, on dépose. Le suivi se remplit tout seul. Option : Lettre suivie achetée soi-même.'],
   ['🔍', 'Réception', 'Tu vérifies la carte (contrôle d\'authenticité photo possible) puis tu confirmes.'],
   ['💶', 'Versement + avis', 'L\'argent part au vendeur. Sans réponse 7 jours après l\'arrivée, il est versé automatiquement. Chacun laisse un avis.'],
   ['⚖️', 'Problème ?', 'Carte absente, abîmée ou fausse : ouvre un litige AVANT de confirmer. L\'argent reste bloqué pendant l\'examen.']

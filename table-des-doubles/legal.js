@@ -63,6 +63,8 @@ const SECTIONS = [
 <p><b>Responsable du traitement :</b> ${L.editeur}, ${L.adresse}, ${L.email}.</p>
 <h4>Données collectées</h4><ul>
 <li><b>Compte :</b> e-mail, mot de passe (chiffré), pseudo, date de naissance (vérification 18+, jamais affichée), région (facultative).</li>
+<li><b>Adresse postale :</b> conservée dans un espace privé ; communiquée uniquement à l'autre membre d'une transaction, une fois celle-ci payée (ou l'échange accepté), pour l'expédition. Jamais affichée publiquement.</li>
+<li><b>Profil public :</b> pseudo, avatar, bio, Pokémon préféré, région, avis ; collection et trophées seulement si tu choisis de les montrer.</li>
 <li><b>Utilisation :</b> classeur, annonces et photos, offres, messages, avis, messages du forum, signalements, contrôles d'authenticité.</li>
 <li><b>Paiement :</b> traité par Stripe. Nous ne voyons jamais ton numéro de carte ; nous conservons l'identifiant du paiement et du compte vendeur Stripe.</li>
 <li><b>Suivi d'envoi :</b> numéros de suivi saisis par les membres. Les adresses postales ne sont pas collectées par ${L.site}.</li></ul>

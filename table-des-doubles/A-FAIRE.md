@@ -120,6 +120,12 @@ Stripe sépare « Votre compte » (paiements) et « Comptes connectés » (vende
 
 ---
 
+## ÉTAPE 5 ter — Envois (plus tard, optionnel)
+1. **Étiquettes affranchies dans l'appli** (comme Vinted) : nécessite la micro-entreprise + un compte Boxtal ou Sendcloud (payant à l'étiquette, refacturé à l'acheteur). Dis-moi quand c'est prêt.
+2. **Suivi automatique des colis** : crée une clé gratuite sur https://developer.laposte.fr (API « Suivi »), colle-la dans Supabase → Secrets sous le nom `LAPOSTE_KEY`, et dis-le-moi : l'appli vérifiera seule que le colis est livré.
+
+---
+
 ## ÉTAPE 6 — Quand il y a du monde (payant, optionnel)
 1. **Nom de domaine** (~10 €/an, ex. table-des-doubles.fr chez OVH ou Gandi) → je le branche sur Vercel.
 2. **Resend** (gratuit, 3 000 mails/mois) avec ce domaine → je réactive la confirmation par e-mail.

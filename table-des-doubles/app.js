@@ -4,7 +4,8 @@ import { openAuth } from './auth.js';
 import * as Game from './game.js';
 import { renderLegal } from './legal.js';
 import { playIntro } from './intro.js';
-import { initCritters } from './critters.js';
+import { initCritters, critterSVG, CRITTER_NAMES, HUES } from './critters.js';
+import { renderGuide } from './guide.js';
 import { initFx, refreshFx } from './fx.js';
 playIntro();
 
@@ -32,7 +33,8 @@ const stars = p => p?.reviews_count ? `★ ${p.rating} (${p.reviews_count})` : '
 const authBadge = l => l.auth_score != null ? `<span class="pill ${l.auth_score >= 75 ? 'p-NM' : l.auth_score >= 50 ? 'p-GD' : 'p-PL'}" title="Contrôle photo d'authenticité">IA ${l.auth_score}</span>` : '';
 const photoUrl = p => sb.storage.from('photos').getPublicUrl(p).data.publicUrl;
 const color = s => `hsl(${[...s].reduce((a, c) => a + c.charCodeAt(0), 0) * 37 % 360} 70% 70%)`;
-const av = p => `<div class="av" style="background:${color(p || '?')}">${esc((p || '?').slice(0, 2).toUpperCase())}</div>`;
+const av = (p, pr) => pr?.avatar ? `<div class="av crit th-${pr.theme || 'felt'}">${critterSVG(+pr.avatar[0], +pr.avatar[2])}</div>` : `<div class="av" style="background:${color(p || '?')}">${esc((p || '?').slice(0, 2).toUpperCase())}</div>`;
+const who = (id, p) => `<a class="who" href="#/membre/${id}">${esc(p?.pseudo || '?')}</a>`;
 const needAccount = () => { if (S.profile) return false; toast('Crée ton compte (18+) pour faire ça'); location.hash = '#/compte'; return true; };
 
 // Filtre anti-coordonnées (retour immédiat ; la base de données bloque aussi)
@@ -133,6 +135,7 @@ async function gameState() {
 }
 async function checkUnlock() {
   const { ev } = await gameState();
+  if (S.profile) { const ids = [...ev.ids].sort(), cur = [...(S.profile.badges || [])].sort(); if (ids.join() !== cur.join()) { S.profile.badges = ids; sb.rpc('set_badges', { ids }); } }
   if (!Game.G.flags.seeded) { Game.newlyUnlocked(ev); Game.flag('seeded'); return; }
   Game.celebrate(Game.newlyUnlocked(ev), esc);
 }
@@ -150,7 +153,8 @@ function legal() {
   view.innerHTML = renderLegal(esc, sub);
   if (sub) document.getElementById('lg-' + sub)?.scrollIntoView();
 }
-const routes = { '': home, trophees, legal, classeur, table, offres, forum, compte, regles };
+const routes = { '': home, trophees, legal, classeur, table, offres, forum, compte, regles, guide, membre };
+function guide() { view.innerHTML = renderGuide(); }
 async function route() {
   const r = location.hash.replace(/^#\/?/, '').split('/')[0];
   document.querySelectorAll('#nav a').forEach(a => a.classList.toggle('on', a.dataset.r === r));
@@ -266,7 +270,7 @@ function listingModal(l) {
   const c = l.card, s = S.pseudos[l.user_id] || {}, mine = l.user_id === S.user?.id;
   modal(`<div class="split"><div>${l.photo_path ? `<img class="cimg" src="${photoUrl(l.photo_path)}" alt="Photo du vendeur">` : img(c, true)}${l.photo_path ? `<p class="small mut">Photo du vendeur · <a href="${c.image}/high.webp" target="_blank" rel="noopener">voir la carte officielle</a></p>` : ''}</div>
   <div><p class="mut small">${flag(c.lang)} ${LANGS[c.lang]} · ${esc(setName(S.sets.find(x => x.id === c.set_id)))} · ${c.local_id} · ${esc(c.rarity || '')}</p><h2 style="margin:4px 0 12px">${esc(nm(c))}</h2>${jp(c)}
-  <dl class="kv"><dt>Prix</dt><dd>${l.price ? eur(l.price) : 'Échange uniquement'}</dd><dt>Cote (tendance)</dt><dd>${eur(c.price_eur)}</dd><dt>État</dt><dd><span class="pill p-${l.condition}">${l.condition}</span> ${COND[l.condition][0]}</dd><dt>Échange</dt><dd>${l.trade_ok ? 'accepté' : 'non'}</dd><dt>Vendeur</dt><dd>${esc(s.pseudo)} · ${stars(s)} · ${s.trades_done || 0} transaction(s)${s.verified ? ' · ✔ identité vérifiée' : ''}${s.passionne ? '<span class="badge-coll">🏅 Collectionneur passionné</span>' : ''} · ${esc(s.region || '')}</dd></dl>
+  <dl class="kv"><dt>Prix</dt><dd>${l.price ? eur(l.price) : 'Échange uniquement'}</dd><dt>Cote (tendance)</dt><dd>${eur(c.price_eur)}</dd><dt>État</dt><dd><span class="pill p-${l.condition}">${l.condition}</span> ${COND[l.condition][0]}</dd><dt>Échange</dt><dd>${l.trade_ok ? 'accepté' : 'non'}</dd><dt>Vendeur</dt><dd>${who(l.user_id, s)} · ${stars(s)} · ${s.trades_done || 0} transaction(s)${s.verified ? ' · ✔ identité vérifiée' : ''}${s.passionne ? '<span class="badge-coll">🏅 Collectionneur passionné</span>' : ''} · ${esc(s.region || '')}</dd></dl>
   ${l.note ? `<p class="panel small" style="margin-top:12px">${esc(l.note)}</p>` : ''}
   ${l.auth_score != null ? `<div class="panel small" style="margin-top:10px">${authBadge(l)} <b>Contrôle photo d'authenticité : ${l.auth_score}/100</b> — ${esc(l.auth_report?.meta?.verdict || '')} (fiabilité ${esc(l.auth_report?.meta?.confidence || '?')}). <span class="mut">Indicatif, tu pourras refaire le contrôle à la réception.</span></div>` : ''}
   ${l.photo_path && l.verify_code ? `<p class="small mut">Code de vérification attendu sur la photo : <b class="mono">${esc(l.verify_code)}</b>. S'il n'y est pas, signale l'annonce.</p>` : ''}
@@ -393,8 +397,9 @@ function offerCard(o, X) {
   if (o.status === 'accepted' && !seller) { b('pay', `Payer ${eur(o.cash + o.fee)}${S.st.payments_live ? '' : ' (mode test)'}`); b('cancel', 'Annuler', 'ghost'); }
   if (o.status === 'accepted' && seller) A.push('<span class="small mut">En attente du paiement de l\'acheteur.</span>');
   if (o.status === 'paid') {
-    if (seller && !o.seller_shipped) b('ship', 'J\'ai expédié (n° de suivi)');
-    if (!seller && needB && !o.buyer_shipped) b('ship', 'J\'ai expédié mes cartes (n° de suivi)');
+    if ((seller && !o.seller_shipped) || (!seller && needB && !o.buyer_shipped)) A.push(`<button class="btn sm" data-prep="${o.id}">📦 Préparer l'envoi</button>`);
+    if (seller && !o.seller_shipped) b('ship', 'J\'ai expédié (n° de suivi)', 'ghost');
+    if (!seller && needB && !o.buyer_shipped) b('ship', 'J\'ai expédié mes cartes (n° de suivi)', 'ghost');
     if (!seller && o.seller_shipped && !o.buyer_received) { A.push(`<button class="btn sm ghost" data-auth="${c.id}" data-oid="${o.id}">🔍 Vérifier la carte reçue</button>`); b('receive', 'J\'ai reçu la carte'); }
     if (seller && needB && o.buyer_shipped && !o.seller_received) b('receive', 'J\'ai reçu les cartes');
   }
@@ -419,7 +424,7 @@ async function loadChat(id) {
 async function act(id, a) {
   let tracking = null;
   if (a === 'ship') {
-    modal(`<form class="form" id="shipf"><h2 style="margin:0">Numéro de suivi</h2><p class="small mut">Envoi obligatoirement suivi (Lettre suivie, Colissimo, Mondial Relay). Carte sous sleeve + toploader.</p><input id="trk" required pattern="[A-Za-z0-9]{8,30}" placeholder="Ex : 6A12345678901"><button class="btn">Valider l'expédition</button></form>`);
+    modal(`<form class="form" id="shipf"><h2 style="margin:0">Numéro de suivi</h2><p class="small mut">Envoi obligatoirement suivi (Lettre suivie, Colissimo, Mondial Relay). Carte sous sleeve + toploader. <a href="#/guide" target="_blank">Guide d'emballage</a></p><input id="trk" required pattern="[A-Za-z0-9]{8,30}" placeholder="Ex : 6A12345678901"><button class="btn">Valider l'expédition</button></form>`);
     tracking = await new Promise(r => { $('#shipf').onsubmit = e => { e.preventDefault(); r($('#trk').value.trim()); }; dlg.addEventListener('close', () => r(null), { once: true }); });
     close(); if (!tracking) return;
   }
@@ -445,7 +450,7 @@ async function forum() {
   await pseudos((data || []).map(p => p.user_id));
   view.innerHTML = `<h2>Le forum de la table</h2><div class="panel">
   ${S.profile ? `<form class="form" id="pf"><textarea id="pb" maxlength="600" placeholder="Une question sur une cote, une carte recherchée, un conseil d'état ?"></textarea><div class="bar" style="margin:0"><select id="ps" style="width:auto"><option value="">Général</option>${S.sets.filter(s => s.lang === S.lang).slice(0, 80).map(s => `<option value="${s.id}">${esc(s.name)}</option>`).join('')}</select><button class="btn">Publier</button></div><p class="err" id="perr"></p></form>` : `<p class="mut">Lecture libre. <a href="#/compte">Connecte-toi</a> pour participer.</p>`}
-  ${(data || []).map(p => { const u = S.pseudos[p.user_id]; return `<div class="post">${av(u?.pseudo)}<div><b>${esc(u?.pseudo || '?')}</b> <span class="small mut">${new Date(p.created_at).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' })}${p.set_id ? ' · ' + esc(setName(S.sets.find(s => s.id === p.set_id))) : ''}</span><div style="white-space:pre-wrap">${esc(p.body)}</div>${p.user_id === S.user?.id ? `<button class="btn ghost sm" data-delpost="${p.id}">Supprimer</button>` : `<button class="btn ghost sm" data-report="post:${p.id}" style="margin-top:4px">Signaler</button>`}</div></div>`; }).join('') || '<div class="empty">Sois le premier à lancer une discussion.</div>'}</div>`;
+  ${(data || []).map(p => { const u = S.pseudos[p.user_id]; return `<div class="post">${av(u?.pseudo, u)}<div><b>${who(p.user_id, u)}</b> <span class="small mut">${new Date(p.created_at).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' })}${p.set_id ? ' · ' + esc(setName(S.sets.find(s => s.id === p.set_id))) : ''}</span><div style="white-space:pre-wrap">${esc(p.body)}</div>${p.user_id === S.user?.id ? `<button class="btn ghost sm" data-delpost="${p.id}">Supprimer</button>` : `<button class="btn ghost sm" data-report="post:${p.id}" style="margin-top:4px">Signaler</button>`}</div></div>`; }).join('') || '<div class="empty">Sois le premier à lancer une discussion.</div>'}</div>`;
   const f = $('#pf'); if (!f) return;
   $('#pb').oninput = () => guardInput($('#pb'), $('#perr'));
   f.onsubmit = async e => { e.preventDefault(); if (!guardInput($('#pb'), $('#perr'))) return; const body = $('#pb').value.trim(); if (body.length < 2) return;
@@ -457,7 +462,21 @@ async function compte() {
   if (S.profile) {
     const t = S.ev || { lvl: 1 }, { data: ls } = await sb.from('listings').select('*, card:cards(*)').eq('user_id', S.user.id).in('status', ['active', 'reserved']).order('created_at', { ascending: false });
     remember((ls || []).map(l => l.card));
-    view.innerHTML = `<div class="panel" style="display:flex;gap:16px;align-items:center;flex-wrap:wrap">${av(S.profile.pseudo)}<div style="flex:1"><h2 style="margin:0">${esc(S.profile.pseudo)}</h2><p class="mut small" style="margin:2px 0"><a href="#/trophees">Niveau ${t.lvl}${t.title ? ' · ' + esc(t.title) : ''}</a> · ${S.profile.trades_done} échange(s) · ${esc(S.profile.region || '')}</p></div><button class="btn ghost" id="logout">Se déconnecter</button></div>
+    view.innerHTML = `<div class="panel" style="display:flex;gap:16px;align-items:center;flex-wrap:wrap">${av(S.profile.pseudo, S.profile)}<div style="flex:1"><h2 style="margin:0">${esc(S.profile.pseudo)}</h2><p class="mut small" style="margin:2px 0"><a href="#/trophees">Niveau ${t.lvl}${t.title ? ' · ' + esc(t.title) : ''}</a> · ${S.profile.trades_done} échange(s) · ${esc(S.profile.region || '')}</p></div><button class="btn ghost" id="logout">Se déconnecter</button></div>
+    <div class="panel" style="margin-top:12px"><h3>🎨 Personnaliser mon profil</h3><p class="small mut">Choisis ta créature et sa couleur. <a href="#/membre/${S.user.id}">Voir mon profil public</a></p>
+      <div id="avpick"></div>
+      <form class="form" id="pf" style="margin-top:10px">
+        <label class="f">Petite bio (140 caractères, pas de coordonnées)<input id="pbio" maxlength="140" value="${esc(S.profile.bio || '')}"></label>
+        <div class="row2"><label class="f">Pokémon préféré<input id="pfav" list="pknames" maxlength="40" value="${esc(S.profile.fav || '')}"><datalist id="pknames"></datalist></label>
+        <label class="f">Bordure du profil<select id="pth">${[['felt', 'Tapis vert'], ['gold', 'Or'], ['ruby', 'Rubis'], ['sapphire', 'Saphir'], ['amethyst', 'Améthyste']].map(([k, n]) => `<option value="${k}" ${S.profile.theme === k ? 'selected' : ''}>${n}</option>`).join('')}</select></label></div>
+        <label class="ck"><input type="checkbox" id="pcol" ${S.profile.show_collection !== false ? 'checked' : ''}> Montrer ma collection aux autres membres</label>
+        <label class="ck"><input type="checkbox" id="pbdg" ${S.profile.show_badges !== false ? 'checked' : ''}> Montrer mes trophées aux autres membres</label>
+        <p class="err" id="perr"></p><button class="btn sm">Enregistrer</button></form></div>
+    <div class="panel" style="margin-top:12px"><h3>🏠 Mon adresse d'expédition <span class="pill p-tr">privée</span></h3><p class="small mut">Visible uniquement par ton partenaire, une fois la transaction payée ou l'échange accepté. Jamais publique.</p>
+      <form class="form" id="adf"><div class="row2"><label class="f">Nom et prénom<input id="adn" required minlength="2" maxlength="80"></label><label class="f">Pays<input id="adc" required value="France" maxlength="60"></label></div>
+        <label class="f">Adresse<input id="ad1" required minlength="3" maxlength="120"></label><label class="f">Complément (bâtiment, étage…)<input id="ad2" maxlength="120"></label>
+        <div class="row2"><label class="f">Code postal<input id="adz" required pattern="[A-Za-z0-9 \-]{3,10}"></label><label class="f">Ville<input id="adv" required maxlength="80"></label></div>
+        <p class="err" id="aerr"></p><button class="btn sm">Enregistrer mon adresse</button></form></div>
     <div class="panel" style="margin-top:12px"><h3>Vendre contre de l'argent</h3>${S.profile.payouts_enabled ? '<p class="small">✔ Compte vendeur vérifié : tu reçois tes paiements automatiquement.</p>' : `<p class="small mut">Pour recevoir de l'argent, notre partenaire de paiement Stripe vérifie ton identité (18+). Tes coordonnées bancaires restent chez Stripe, jamais chez nous. Les échanges carte contre carte n'en ont pas besoin.</p><button class="btn sm" data-connect>Activer mes ventes</button>`}</div>
     <div class="panel" style="margin-top:12px"><h3>🎁 Parraine un collectionneur</h3><p class="small mut">Ton ami reçoit 1 échange offert à l'inscription, toi 1 aussi dès sa première transaction réussie. (Échanges gratuits pendant la bêta, puis 0,99 €.)</p>
       <div class="acts"><input readonly id="reflink" value="${location.origin}/?ref=${S.profile.ref_code}" style="flex:1;min-width:200px"><button class="btn sm" id="refshare">Partager</button></div>
@@ -469,6 +488,17 @@ async function compte() {
     $('#refshare').onclick = async () => { const url = $('#reflink').value, text = 'Rejoins-moi sur Sharing Cards, l\'espace des collectionneurs Pokémon :';
       if (navigator.share) { try { await navigator.share({ title: 'Sharing Cards', text, url }); } catch {} } else { await navigator.clipboard?.writeText(url); toast('Lien copié !'); } };
     if ($('#install')) $('#install').onclick = async () => { S.install.prompt(); S.install = null; compte(); };
+    S.pav = S.profile.avatar ? [+S.profile.avatar[0], +S.profile.avatar[2]] : null; drawAvPick();
+    sb.from('addresses').select('*').eq('user_id', S.user.id).maybeSingle().then(({ data: a }) => { if (a) [['adn', 'name'], ['adc', 'country'], ['ad1', 'line1'], ['ad2', 'line2'], ['adz', 'zip'], ['adv', 'city']].forEach(([i, k]) => $('#' + i).value = a[k] || ''); });
+    $('#pfav').addEventListener('focus', async () => { if ($('#pknames').children.length) return; const { data } = await sb.from('pokemon_names').select('fr').order('species'); $('#pknames').innerHTML = (data || []).map(r => `<option value="${esc(r.fr)}">`).join(''); }, { once: true });
+    $('#pf').onsubmit = async e => { e.preventDefault(); const bio = $('#pbio').value.trim(), fav = $('#pfav').value.trim();
+      if (contactViolation(bio) || contactViolation(fav)) return $('#perr').textContent = 'Pas de coordonnées dans la bio.';
+      const upd = { bio: bio || null, fav: fav || null, theme: $('#pth').value, show_collection: $('#pcol').checked, show_badges: $('#pbdg').checked, avatar: S.pav ? S.pav.join(':') : null };
+      const { error } = await sb.from('profiles').update(upd).eq('id', S.user.id); if (error) return $('#perr').textContent = errMsg(error);
+      Object.assign(S.profile, upd); S.pseudos[S.user.id] = null; toast('Profil enregistré'); compte(); };
+    $('#adf').onsubmit = async e => { e.preventDefault();
+      const row = { user_id: S.user.id, name: $('#adn').value.trim(), country: $('#adc').value.trim(), line1: $('#ad1').value.trim(), line2: $('#ad2').value.trim() || null, zip: $('#adz').value.trim(), city: $('#adv').value.trim(), updated_at: new Date().toISOString() };
+      const { error } = await sb.from('addresses').upsert(row); if (error) return $('#aerr').textContent = errMsg(error); toast('Adresse enregistrée (privée)'); };
     $('#logout').onclick = async () => { await sb.auth.signOut(); await loadSession(); location.hash = '#/'; };
     return;
   }
@@ -516,7 +546,7 @@ function completeProfile() {
 
 function regles() {
   view.innerHTML = `<div class="panel" style="max-width:760px;margin:auto"><h2 style="margin-top:0">Charte & sécurité</h2>
-  <p class="mut">Sharing Cards est un espace <b>par et pour les collectionneurs</b>. Pas de boutique, pas de revendeur professionnel.</p>
+  <p class="mut">Sharing Cards est un espace <b>par et pour les collectionneurs</b>. Pas de boutique, pas de revendeur professionnel. 👉 <a href="#/guide">Guide des échanges et de l'emballage</a></p>
   <ol class="rules">
    <li><b>Collectionneurs uniquement.</b> On ne pose que ses doubles : la carte doit être au moins en ×2 dans ton classeur. Maximum 3 annonces par carte et 30 annonces actives. Les professionnels et revendeurs de stock ne sont pas admis.</li>
    <li><b>18 ans et plus.</b> Les comptes et les transactions sont réservés aux majeurs. Les versements aux vendeurs exigeront une vérification d'identité par notre prestataire de paiement.</li>
@@ -531,7 +561,7 @@ function regles() {
   </ol>
   <h3>Frais</h3><p class="mut">Vendeur : 0 %. Acheteur : protection acheteur de ${eur(S.st.buyer_fixed ?? 0.5)} + ${((S.st.buyer_rate ?? 0.03) * 100).toLocaleString('fr-FR')} % du prix, qui finance le paiement sécurisé et la médiation. Échanges carte contre carte : gratuits pendant la bêta, puis 0,99 € par personne. 3 échanges offerts à l'inscription, +1 par ami parrainé (après sa première transaction réussie). Tant qu'un des deux membres a moins de 3 transactions réussies, une transaction est plafonnée à ${eur(S.st.new_account_cap ?? 100)}.</p>
   <p class="mut small">Le détail juridique est dans les <a href="#/legal/cgu">CGU</a> et les <a href="#/legal/cgv">conditions de vente</a>.</p>
-  <h3>Données</h3><p class="mut">Ta date de naissance reste privée. Ton pseudo, ta région et ton nombre d'échanges sont publics. Ton adresse postale n'est jamais affichée publiquement.</p></div>`;
+  <h3>Données</h3><p class="mut">Ta date de naissance reste privée. Ton pseudo, ta région et ton nombre d'échanges sont publics. Ton adresse postale n'est jamais publique : elle n'est montrée qu'à ton partenaire, une fois la transaction payée ou l'échange accepté. Tu peux cacher ta collection et tes trophées dans Compte.</p></div>`;
 }
 
 // ---------- RGPD ----------
@@ -575,6 +605,10 @@ document.addEventListener('click', async e => {
   else if (d.rmlist) { const { error } = await sb.from('listings').update({ status: 'removed' }).eq('id', d.rmlist); if (error) toast(errMsg(error), true); else { toast('Annonce retirée'); close(); route(); } }
   else if (d.report) { if (needAccount()) return; const [type, id] = d.report.split(':'); const { error } = await sb.from('reports').insert({ target_type: type, target_id: id }); toast(error ? errMsg(error) : 'Merci, signalement envoyé à la modération'); }
   else if (d.act) act(d.o, d.act);
+  else if (d.prep) prepShip(d.prep);
+  else if ('label' in d) printLabel();
+  else if (d.avk !== undefined) { S.pav = [+d.avk, S.pav?.[1] ?? 0]; drawAvPick(); }
+  else if (d.avh !== undefined) { S.pav = [S.pav?.[0] ?? 0, +d.avh]; drawAvPick(); }
   else if (d.ot) { S.otab = d.ot; offres(); }
   else if (d.am) { S.amode = d.am; compte(); }
   else if (d.ts !== undefined) { S.tset = d.ts || null; document.querySelectorAll('#tset button').forEach(b => b.setAttribute('aria-pressed', b === t)); drawListings(); }
@@ -633,3 +667,55 @@ await Promise.all([loadCatalog(), loadSession()]);
 realtime();
 route();
 checkUnlock();
+
+// ---------- avatar, profil public, envoi ----------
+function drawAvPick() {
+  const box = $('#avpick'); if (!box) return; const [k, h] = S.pav || [-1, 0];
+  box.innerHTML = `<div class="avgrid">${CRITTER_NAMES.map((n, i) => `<button type="button" class="avopt ${i === k ? 'on' : ''}" data-avk="${i}" title="${n}" aria-label="${n}">${critterSVG(i, h)}</button>`).join('')}</div>
+    <div class="avhues">${HUES.map((x, i) => `<button type="button" class="hue ${i === h ? 'on' : ''}" data-avh="${i}" style="background:hsl(${x} 75% 55%)" aria-label="Couleur ${i + 1}"></button>`).join('')}</div>`;
+}
+async function membre() {
+  const id = location.hash.split('/')[2]; if (!id) return home();
+  const [{ data: p }, { data: col }, { data: ls }] = await Promise.all([
+    sb.from('public_profiles').select('*').eq('id', id).maybeSingle(),
+    sb.rpc('public_collection', { p_user: id }),
+    sb.from('listings').select('*, card:cards(*)').eq('user_id', id).eq('status', 'active').order('created_at', { ascending: false }).limit(24)
+  ]);
+  if (!p) { view.innerHTML = '<div class="empty">Membre introuvable.</div>'; return; }
+  S.pseudos[id] = p; remember((ls || []).map(l => l.card));
+  const all = Object.values(Game.BADGES).flat(), mine = id === S.user?.id;
+  const bdg = (p.badges || []).map(b => all.find(x => x.id === b)).filter(Boolean).sort((a, b) => b.tier - a.tier);
+  view.innerHTML = `<section class="panel prof th-${p.theme || 'felt'}">
+    <div class="prof-av">${av(p.pseudo, p)}</div>
+    <div><h1 style="font-size:clamp(22px,4vw,32px)">${esc(p.pseudo)} ${p.passionne ? '<span class="badge-coll">🏅 Collectionneur passionné</span>' : ''}</h1>
+      <p class="small mut">${stars(p)} · ${p.trades_done || 0} transaction(s)${p.verified ? ' · ✔ vendeur vérifié' : ''}${p.region ? ' · ' + esc(p.region) : ''} · membre depuis ${new Date(p.created_at).toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })}</p>
+      ${p.bio ? `<p>${esc(p.bio)}</p>` : ''}${p.fav ? `<p class="small">❤️ Pokémon préféré : <b>${esc(p.fav)}</b></p>` : ''}
+      ${mine ? '<a class="btn sm ghost" href="#/compte">Modifier mon profil</a>' : ''}</div></section>
+  <h2>Collection</h2>${!col || col.private ? '<div class="panel small mut">🔒 Collection privée.</div>' : `<div class="panel"><div class="stats" style="margin:0"><div><b>${col.cards}</b><span class="mut small">cartes différentes</span></div><div><b>${col.qty}</b><span class="mut small">cartes au total</span></div></div>
+    ${col.sets.length ? `<div class="setbars">${col.sets.map(x => `<div><span class="small">${flag(x.lang)} ${esc(x.name)}</span><div class="bar2"><i style="width:${Math.min(100, x.pct || 0)}%"></i></div><span class="small mono">${x.own}/${x.total}</span></div>`).join('')}</div>` : ''}</div>`}
+  <h2>Trophées</h2>${!p.show_badges ? '<div class="panel small mut">🔒 Trophées privés.</div>' : bdg.length ? `<div class="bdgs">${bdg.map(b => `<span class="bdg t${b.tier}" title="${esc(b.desc || '')}">${b.ic} ${esc(b.name)}</span>`).join('')}</div>` : '<div class="panel small mut">Pas encore de trophée.</div>'}
+  <h2>Ses doubles sur la table</h2><div class="grid">${(ls || []).map(l => `<button class="tile" data-l="${l.id}">${img(l.card)}<div class="meta"><span class="nm">${esc(nm(l.card))}</span><span class="v">${l.price ? eur(l.price) : '⇄'}</span></div></button>`).join('') || '<p class="mut">Aucun double posé pour le moment.</p>'}</div>`;
+  S.listings = [...(S.listings || []).filter(x => !ls?.some(y => y.id === x.id)), ...(ls || [])];
+}
+async function prepShip(oid) {
+  const [{ data: to, error }, { data: me }] = await Promise.all([sb.rpc('offer_address', { p_offer: oid }), sb.from('addresses').select('*').eq('user_id', S.user.id).maybeSingle()]);
+  if (error) return toast(errMsg(error), true);
+  const fmt = a => a ? `${esc(a.name)}<br>${esc(a.line1)}${a.line2 ? '<br>' + esc(a.line2) : ''}<br>${esc(a.zip)} ${esc(a.city)}<br>${esc(a.country)}` : '';
+  S.lbl = { to: fmt(to), from: fmt(me), ref: oid.slice(0, 8).toUpperCase() };
+  modal(`<div class="form"><h2 style="margin:0">📦 Préparer l'envoi</h2>
+    ${to?.name ? `<div class="panel"><p class="small mut" style="margin:0 0 4px">Destinataire</p><p style="margin:0">${S.lbl.to}</p></div>` : '<p class="err">Ton partenaire n\'a pas encore renseigné son adresse. Préviens-le dans la messagerie de l\'offre.</p>'}
+    ${!me ? '<p class="small err">Renseigne aussi <a href="#/compte">ton adresse</a> (expéditeur, en cas de retour).</p>' : ''}
+    <ol class="small"><li>Emballe : sleeve → toploader → cartons → enveloppe à bulles. <a href="#/guide" target="_blank">Guide illustré</a></li>
+    <li>Achète un envoi <b>suivi</b> : <a href="https://www.laposte.fr/lettre-suivie" target="_blank" rel="noopener">Lettre suivie en ligne</a> (moins de 50 €) ou Colissimo (au-delà).</li>
+    <li>Imprime l'étiquette ci-dessous et colle-la, puis dépose le colis.</li><li>Clique « J'ai expédié » et colle le numéro de suivi.</li></ol>
+    <div class="acts">${to?.name ? '<button class="btn" data-label>🖨️ Imprimer l\'étiquette</button>' : ''}<button class="btn ghost" data-act="ship" data-o="${oid}">J'ai expédié</button></div></div>`);
+}
+function printLabel() {
+  const L = S.lbl, w = window.open('', '_blank'); if (!w || !L) return toast('Autorise les fenêtres pop-up pour imprimer.', true);
+  w.document.write(`<!doctype html><meta charset="utf-8"><title>Étiquette ${L.ref}</title><style>@page{size:A6 landscape;margin:6mm}body{font:15px/1.35 system-ui,sans-serif;margin:0}
+  .l{border:2px solid #000;border-radius:6px;padding:10px 14px;max-width:140mm}.f{font-size:11px;border-bottom:1px dashed #000;padding-bottom:6px;margin-bottom:8px}.t{font-size:19px;font-weight:700}
+  .r{display:flex;justify-content:space-between;font-size:11px;margin-top:8px}.np{font-weight:800;letter-spacing:.1em}</style>
+  <div class="l"><div class="f"><b>Expéditeur :</b><br>${L.from || '—'}</div><div>À :</div><div class="t">${L.to}</div>
+  <div class="r"><span class="np">NE PAS PLIER</span><span>Sharing Cards · réf. ${L.ref}</span></div></div><script>onload=()=>print()<\/script>`);
+  w.document.close();
+}

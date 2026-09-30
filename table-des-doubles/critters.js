@@ -96,3 +96,8 @@ export function initCritters(opts = {}) {
   const loop = () => { spawn(); setTimeout(loop, rnd(8000, 25000)); };
   setTimeout(loop, rnd(3000, 7000));
 }
+
+// avatars : même dessin que les créatures, 8 teintes au choix
+export const CRITTER_NAMES = KINDS.map(k => k[0]);
+export const HUES = [0, 45, 90, 140, 190, 230, 280, 320];
+export const critterSVG = (k, h) => `<svg viewBox="0 0 100 100">${(KINDS[k] || KINDS[0])[1](HUES[h] ?? 0)}</svg>`;

@@ -21,8 +21,14 @@
 - **Stripe** Connect Express, séquestre (charges et transferts séparés), **mode test**, 2 webhooks.
 - **Vercel** : équipe `team_rtfEEmT0BrvApJexTj1FsiDo`, projet `table-des-doubles` (`prj_KNpBSY9eunXrqV8ThzHV79GRFuB9`). Déployer via `create_deployment` gitSource (org woirinalex178-cloud, repo avatar-prof, ref = branche, sha) + `projectSettings.rootDirectory = "table-des-doubles"`.
 
+## Adresses & profils (ajout 30/09)
+- Table `addresses` (privée, RLS propriétaire). RPC `offer_address(offer)` : adresse du partenaire seulement si statut `paid`. Trigger `offers_ship_addr` : pas d'expédition sans adresse du destinataire.
+- Offre payée → bouton « 📦 Préparer l'envoi » : adresse, lien Lettre suivie, étiquette imprimable (`printLabel`, A6).
+- `profiles` : avatar (`k:h`, 8 créatures × 8 teintes via `critterSVG`), bio, fav, theme, show_collection, show_badges, badges (sync `rpc set_badges` dans `checkUnlock`). Filtre anti-coordonnées sur pseudo/bio/fav.
+- Page publique `#/membre/<id>` (`public_collection` respecte show_collection). Guide `#/guide` (`guide.js`).
+
 ## Front (JS vanilla, sans build)
-`index.html`, `style.css` (thème tapis vert/or), `app.js` (routeur, vues), `auth.js` (authenticité photo), `game.js` (51 badges dont 3 Ambassadeur, XP, défis), `legal.js` (7 textes légaux), `sw.js` (cache `tdd-v9`), `intro.js` (cinématique dragon original, 1re visite, `localStorage sc_intro`, lien « Revoir l'intro » `[data-intro]`), `critters.js` (8 créatures SVG originales, attraper = badge secret `x_catch`), `fx.js` (tilt 3D + holo sur `.tile`, apparitions `.rv`, braises canvas, compteurs), `affiche.html` + `img/qr-boutique.png`, `manifest.json`, `img/` (logo, bannière, icônes, og).
+`index.html`, `style.css` (thème tapis vert/or), `app.js` (routeur, vues), `auth.js` (authenticité photo), `game.js` (51 badges dont 3 Ambassadeur, XP, défis), `legal.js` (7 textes légaux), `sw.js` (cache `tdd-v10`), `intro.js` (cinématique dragon original, 1re visite, `localStorage sc_intro`, lien « Revoir l'intro » `[data-intro]`), `critters.js` (8 créatures SVG originales, attraper = badge secret `x_catch`), `fx.js` (tilt 3D + holo sur `.tile`, apparitions `.rv`, braises canvas, compteurs), `affiche.html` + `img/qr-boutique.png`, `manifest.json`, `img/` (logo, bannière, icônes, og).
 
 ## Décisions prises
 - **Aucun visuel Pokémon officiel en décoration** (risque Nintendo) : dragon et créatures sont des créations originales ; seules les images de cartes du catalogue sont utilisées.

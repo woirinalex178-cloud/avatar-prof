@@ -662,7 +662,7 @@ initCritters({
   getCard: () => { const l = Object.values(S.cards).filter(c => c.image); const c = l[Math.floor(Math.random() * l.length)]; return c ? c.image + '/low.webp' : null; },
   onCatch: () => { Game.track('catch'); checkUnlock(); }
 });
-view.innerHTML = '<div class="empty">Chargement de la table…</div>';
+view.innerHTML = `<div class="skel"><div class="sk sk-ban"></div><div class="grid">${'<div class="sk sk-card"></div>'.repeat(8)}</div></div>`;
 await Promise.all([loadCatalog(), loadSession()]);
 realtime();
 route();

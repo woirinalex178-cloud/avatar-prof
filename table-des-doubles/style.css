@@ -286,3 +286,69 @@ h1 span{-webkit-text-fill-color:var(--gold);text-shadow:0 0 24px #e0b85c66}
 .faq{display:grid;gap:10px}.faq summary{cursor:pointer;font-weight:700;list-style:none}.faq summary::before{content:"▸ ";color:var(--gold)}
 .faq details[open] summary::before{content:"▾ "}.faq details>div{margin-top:8px}.faq li{margin:3px 0}
 .prof h1 .badge-coll{-webkit-text-fill-color:#1a1300;color:#1a1300;font:700 12px var(--body);filter:none}
+/* ====== v11 : navigation dock + relief moderne ====== */
+:root{--sh1:0 1px 0 #ffffff14 inset,0 2px 6px #0005;--sh2:0 1px 0 #ffffff1c inset,0 8px 20px #0007,0 2px 6px #0005;--sh3:0 1px 0 #ffffff22 inset,0 18px 40px #000a,0 6px 14px #0006}
+.top{backdrop-filter:none;background:none}
+.top::before{content:"";position:absolute;inset:0;z-index:-1;background:linear-gradient(180deg,#08140ff0,#08140fd0);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border-bottom:1px solid #e0b85c22;box-shadow:0 6px 20px #0006}
+.nav a i{display:grid;place-items:center}
+.nav a svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+/* ordinateur : piste creusée + onglet en relief */
+@media (min-width:761px){
+  .nav{background:#0008;padding:4px;border-radius:99px;box-shadow:inset 0 2px 6px #000a,inset 0 -1px 0 #ffffff10,0 1px 0 #ffffff0c}
+  .nav a{transition:transform .15s,color .15s,background .2s}
+  .nav a:hover{color:var(--txt);background:#ffffff0d;transform:translateY(-1px)}
+  .nav a.on{color:#1b1206;background:linear-gradient(180deg,#f7e3a8,#e0b85c 60%,#c99a3c);box-shadow:0 3px 0 #8f6a20,0 6px 14px #0008,inset 0 1px 0 #fff8}
+  .nav a.on:hover{transform:translateY(-1px)}
+}
+/* mobile : dock flottant */
+@media (max-width:760px){
+  .top{justify-content:center;padding-block:10px}
+  .nav{position:fixed;left:10px;right:10px;bottom:calc(10px + env(safe-area-inset-bottom,0px));z-index:40;display:flex;justify-content:space-between;gap:2px;padding:6px;border-radius:22px;border:1px solid transparent;
+    background:linear-gradient(180deg,#123a2ef2,#08140ff5) padding-box,linear-gradient(160deg,#e0b85c88,#ffffff14 40%,#e0b85c44) border-box;
+    box-shadow:0 18px 40px #000c,0 4px 12px #0008,inset 0 1px 0 #ffffff1a;backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px)}
+  .nav a{flex:1;min-width:0;flex-direction:column;gap:2px;padding:7px 2px 6px;border-radius:16px;font-size:11.5px;font-weight:700;color:#c9dbd2;letter-spacing:-.01em;transition:transform .12s,background .2s,color .2s}
+  .nav a span:not(.dot),.nav a{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .nav a svg{width:22px;height:22px}
+  .nav a:active{transform:scale(.92)}
+  .nav a.on{color:#1b1206;background:linear-gradient(180deg,#f7e3a8,#e0b85c 60%,#c99a3c);box-shadow:0 4px 0 #8f6a20,0 8px 16px #000a,0 0 18px #e0b85c55,inset 0 1px 0 #fff9;transform:translateY(-4px)}
+  .nav a.on svg{animation:hop .45s cubic-bezier(.3,1.6,.5,1)}
+  main.wrap{padding-bottom:120px}.foot{padding-bottom:120px}
+  .toast{bottom:calc(100px + env(safe-area-inset-bottom,0px))}
+}
+@keyframes hop{40%{transform:translateY(-5px) scale(1.12)}}
+/* boutons segmentés */
+.seg button{background:linear-gradient(180deg,#ffffff10,#0000);border:1px solid #ffffff1c;box-shadow:0 2px 0 #0008,0 4px 10px #0005,inset 0 1px 0 #ffffff14;transition:transform .12s,box-shadow .12s,background .2s,color .2s}
+.seg button:hover{color:var(--txt);transform:translateY(-1px)}
+.seg button[aria-pressed=true]{background:linear-gradient(180deg,#0a1d16,#12302a);color:var(--gold2);border-color:#e0b85c66;box-shadow:inset 0 3px 8px #000c,inset 0 -1px 0 #ffffff12,0 0 0 1px #e0b85c22;transform:translateY(1px)}
+/* champs creusés */
+input,select,textarea{background:#050e0b;border:1px solid #ffffff14;border-radius:10px;box-shadow:inset 0 2px 6px #000c,0 1px 0 #ffffff0c;transition:border-color .2s,box-shadow .2s}
+input:focus,select:focus,textarea:focus{outline:none;border-color:#e0b85c99;box-shadow:inset 0 2px 6px #000c,0 0 0 3px #e0b85c2a,0 0 18px #e0b85c22}
+input[type=checkbox]{box-shadow:none;accent-color:var(--gold)}
+/* jetons : stepper, poser, quantités */
+.stepper button{background:radial-gradient(circle at 50% 30%,#2a5a48,#123a2e);border:1px solid #ffffff22;border-radius:10px;box-shadow:0 3px 0 #061410,0 5px 10px #0007,inset 0 1px 0 #ffffff26;transition:transform .08s,box-shadow .08s}
+.stepper button:active{transform:translateY(3px);box-shadow:0 0 0 #061410,0 1px 3px #0007}
+.stepper button.put{background:radial-gradient(circle at 50% 30%,#ef6d62,#c63a33);box-shadow:0 3px 0 #7c1d19,0 5px 10px #0007,inset 0 1px 0 #ffffff55}
+.qty{box-shadow:0 2px 0 #0009,0 4px 10px #0008,inset 0 0 0 2px #0006;background:radial-gradient(circle at 50% 30%,#1d4a3b,#08140f)}
+.qty.dbl{background:radial-gradient(circle at 50% 30%,#ef6d62,#b8322c);background-image:radial-gradient(circle at 50% 30%,#ef6d62,#b8322c),repeating-conic-gradient(#fff 0 12deg,transparent 12deg 30deg);box-shadow:0 2px 0 #6b1814,0 4px 10px #0009,0 0 0 2px #fff}
+/* modales */
+dialog{background:linear-gradient(160deg,#133a2ef7,#0a1f18fa) padding-box,linear-gradient(150deg,#e0b85c88,#ffffff12 40%,#e0b85c44) border-box;border:1px solid transparent;box-shadow:var(--sh3)}
+dialog[open]{animation:pop .35s cubic-bezier(.2,.9,.3,1.2)}
+@keyframes pop{from{opacity:0;transform:perspective(900px) rotateX(10deg) translateY(24px) scale(.95)}}
+dialog::backdrop{background:#000a;backdrop-filter:blur(6px)}
+.x{box-shadow:0 2px 0 #000a,0 4px 10px #0007;background:#0a1d16}
+/* toast en verre */
+.toast{background:linear-gradient(180deg,#f7e3a8ee,#e0b85cee);box-shadow:0 10px 26px #000a,0 0 0 1px #fff5 inset;backdrop-filter:blur(8px);animation:toastin .35s cubic-bezier(.2,.9,.3,1.2)}
+.toast.bad{background:linear-gradient(180deg,#ef6d62ee,#c63a33ee)}
+@keyframes toastin{from{opacity:0;transform:translate(-50%,20px) scale(.9)}}
+/* bouton principal : bord doré qui tourne */
+@property --ang{syntax:'<angle>';initial-value:0deg;inherits:false}
+.hero .seg .btn:first-child{position:relative;isolation:isolate}
+.hero .seg .btn:first-child::before{content:"";position:absolute;inset:-3px;border-radius:13px;z-index:-1;background:conic-gradient(from var(--ang),#fff0 0 60%,#fff8 75%,#e0b85c 85%,#fff0 100%);animation:spin 3s linear infinite}
+@keyframes spin{to{--ang:360deg}}
+/* squelette de chargement */
+.skel{padding-top:14px}.sk{border-radius:14px;background:linear-gradient(100deg,#ffffff08 30%,#ffffff18 50%,#ffffff08 70%) #0d231c;background-size:250% 100%;animation:shim 1.3s linear infinite}
+.sk-ban{height:clamp(140px,30vw,300px);margin-bottom:22px}.sk-card{aspect-ratio:63/88}
+@keyframes shim{to{background-position:-150% 0}}
+/* niveaux d'ombre cohérents */
+.panel{border-radius:16px}
+.offer,.post{transition:transform .2s,box-shadow .2s}

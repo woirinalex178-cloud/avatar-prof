@@ -100,7 +100,7 @@ Stripe sépare « Votre compte » (paiements) et « Comptes connectés » (vende
 ## ÉTAPE 5 — Avant d'ouvrir au public (administratif, gratuit)
 1. **Micro-entreprise** : https://autoentrepreneur.urssaf.fr → **Créer mon auto-entreprise**. Activité : « plateforme de mise en relation, commerce en ligne ». Environ 15 min, puis réception du numéro SIRET sous 1 à 4 semaines.
 2. **Nom libre ?** https://data.inpi.fr → recherche « Table des Doubles » en marques. Si rien d'identique en classes 9/35/42 : OK. (Le dépôt de marque est payant, 190 € : pas obligatoire pour démarrer.)
-3. **Textes légaux** ✅ rédigés et remplis (nom, SIRET, adresse) — reste : l'**e-mail dédié** de l'appli et le **médiateur** (page « Infos légales » en bas du site). Il te reste à remplir **une seule fois** le haut du fichier `legal.js` (je peux le faire si tu me donnes les infos) :
+3. **Textes légaux** ✅ rédigés et remplis (nom, SIRET, adresse) — reste : le **médiateur** (et plus tard l'e-mail dédié de l'appli) (page « Infos légales » en bas du site). Il te reste à remplir **une seule fois** le haut du fichier `legal.js` (je peux le faire si tu me donnes les infos) :
    - ton prénom NOM, ton n° SIRET, ton adresse postale, un e-mail de contact ;
    - un **médiateur de la consommation** (obligatoire dès que tu vends un service à des particuliers ; environ 50 à 150 €/an, ex. CM2C, Medicys) ;
    - conseil : faire relire les textes gratuitement (permanences juridiques de ta mairie, de la CCI ou de l'ordre des avocats).
@@ -124,7 +124,7 @@ Stripe sépare « Votre compte » (paiements) et « Comptes connectés » (vende
 - Clés Boxtal en place : les **vrais points relais Mondial Relay** s'affichent déjà dans l'appli, et le suivi des colis est abonné (webhook).
 - Les bordereaux restent **en mode essai** tant que Stripe est en mode test (sinon tu paierais de vraies étiquettes avec de faux paiements).
 - **Le jour de l'ouverture** (Stripe en réel) :
-  1. Recharge ton compte Boxtal (ou carte enregistrée).
+  1. Boxtal → Mon compte → Paiement : enregistre une carte bancaire (Boxtal prélève chaque étiquette achetée) ou approvisionne un solde de quelques dizaines d'euros. Tu es remboursé par le port payé par les membres.
   2. Supabase → Edge Functions → Secrets : ajoute `BOXTAL_LIVE` = `1`.
   3. Dis-le-moi : je vérifie le code d'offre Colissimo et je fais un 1er envoi réel de test.
 - **API Suivi La Poste** : pas indispensable. Boxtal envoie déjà le suivi de tous ses transporteurs (Mondial Relay, Colissimo, Chronopost…). Elle servira seulement pour les « Lettre suivie » achetées à part.

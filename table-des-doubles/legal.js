@@ -3,8 +3,8 @@
 export const LEGAL = {
   site: 'Sharing Cards', url: 'https://table-des-doubles.vercel.app',
   editeur: 'Alexandre Woirin', statut: 'Entrepreneur individuel (micro-entreprise)',
-  siret: '106 507 239 00015', adresse: '36 rue Scheffer, 75016 Paris',
-  email: '[À COMPLÉTER : e-mail dédié de l\'appli]', directeur: 'Alexandre Woirin',
+  siret: '106 507 239 00015', adresse: '36 rue Sheffer, 75016 Paris',
+  email: 'contact@celesteroom.com', directeur: 'Alexandre Woirin',
   mediateur: '[À COMPLÉTER : nom et site du médiateur de la consommation]',
   maj: '1er octobre 2026'
 };

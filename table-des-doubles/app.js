@@ -476,6 +476,7 @@ async function compte() {
       <form class="form" id="adf"><div class="row2"><label class="f">Nom et prénom<input id="adn" required minlength="2" maxlength="80"></label><label class="f">Pays<input id="adc" required value="France" maxlength="60"></label></div>
         <label class="f">Adresse<input id="ad1" required minlength="3" maxlength="120"></label><label class="f">Complément (bâtiment, étage…)<input id="ad2" maxlength="120"></label>
         <div class="row2"><label class="f">Code postal<input id="adz" required pattern="[A-Za-z0-9 \-]{3,10}"></label><label class="f">Ville<input id="adv" required maxlength="80"></label></div>
+        <label class="f">Téléphone (demandé par le transporteur, jamais affiché)<input id="adp" type="tel" inputmode="tel" pattern="\\+?[0-9 .\\-]{9,20}" maxlength="20" placeholder="06 12 34 56 78"></label>
         <p class="err" id="aerr"></p><button class="btn sm">Enregistrer mon adresse</button></form>
       <p class="small" style="margin-top:12px">📍 Mon point relais de réception : <b id="myrelay">—</b> <button class="btn sm ghost" data-pickrelay>Choisir</button></p></div>
     <div class="panel" style="margin-top:12px"><h3>Vendre contre de l'argent</h3>${S.profile.payouts_enabled ? '<p class="small">✔ Compte vendeur vérifié : tu reçois tes paiements automatiquement.</p>' : `<p class="small mut">Pour recevoir de l'argent, notre partenaire de paiement Stripe vérifie ton identité (18+). Tes coordonnées bancaires restent chez Stripe, jamais chez nous. Les échanges carte contre carte n'en ont pas besoin.</p><button class="btn sm" data-connect>Activer mes ventes</button>`}</div>
@@ -490,7 +491,7 @@ async function compte() {
       if (navigator.share) { try { await navigator.share({ title: 'Sharing Cards', text, url }); } catch {} } else { await navigator.clipboard?.writeText(url); toast('Lien copié !'); } };
     if ($('#install')) $('#install').onclick = async () => { S.install.prompt(); S.install = null; compte(); };
     S.pav = S.profile.avatar ? [+S.profile.avatar[0], +S.profile.avatar[2]] : null; drawAvPick();
-    sb.from('addresses').select('*').eq('user_id', S.user.id).maybeSingle().then(({ data: a }) => { if (a?.relay) $('#myrelay').textContent = a.relay.name; if (a) [['adn', 'name'], ['adc', 'country'], ['ad1', 'line1'], ['ad2', 'line2'], ['adz', 'zip'], ['adv', 'city']].forEach(([i, k]) => $('#' + i).value = a[k] || ''); });
+    sb.from('addresses').select('*').eq('user_id', S.user.id).maybeSingle().then(({ data: a }) => { if (a?.relay) $('#myrelay').textContent = a.relay.name; if (a) [['adn', 'name'], ['adc', 'country'], ['ad1', 'line1'], ['ad2', 'line2'], ['adz', 'zip'], ['adv', 'city'], ['adp', 'phone']].forEach(([i, k]) => $('#' + i).value = a[k] || ''); });
     $('#pfav').addEventListener('focus', async () => { if ($('#pknames').children.length) return; const { data } = await sb.from('pokemon_names').select('fr').order('species'); $('#pknames').innerHTML = (data || []).map(r => `<option value="${esc(r.fr)}">`).join(''); }, { once: true });
     $('#pf').onsubmit = async e => { e.preventDefault(); const bio = $('#pbio').value.trim(), fav = $('#pfav').value.trim();
       if (contactViolation(bio) || contactViolation(fav)) return $('#perr').textContent = 'Pas de coordonnées dans la bio.';
@@ -498,7 +499,7 @@ async function compte() {
       const { error } = await sb.from('profiles').update(upd).eq('id', S.user.id); if (error) return $('#perr').textContent = errMsg(error);
       Object.assign(S.profile, upd); S.pseudos[S.user.id] = null; toast('Profil enregistré'); compte(); };
     $('#adf').onsubmit = async e => { e.preventDefault();
-      const row = { user_id: S.user.id, name: $('#adn').value.trim(), country: $('#adc').value.trim(), line1: $('#ad1').value.trim(), line2: $('#ad2').value.trim() || null, zip: $('#adz').value.trim(), city: $('#adv').value.trim(), updated_at: new Date().toISOString() };
+      const row = { user_id: S.user.id, name: $('#adn').value.trim(), country: $('#adc').value.trim(), line1: $('#ad1').value.trim(), line2: $('#ad2').value.trim() || null, zip: $('#adz').value.trim(), city: $('#adv').value.trim(), phone: $('#adp').value.trim() || null, updated_at: new Date().toISOString() };
       const { error } = await sb.from('addresses').upsert(row); if (error) return $('#aerr').textContent = errMsg(error); toast('Adresse enregistrée (privée)'); };
     $('#logout').onclick = async () => { await sb.auth.signOut(); await loadSession(); location.hash = '#/'; };
     return;
@@ -529,7 +530,7 @@ function profileFields() {
   <div class="row2"><label class="f">Date de naissance<input type="date" id="abd" required max="${max.toISOString().slice(0, 10)}"></label>
   <label class="f">Région<select id="areg"><option value="">—</option>${['Auvergne-Rhône-Alpes', 'Bourgogne-Franche-Comté', 'Bretagne', 'Centre-Val de Loire', 'Corse', 'Grand Est', 'Hauts-de-France', 'Île-de-France', 'Normandie', 'Nouvelle-Aquitaine', 'Occitanie', 'Pays de la Loire', 'Provence-Alpes-Côte d\'Azur', 'Outre-mer', 'Belgique', 'Suisse'].map(r => `<option>${r}</option>`).join('')}</select></label></div>
   <label class="ck"><input type="checkbox" id="a18" required> Je certifie avoir 18 ans ou plus.</label>
-  <label class="ck"><input type="checkbox" id="arules" required> J'accepte les <a href="#/legal/cgu" target="_blank">CGU</a>, les <a href="#/legal/cgv" target="_blank">conditions de vente</a> et la <a href="#/legal/confidentialite" target="_blank">politique de confidentialité</a> : pas d'échange de coordonnées, toutes les transactions passent par l'appli.</label>`;
+  <label class="ck"><input type="checkbox" id="arules" required><span> J'accepte les <a href="#/legal/cgu" target="_blank">CGU</a>, les <a href="#/legal/cgv" target="_blank">conditions de vente</a> et la <a href="#/legal/confidentialite" target="_blank">politique de confidentialité</a> : pas d'échange de coordonnées, toutes les transactions passent par l'appli.</span></label>`;
 }
 function readProfileFields(err) {
   const pseudo = $('#apseudo').value.trim(), birthdate = $('#abd').value, region = $('#areg').value || null;
@@ -785,3 +786,15 @@ async function dlLabel(id) {
   if (error || data?.error) return toast(data?.error || 'Bordereau indisponible, réessaie.', true);
   window.open(data.url, '_blank'); fillShips();
 }
+
+// œil sur les champs mot de passe : afficher / masquer
+const eyeSVG = o => `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>${o ? '' : '<path d="M4 4l16 16"/>'}</svg>`;
+function eyes(root = document) {
+  root.querySelectorAll?.('input[type=password]:not([data-eye])').forEach(i => {
+    i.dataset.eye = 1; const w = document.createElement('span'); w.className = 'pwd'; i.replaceWith(w); w.append(i);
+    const b = document.createElement('button'); b.type = 'button'; b.className = 'eye'; b.setAttribute('aria-label', 'Afficher le mot de passe'); b.innerHTML = eyeSVG(true);
+    b.onclick = () => { const show = i.type === 'password'; i.type = show ? 'text' : 'password'; b.innerHTML = eyeSVG(!show); b.setAttribute('aria-label', show ? 'Masquer le mot de passe' : 'Afficher le mot de passe'); i.focus(); };
+    w.append(b);
+  });
+}
+new MutationObserver(() => eyes()).observe(document.body, { childList: true, subtree: true }); eyes();

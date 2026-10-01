@@ -28,9 +28,10 @@
 - Page publique `#/membre/<id>` (`public_collection` respecte show_collection). Guide `#/guide` (`guide.js`).
 
 ## Bordereaux prépayés (ajout 01/10)
+- `addresses.phone` (exigé par les transporteurs). Œil afficher/masquer sur tous les mots de passe (MutationObserver `eyes()`).
 - `offers.ship_mode` (manual/relay/home) + `ship_price` (trigger `offers_ship_price`, tarifs `settings.ship_relay/ship_home`), ajouté au checkout Stripe.
 - Table `shipments` (1 par envoi). Vente payée → colis vendeur créé payé (trigger `offers_paid_shipment`). Échange → `rpc order_label(offer, mode)` puis `payments/label` (Stripe) → webhook met `paid`.
-- Edge `shipping` : `/relays?zip=`, `/create` (génère le PDF dans le bucket privé `labels`, renseigne le suivi dans l'offre), `/webhook` (à brancher). Fournisseur **Test** actif ; **Boxtal** = stub à coder quand `BOXTAL_KEY/SECRET` existent (devis, commande, points relais, suivi).
+- Edge `shipping` : `/relays?zip=`, `/create` (génère le PDF dans le bucket privé `labels`, renseigne le suivi dans l'offre), `/webhook` (à brancher). **Boxtal API v3 branché** (token `/iam/account-app/token`, points relais `/shipping/v3.2/parcel-point-by-shipping-offer`, commande `/shipping/v3.1/shipping-order`, documents, suivi, webhooks `TRACKING_CHANGED`/`DOCUMENT_CREATED` signés HMAC `x-bxt-signature`, secret = HMAC(BOXTAL_SECRET,'sharing-cards-webhook')). Codes d'offre dans `settings.boxtal_relay_offer` (MONR-CpourToi, vérifié) / `boxtal_home_offer` (POFR-ColissimoAccess, **à vérifier**). Étiquettes réelles seulement si secret `BOXTAL_LIVE=1`, sinon PDF d'essai. Diagnostic : `/shipping/status?zip=` (jeton cron). Au passage en réel : vider les `addresses.relay` dont l'id commence par `TEST-`.
 - `addresses.relay` = point relais de réception choisi (Compte ou formulaire d'achat).
 - Sources des fonctions : `supabase/functions/payments`, `supabase/functions/shipping`.
 

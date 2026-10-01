@@ -2,11 +2,11 @@
 // Modèles rédigés pour une place de marché entre particuliers en France. À faire relire par un professionnel avant l'ouverture au public.
 export const LEGAL = {
   site: 'Sharing Cards', url: 'https://table-des-doubles.vercel.app',
-  editeur: '[À COMPLÉTER : prénom NOM]', statut: 'Entrepreneur individuel (micro-entreprise)',
-  siret: '[À COMPLÉTER : n° SIRET]', adresse: '[À COMPLÉTER : adresse postale]',
-  email: '[À COMPLÉTER : e-mail de contact]', directeur: '[À COMPLÉTER : prénom NOM]',
+  editeur: 'Alexandre Woirin', statut: 'Entrepreneur individuel (micro-entreprise)',
+  siret: '106 507 239 00015', adresse: '36 rue Scheffer, 75016 Paris',
+  email: '[À COMPLÉTER : e-mail dédié de l\'appli]', directeur: 'Alexandre Woirin',
   mediateur: '[À COMPLÉTER : nom et site du médiateur de la consommation]',
-  maj: '29 septembre 2026'
+  maj: '1er octobre 2026'
 };
 const L = LEGAL;
 

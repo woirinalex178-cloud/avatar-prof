@@ -15,7 +15,7 @@
   - Vue `public_profiles` : rating, reviews_count, verified, **passionne** (≥100 cartes ou 1 extension à 50 %), **filleuls** (actifs).
   - **Parrainage** : `profiles.ref_code` / `referred_by` / `free_trades` (3 par défaut). RPC `apply_referral(code)` (+1 filleul, ≤7 j après inscription). Trigger `profiles_ref` : +1 parrain à la 1re transaction du filleul. `offers_before_insert` consomme un `free_trades` si `trade_fee` > 0. Lien : `/?ref=CODE` (capturé dans localStorage `sc_ref`).
   - Droits : `authenticated` ne peut écrire que pseudo, region, accepted_rules_at (+ id, birthdate à l'insertion).
-  - Cron : sync-cards (1 min), refresh-prices (dim. 3h17), auto-release (h:07), release-payouts (15 min).
+  - Cron : sync-cards (1 min), refresh-prices (**chaque nuit** 3h17), purge-price-history (le 1er du mois), auto-release (h:07), release-payouts (15 min).
   - Edge functions : `sync-cards`, `payments` (checkout/connect/webhook/release, verify_jwt off), `img` (proxy tcgdex).
   - Secrets (dans Supabase uniquement, jamais dans le chat) : STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET, STRIPE_WEBHOOK_SECRET_CONNECT, CRON_SECRET.
 - **Stripe** Connect Express, séquestre (charges et transferts séparés), **mode test**, 2 webhooks.
@@ -26,6 +26,9 @@
 - Offre payée → bouton « 📦 Préparer l'envoi » : adresse, lien Lettre suivie, étiquette imprimable (`printLabel`, A6).
 - `profiles` : avatar (`k:h`, 8 créatures × 8 teintes via `critterSVG`), bio, fav, theme, show_collection, show_badges, badges (sync `rpc set_badges` dans `checkUnlock`). Filtre anti-coordonnées sur pseudo/bio/fav.
 - Page publique `#/membre/<id>` (`public_collection` respecte show_collection). Guide `#/guide` (`guide.js`).
+
+## Cotes (ajout 02/10)
+- Table `price_history` (tcg_id, d, price) remplie par le trigger `cards_price_hist` (cartes EN ≥ 0,50 €, variation ≥ 2 %), qui renseigne aussi `cards.price_prev/price_prev_at` (recopiés par `copy_en_set`). Front : `trend(c)` (▲▼ %) et `sparks()` (courbe 1 an sur la fiche d'annonce).
 
 ## Bordereaux prépayés (ajout 01/10)
 - `addresses.phone` (exigé par les transporteurs). Œil afficher/masquer sur tous les mots de passe (MutationObserver `eyes()`).

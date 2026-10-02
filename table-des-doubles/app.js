@@ -190,7 +190,7 @@ async function home() {
     <div class="panel step"><b>3 · Échange en sécurité</b>Offres, messagerie et paiement dans l'appli. L'argent est bloqué jusqu'à la réception de la carte.</div>
   </div>
   <h2>Les plus grosses cotes</h2>
-  <div class="grid">${top.map(c => `<a class="tile" href="#/table" data-card="${c.id}">${img(c)}<div class="meta"><span class="nm">${esc(nm(c))}</span><span class="v">${eur(c.price_eur)}</span></div></a>`).join('') || '<p class="mut">Catalogue en cours de chargement…</p>'}</div>`;
+  <div class="grid">${top.map(c => `<a class="tile" href="#/table" data-card="${c.id}">${img(c)}<div class="meta"><span class="nm">${esc(nm(c))}</span><span class="v">${eur(c.price_eur)}${trend(c)}</span></div></a>`).join('') || '<p class="mut">Catalogue en cours de chargement…</p>'}</div>`;
 }
 
 function setPicker() {
@@ -227,7 +227,7 @@ async function classeur() {
   <div class="grid">${list.map(c => { const q = S.coll[c.id] || 0; return `<div class="tile ${q ? '' : 'miss'}" data-id="${c.id}">
     <button class="tile" data-tog="${c.id}" aria-label="${esc(nm(c))} : ${q} exemplaire(s)" style="padding:0">${img(c)}</button>
     ${q ? `<span class="qty ${q > 1 ? 'dbl' : ''}">×${q}</span>` : ''}
-    <div class="meta"><span class="nm">${c.local_id} · ${esc(nm(c))}</span><span class="v">${eur(c.price_eur)}</span></div>${jp(c)}
+    <div class="meta"><span class="nm">${c.local_id} · ${esc(nm(c))}</span><span class="v">${eur(c.price_eur)}${trend(c)}</span></div>${jp(c)}
     <div class="stepper"><button data-dq="${c.id}" aria-label="Retirer un">−</button>${q > 1 ? `<button class="put" data-put="${c.id}">Poser</button>` : ''}<button data-iq="${c.id}" aria-label="Ajouter un">+</button></div>
   </div>`; }).join('') || '<div class="empty">Rien ici pour l\'instant.</div>'}</div>`;
 }
@@ -267,10 +267,11 @@ function drawListings() {
 }
 
 function listingModal(l) {
+  setTimeout(sparks, 0);
   const c = l.card, s = S.pseudos[l.user_id] || {}, mine = l.user_id === S.user?.id;
   modal(`<div class="split"><div>${l.photo_path ? `<img class="cimg" src="${photoUrl(l.photo_path)}" alt="Photo du vendeur">` : img(c, true)}${l.photo_path ? `<p class="small mut">Photo du vendeur · <a href="${c.image}/high.webp" target="_blank" rel="noopener">voir la carte officielle</a></p>` : ''}</div>
   <div><p class="mut small">${flag(c.lang)} ${LANGS[c.lang]} · ${esc(setName(S.sets.find(x => x.id === c.set_id)))} · ${c.local_id} · ${esc(c.rarity || '')}</p><h2 style="margin:4px 0 12px">${esc(nm(c))}</h2>${jp(c)}
-  <dl class="kv"><dt>Prix</dt><dd>${l.price ? eur(l.price) : 'Échange uniquement'}</dd><dt>Cote (tendance)</dt><dd>${eur(c.price_eur)}</dd><dt>État</dt><dd><span class="pill p-${l.condition}">${l.condition}</span> ${COND[l.condition][0]}</dd><dt>Échange</dt><dd>${l.trade_ok ? 'accepté' : 'non'}</dd><dt>Vendeur</dt><dd>${who(l.user_id, s)} · ${stars(s)} · ${s.trades_done || 0} transaction(s)${s.verified ? ' · ✔ identité vérifiée' : ''}${s.passionne ? '<span class="badge-coll">🏅 Collectionneur passionné</span>' : ''} · ${esc(s.region || '')}</dd></dl>
+  <dl class="kv"><dt>Prix</dt><dd>${l.price ? eur(l.price) : 'Échange uniquement'}</dd><dt>Cote Cardmarket</dt><dd>${eur(c.price_eur)}${trend(c)}${c.price_updated ? ` <span class="small mut">du ${new Date(c.price_updated).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })}</span>` : ''}<div class="spark" data-spark="${esc(c.tcg_id || '')}"></div></dd><dt>État</dt><dd><span class="pill p-${l.condition}">${l.condition}</span> ${COND[l.condition][0]}</dd><dt>Échange</dt><dd>${l.trade_ok ? 'accepté' : 'non'}</dd><dt>Vendeur</dt><dd>${who(l.user_id, s)} · ${stars(s)} · ${s.trades_done || 0} transaction(s)${s.verified ? ' · ✔ identité vérifiée' : ''}${s.passionne ? '<span class="badge-coll">🏅 Collectionneur passionné</span>' : ''} · ${esc(s.region || '')}</dd></dl>
   ${l.note ? `<p class="panel small" style="margin-top:12px">${esc(l.note)}</p>` : ''}
   ${l.auth_score != null ? `<div class="panel small" style="margin-top:10px">${authBadge(l)} <b>Contrôle photo d'authenticité : ${l.auth_score}/100</b> — ${esc(l.auth_report?.meta?.verdict || '')} (fiabilité ${esc(l.auth_report?.meta?.confidence || '?')}). <span class="mut">Indicatif, tu pourras refaire le contrôle à la réception.</span></div>` : ''}
   ${l.photo_path && l.verify_code ? `<p class="small mut">Code de vérification attendu sur la photo : <b class="mono">${esc(l.verify_code)}</b>. S'il n'y est pas, signale l'annonce.</p>` : ''}
@@ -798,3 +799,22 @@ function eyes(root = document) {
   });
 }
 new MutationObserver(() => eyes()).observe(document.body, { childList: true, subtree: true }); eyes();
+
+// ---------- tendance des cotes ----------
+function trend(c) {
+  if (!c?.price_prev || !c.price_eur) return '';
+  const d = (c.price_eur - c.price_prev) / c.price_prev; if (Math.abs(d) < .02) return '';
+  return ` <span class="tr ${d > 0 ? 'up' : 'dn'}" title="Avant : ${eur(c.price_prev)}">${d > 0 ? '▲' : '▼'}${Math.abs(Math.round(d * 100))}%</span>`;
+}
+async function sparks() {
+  for (const el of document.querySelectorAll('.spark[data-spark]:not([data-done])')) {
+    el.dataset.done = 1; if (!el.dataset.spark) continue;
+    const since = new Date(Date.now() - 365 * 864e5).toISOString().slice(0, 10);
+    const { data } = await sb.from('price_history').select('d,price').eq('tcg_id', el.dataset.spark).gte('d', since).order('d');
+    if (!data || data.length < 2) { el.innerHTML = '<span class="small mut">Historique en construction : la courbe apparaîtra dans quelques jours.</span>'; continue; }
+    const v = data.map(r => +r.price), mn = Math.min(...v), mx = Math.max(...v), W = 220, H = 48, t0 = +new Date(data[0].d), t1 = +new Date(data.at(-1).d) || t0 + 1;
+    const pts = data.map(r => [((+new Date(r.d) - t0) / (t1 - t0 || 1)) * W, H - 4 - ((+r.price - mn) / (mx - mn || 1)) * (H - 8)]);
+    const up = v.at(-1) >= v[0];
+    el.innerHTML = `<svg viewBox="0 0 ${W} ${H}" class="${up ? 'up' : 'dn'}"><polyline points="${pts.map(p => p.map(n => n.toFixed(1)).join(',')).join(' ')}"/></svg><span class="small mut">min ${eur(mn)} · max ${eur(mx)} · ${data.length} relevés</span>`;
+  }
+}

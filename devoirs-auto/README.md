@@ -13,7 +13,11 @@ Devoirs de Céleste → entraînement adapté, **automatiquement**. Coût : **0 
 2. **📷 Photo du cahier papier** : Céleste photographie sa page, l'IA lit les devoirs.
 3. **✏️ Texte libre** : « pour jeudi apprendre les fractions, évaluation vendredi… » — l'IA découpe en devoirs. Sert aussi à préciser une photo pas claire.
 
-Chaque nouveau devoir est préparé tout seul. Scores gardés sur l'appareil.
+4. **📎 Fichier** : image, PDF ou texte (ex. une capture d'écran envoyée par une autre maman).
+
+Chaque nouveau devoir est préparé tout seul. Étoiles ⭐, série de jours 🔥, trophées et confettis pour motiver.
+
+**Tous les appareils** : même code famille = mêmes devoirs et scores sur téléphone, tablette, ordi (sauvegarde Supabase gratuite, fusion automatique).
 
 ## Mise en ligne (~10 min)
 1. Clé IA gratuite : https://aistudio.google.com/apikey

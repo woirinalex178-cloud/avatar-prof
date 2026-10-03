@@ -4,54 +4,69 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Mes devoirs malins</title>
-<meta name="theme-color" content="#5b4bdb">
+<meta name="theme-color" content="#6d5dfc">
 <link rel="manifest" href="manifest.json"><link rel="icon" href="icon.svg">
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600&family=Nunito:wght@400;600;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Nunito:wght@400;600;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
 <header class="top">
-  <span class="logo">Mes devoirs <b>malins</b></span>
-  <button id="sync" class="ghost" title="Relire ONE">↻</button>
+  <span class="logo">🦉 Devoirs <b>malins</b></span>
+  <div class="stats">
+    <span class="pill" title="Étoiles gagnées">⭐ <b id="stars">0</b></span>
+    <span class="pill" title="Jours d'entraînement d'affilée">🔥 <b id="streak">0</b></span>
+    <span id="cloud" class="pill cloud" title="Sauvegarde entre appareils">☁️</span>
+  </div>
 </header>
 
 <main class="wrap">
   <!-- Code famille -->
   <section id="v-pin" hidden>
-    <h1>Bonjour Céleste 👋</h1>
-    <p class="mut">Entre le code famille.</p>
-    <form id="f-pin" class="row"><input id="pin" inputmode="numeric" autocomplete="off" placeholder="Code" required><button class="btn">Entrer</button></form>
+    <div class="owl-big">🦉</div>
+    <h1>Bonjour Céleste !</h1>
+    <p class="mut">Entre le code famille. Le même code sur chaque téléphone ou tablette = les mêmes devoirs partout.</p>
+    <form id="f-pin" class="row"><input id="pin" inputmode="numeric" autocomplete="off" placeholder="Code" required><button class="btn">C'est parti !</button></form>
   </section>
 
   <!-- Liste des devoirs -->
   <section id="v-home" hidden>
-    <h1>Mes devoirs</h1>
-    <p id="status" class="mut small" aria-live="polite"></p>
-    <label class="hero">
-      <span class="hero-ico">📷</span>
-      <span><b>Photo du cahier de textes</b><small>Touche ici pour prendre la photo</small></span>
-      <input id="photo" type="file" accept="image/*" capture="environment" hidden>
-    </label>
+    <div class="bubble-row"><span class="owl">🦉</span><p id="tip" class="bubble"></p></div>
+    <p id="status" class="status" aria-live="polite" hidden></p>
+
+    <div class="adds">
+      <label class="add add-photo">
+        <span class="add-ico">📷</span><b>Photo</b><small>du cahier de textes</small>
+        <input id="photo" type="file" accept="image/*" capture="environment" hidden>
+      </label>
+      <label class="add add-file">
+        <span class="add-ico">📎</span><b>Fichier</b><small>image, PDF, texte</small>
+        <input id="file" type="file" accept="image/*,application/pdf,.pdf,text/plain,.txt" hidden>
+      </label>
+    </div>
+
     <form id="f-txt" class="card">
       <label for="txt"><b>✏️ Ou dis-le avec tes mots</b> <span class="small mut">(aussi pour préciser une photo pas claire)</span></label>
       <textarea id="txt" rows="3" placeholder="Ex : pour jeudi apprendre la leçon sur les fractions, évaluation vendredi en histoire sur Louis XIV, exercices 3 et 4 page 52"></textarea>
       <button class="btn">Ajouter ces devoirs</button>
     </form>
+
+    <h2>Mes missions</h2>
     <ul id="list" class="list"></ul>
-    <p id="empty" class="mut" hidden>Aucun devoir à venir. Prends en photo ton cahier de textes 📷</p>
+    <div id="empty" class="empty" hidden><span>🎒</span><p>Aucun devoir à venir.<br>Prends ton cahier de textes en photo !</p></div>
   </section>
 
   <!-- Entraînement -->
   <section id="v-train" hidden>
-    <button id="back" class="ghost">← Retour</button>
+    <button id="back" class="ghost">← Mes missions</button>
     <p id="t-kind" class="tag"></p>
     <h1 id="t-title"></h1>
-    <details id="t-memo" class="card memo" open><summary>📌 À retenir</summary><ul></ul></details>
-    <div id="t-q" class="card"></div>
+    <details id="t-memo" class="card memo" open><summary>📌 À retenir avant de commencer</summary><ul></ul></details>
+    <div id="t-q" class="card qcard"></div>
     <div id="t-end" class="card end" hidden></div>
   </section>
 </main>
+<canvas id="confetti" aria-hidden="true"></canvas>
 <script src="app.js"></script>
 </body>
 </html>

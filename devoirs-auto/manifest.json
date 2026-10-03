@@ -1,3 +1,3 @@
 { "name": "Mes devoirs malins", "short_name": "Devoirs", "start_url": "/", "display": "standalone",
-  "background_color": "#f6f4ff", "theme_color": "#5b4bdb",
+  "background_color": "#f6f4ff", "theme_color": "#6d5dfc",
   "icons": [{ "src": "icon.svg", "sizes": "any", "type": "image/svg+xml" }] }

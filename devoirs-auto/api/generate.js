@@ -1,11 +1,11 @@
-// POST { action: 'read', image?, texte? } -> lit la photo du cahier et/ou le texte libre
+// POST { action: 'read', image?, texte? } -> lit la photo / le PDF (data URL) et/ou le texte libre
 // POST { action: 'make', devoir } -> fabrique l'entraînement adapté
 import { checkPin, gemini } from './_lib.js';
 
 const NIVEAU = 'CM2 (programme officiel français, cycle 3)';
 
-const READ = `Tu reçois les devoirs d'une élève de ${NIVEAU} : une photo de son cahier de textes et/ou un texte écrit par elle ou ses parents.
-Le texte est prioritaire : il précise ou corrige la photo. Extrais chaque devoir séparément, reformulé clairement. Date du jour : {TODAY} ({JOUR}). Si une date est "lundi", "demain"... convertis en AAAA-MM-JJ (le prochain jour correspondant).
+const READ = `Tu reçois les devoirs d'une élève de ${NIVEAU} : une photo ou un document (PDF) de son cahier de textes et/ou un texte écrit par elle ou ses parents.
+Le texte est prioritaire : il précise ou corrige la photo ou le document. Extrais chaque devoir séparément, reformulé clairement. Date du jour : {TODAY} ({JOUR}). Si une date est "lundi", "demain"... convertis en AAAA-MM-JJ (le prochain jour correspondant).
 Réponds en JSON : {"devoirs":[{"matiere":"","consigne":"consigne claire et complète","pour":"AAAA-MM-JJ ou vide"}]}`;
 
 const MAKE = `Tu es un professeur des écoles bienveillant. Élève : Céleste, ${NIVEAU}.

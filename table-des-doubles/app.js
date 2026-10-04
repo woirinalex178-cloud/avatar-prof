@@ -154,7 +154,13 @@ function legal() {
   if (sub) document.getElementById('lg-' + sub)?.scrollIntoView();
 }
 const routes = { '': home, trophees, legal, classeur, table, offres, forum, compte, regles, guide, membre };
-function guide() { view.innerHTML = renderGuide(); }
+function guide() {
+  const k = location.hash.split('/')[2]; view.innerHTML = renderGuide();
+  const el = k && document.getElementById('g-' + k); if (!el) return;
+  if (el.tagName === 'DETAILS') el.open = true; el.classList.add('flash'); setTimeout(() => el.scrollIntoView({ behavior: 'smooth', block: 'center' }), 60);
+}
+// lien vers une étape du guide, affiché au bon moment des transactions
+const gtip = (k, t) => `<a class="gtip" href="#/guide/${k}">📖 ${t}</a>`;
 async function route() {
   const r = location.hash.replace(/^#\/?/, '').split('/')[0];
   document.querySelectorAll('#nav a').forEach(a => a.classList.toggle('on', a.dataset.r === r));
@@ -174,7 +180,7 @@ async function home() {
   <section class="hero">
     <div><h1>Par des collectionneurs,<br>pour des <span style="color:var(--gold)">collectionneurs</span>.</h1>
     <p class="lead">Coche les cartes que tu possèdes, suis la cote de ta collection, puis pose tes doubles sur la table pour les échanger ou les vendre en toute sécurité.</p>
-    <div class="seg"><a class="btn" href="#/classeur">Remplir mon classeur</a><a class="btn ghost" href="#/table">Voir la table</a><button class="btn ghost" data-scan>📷 Scanner / 🔍 Authentifier</button></div>
+    <div class="seg"><a class="btn" href="#/classeur">Remplir mon classeur</a><a class="btn ghost" href="#/table">Voir la table</a><a class="btn ghost" href="#/guide">📖 Guide des échanges</a><button class="btn ghost" data-scan>📷 Scanner / 🔍 Authentifier</button></div>
     <div class="stats"><div><b>${nbCards}</b><span class="mut small">cartes · ${S.sets.length} sets · ${Object.keys(LANGS).length} langues</span></div><div><b>${count ?? 0}</b><span class="mut small">doubles sur la table</span></div><div><b>0 %</b><span class="mut small">de frais vendeur</span></div></div></div>
     <div class="fan">${top.map((c, i) => `<img src="${c.image}/low.webp" alt="${esc(nm(c))}" style="--r:${(i - 2) * 11}deg">`).join('')}</div>
   </section>
@@ -287,6 +293,7 @@ async function tradeForm(l) {
   <label class="f">Complément en € <input type="number" id="cash" min="0" step="1" value="0" inputmode="numeric"></label>
   <div class="bal"><i id="bi"></i></div><p class="small" id="bs"></p>
   <p class="small mut">Échange carte contre carte : gratuit pendant la bêta. Si tu ajoutes de l'argent, la protection acheteur s'applique sur ce montant.</p>
+  ${gtip('protocole', 'Comment se passe un échange ? (1 min)')}
   <button class="btn" id="sendoffer">Envoyer l'offre</button><p class="err" id="oerr"></p></div>`;
   const calc = () => { const ids = [...$('#ofr').querySelectorAll('input[type=checkbox]:checked')], v = ids.reduce((a, i) => a + +i.dataset.v, 0) + (+$('#cash').value || 0), r = target ? v / target : 1;
     $('#bi').style.width = Math.min(100, r * 100) + '%'; $('#bs').innerHTML = `Valeur proposée <b class="mono">${eur(v)}</b> pour ${eur(target)} · ${r >= .95 ? '<span class="dn">offre équilibrée</span>' : '<span class="up">risque de refus</span>'}`;
@@ -387,8 +394,11 @@ async function offres() {
   view.innerHTML = `<h2>Mes offres</h2><div class="seg" id="otab" style="margin-bottom:16px"><button data-ot="in" aria-pressed="${tab === 'in'}">Reçues</button><button data-ot="out" aria-pressed="${tab === 'out'}">Envoyées</button></div>
   ${list.map(o => offerCard(o, X)).join('') || '<div class="empty">Aucune offre ici pour le moment.</div>'}`;
   remember(list.map(o => o.listing.card)); list.forEach(o => loadChat(o.id)); fillShips();
+  let seen = true; try { seen = !!localStorage.getItem('sc_gseen'); localStorage.setItem('sc_gseen', '1'); } catch { }
+  if (list.length && !seen) modal(`<h2 style="margin:0 0 8px">📖 Première transaction ?</h2><p>En 1 minute : les 8 étapes d'un échange, le paiement bloqué et comment bien emballer ta carte.</p><div class="acts"><a class="btn" href="#/guide" data-close>Lire le guide</a><button class="btn ghost" data-close>Plus tard</button></div>`);
   $('#offdot').hidden = true;
 }
+const GT = { pending: ['protocole', 'Les étapes d\'un échange'], accepted: ['paiement', 'Paiement bloqué : comment ça marche ?'], paid: ['emballer', 'Bien emballer ta carte'], disputed: ['litige', 'Comment se passe un litige ?'] };
 function offerCard(o, X) {
   const seller = o.seller_id === S.user.id, other = S.pseudos[seller ? o.buyer_id : o.seller_id]?.pseudo || '?', c = o.listing.card, st = stepOf(o);
   const gives = [...o.offered_listing_ids.map(id => X[id] ? `${esc(nm(X[id].card))} (${X[id].condition})` : 'carte'), o.cash ? eur(o.cash) : ''].filter(Boolean).join(' + ');
@@ -411,7 +421,7 @@ function offerCard(o, X) {
     ${labels[o.status] ? `<p class="small"><span class="pill p-PL">${o.status}</span> ${labels[o.status]}</p>` : `<div class="track">${STEPS.map((s, i) => `<span class="${i < st ? 'done' : i === st ? 'now' : ''}">${s}</span>`).join('')}</div>`}
     ${o.seller_tracking ? `<p class="small mut">Suivi vendeur : <span class="mono">${esc(o.seller_tracking)}</span></p>` : ''}${o.buyer_tracking ? `<p class="small mut">Suivi acheteur : <span class="mono">${esc(o.buyer_tracking)}</span></p>` : ''}
     ${o.status === 'paid' && ((seller && !o.seller_received) || (!seller && needB)) ? `<div class="shipbox" data-shipo="${o.id}" data-shipped="${(seller ? o.seller_shipped : o.buyer_shipped) ? 1 : 0}"></div>` : ''}
-    <div class="acts">${A.join('')}</div>
+    ${GT[o.status] ? gtip(...GT[o.status]) : ''}<div class="acts">${A.join('')}</div>
     ${o.status === 'completed' && !S.reviewed?.has(o.id) ? `<form class="chatf" data-review="${o.id}" data-target="${seller ? o.buyer_id : o.seller_id}" style="margin-top:10px"><select aria-label="Note" style="width:auto">${[5, 4, 3, 2, 1].map(n => `<option value="${n}">${'★'.repeat(n)}</option>`).join('')}</select><input placeholder="Avis sur ${esc(other)} (optionnel)" maxlength="300"><button class="btn sm">Noter</button></form>` : ''}
     <div class="chat"><div class="msgs" id="m-${o.id}"></div><form class="chatf" data-chat="${o.id}"><input placeholder="Message (pas de coordonnées)" maxlength="500" aria-label="Message"><button class="btn sm">Envoyer</button></form><p class="err" id="e-${o.id}"></p></div>
   </div></div>`;
@@ -735,6 +745,7 @@ function buyForm(l) {
     <p class="small" id="relayline" style="margin:8px 0 0"></p>
     <dl class="kv" style="margin-top:12px"><dt>Carte</dt><dd>${eur(l.price)}</dd><dt>Protection acheteur</dt><dd>${eur(f)}</dd><dt>Livraison</dt><dd id="shp"></dd><dt><b>Total</b></dt><dd><b id="tot"></b></dd></dl>
     <p class="small mut">Le vendeur accepte d'abord. Tu paies ensuite : l'argent reste bloqué jusqu'à ce que tu confirmes la réception. Le bordereau est généré pour le vendeur, rien à faire de ton côté.</p>
+    ${gtip('paiement', 'Paiement bloqué, livraison, réception : comment ça marche ?')}
     <button class="btn" id="cbuy">Confirmer l'offre d'achat</button><p class="err" id="berr"></p></div>`;
   const upd = async () => { const m = $('#ofr input[name=shm]:checked').value, p = SHIP().find(x => x[0] === m)[3];
     $('#shp').textContent = p ? eur(p) : '—'; $('#tot').textContent = eur(l.price + f + p);
@@ -769,11 +780,11 @@ async function fillShips() {
   for (const b of boxes) {
     const x = by[b.dataset.shipo], oid = b.dataset.shipo;
     if (x?.label_path) b.innerHTML = `<div class="shipok"><button class="btn" data-dl="${x.id}">📄 Télécharger mon bordereau</button><span class="small">Suivi : <span class="mono">${esc(x.tracking)}</span>${x.provider === 'test' ? ' <span class="pill p-GD">test</span>' : ''}</span></div>
-      <div class="track">${TR.map((t, i) => `<span class="${i <= idx[x.status] ? 'done' : ''}">${t}</span>`).join('')}</div><p class="small mut">Emballe la carte (sleeve → toploader → cartons), colle le bordereau et dépose le colis. <a href="#/guide">Guide</a></p>`;
+      <div class="track">${TR.map((t, i) => `<span class="${i <= idx[x.status] ? 'done' : ''}">${t}</span>`).join('')}</div><p class="small mut">Emballe la carte (sleeve → toploader → cartons), colle le bordereau et dépose le colis.</p>${gtip('emballer', 'Guide d\'emballage illustré')}`;
     else if (!x && b.dataset.shipped === '1') b.remove();
     else if (x?.paid) b.innerHTML = `<button class="btn" data-dl="${x.id}">📄 Générer mon bordereau</button> <span class="small mut">${x.mode === 'relay' ? 'Point relais' : 'Colissimo'} · payé</span>`;
     else if (x) b.innerHTML = `<button class="btn" data-paylbl="${x.id}">Payer mon bordereau (${eur(x.price)})</button> <span class="small mut">${x.mode === 'relay' ? '📍 Point relais' : '🏠 Colissimo'}</span>`;
-    else b.innerHTML = `<p class="small" style="margin:0 0 6px"><b>📦 Ton envoi</b> : choisis comment expédier.</p><div class="acts">${SHIP().filter(s => s[0] !== 'manual').map(([k, i, n, p]) => `<button class="btn sm" data-ordlbl="${oid}:${k}">${i} ${n} · ${eur(p)}</button>`).join('')}<button class="btn sm ghost" data-prep="${oid}">✉️ Je m'en occupe</button></div>`;
+    else b.innerHTML = `<p class="small" style="margin:0 0 6px"><b>📦 Ton envoi</b> : choisis comment expédier.</p><div class="acts">${SHIP().filter(s => s[0] !== 'manual').map(([k, i, n, p]) => `<button class="btn sm" data-ordlbl="${oid}:${k}">${i} ${n} · ${eur(p)}</button>`).join('')}<button class="btn sm ghost" data-prep="${oid}">✉️ Je m'en occupe</button></div>${gtip('envoi', 'Quel envoi choisir ?')}`;
   }
 }
 async function payLabel(id) {

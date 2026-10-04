@@ -7,6 +7,7 @@
 - [ ] **Accès de ton frère** : GitHub → Collaborators + Supabase → Team
 - [ ] **CM2C** : n° d'adhérent à afficher ? (en attente)
 - [ ] **Ouverture** : Stripe en mode réel (SIRET, IBAN) → puis `BOXTAL_LIVE=1` + carte enregistrée chez Boxtal (étape 5 ter)
+- [ ] **Boxtal, envoi sans imprimante** : demander au support (aide.boxtal.com ou chat) : « Puis-je obtenir via l'API v3 une étiquette **QR code / sans impression** pour Mondial Relay et Chronopost Shop2Shop ? Quel `shippingOfferCode` ou quel type de document ? » → transmets-moi la réponse, je l'affiche dans l'appli.
 - ✅ Inscriptions, Stripe test, Boxtal, textes légaux, médiateur
 
 

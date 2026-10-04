@@ -593,7 +593,7 @@ function deleteAccount() {
 
 // ---------- événements ----------
 document.addEventListener('click', async e => {
-  const t = e.target.closest('[data-set],[data-f],[data-tog],[data-iq],[data-dq],[data-put],[data-l],[data-buy],[data-trade],[data-rmlist],[data-report],[data-act],[data-ot],[data-am],[data-ts],[data-card],[data-close],[data-delpost],[data-scan],[data-scanadd],[data-connect],[data-auth],[data-export],[data-delacct]');
+  const t = e.target.closest('[data-set],[data-f],[data-tog],[data-iq],[data-dq],[data-put],[data-l],[data-buy],[data-trade],[data-rmlist],[data-report],[data-act],[data-ot],[data-am],[data-ts],[data-card],[data-close],[data-delpost],[data-scan],[data-scanadd],[data-connect],[data-auth],[data-export],[data-delacct],[data-prep],[data-label],[data-dl],[data-paylbl],[data-ordlbl],[data-pickrelay],[data-avk],[data-avh]');
   if (!t) return;
   const d = t.dataset;
   if (d.set) { S.set = d.set; classeur(); }

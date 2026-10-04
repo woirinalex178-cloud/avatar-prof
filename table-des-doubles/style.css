@@ -411,3 +411,6 @@ dialog::backdrop{background:#000a;backdrop-filter:blur(6px)}
 .scanres .sr-acts .qtyrow #sadd{flex:1}
 .scanres .sr-acts>.btn{width:100%}
 .scanres{width:100%;box-sizing:border-box}.scanres #sadd{white-space:nowrap}
+.numpair{display:flex;align-items:center;gap:6px}
+.numpair input{flex:1;min-width:0;text-align:center;font-variant-numeric:tabular-nums}
+.numpair b{font-size:20px;opacity:.7}

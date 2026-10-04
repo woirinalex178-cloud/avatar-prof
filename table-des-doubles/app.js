@@ -356,10 +356,12 @@ async function scanModal(intent = 'add') {
   <div class="cam" id="cam" hidden><video playsinline muted></video><div class="frame" id="frame"><i></i><i></i><i></i><i></i></div><p class="camtip">Carte à plat, dans le cadre, sans reflet</p></div>
   <div class="acts"><button class="btn" id="cap" type="button" hidden>📸 Capturer</button><label class="btn ghost" style="cursor:pointer">🖼️ ${'Choisir une photo'}<input type="file" id="scf" accept="image/*" hidden></label></div>
   <p class="small mut" id="scs" role="status">Cadre la carte en entier : l'appli lit le numéro (ex. 199/165) et la compare aux images officielles.</p><div id="scr"></div>
-  <details id="scman"><summary class="small">✍️ Saisir le numéro à la main</summary><div class="row2"><label class="f">Numéro<input id="scn" placeholder="199/165" inputmode="numeric"></label><label class="f">Nom (optionnel)<input id="scw" placeholder="Dracaufeu"></label></div><button class="btn ghost" id="scgo" type="button">Chercher</button></details></div>`);
+  <details id="scman"><summary class="small">✍️ Saisir le numéro à la main</summary><div class="row2"><label class="f">Numéro (ex. 091/132)<span class="numpair"><input id="scn" placeholder="091" inputmode="numeric" maxlength="7" aria-label="Numéro de la carte"><b>/</b><input id="sct" placeholder="132" inputmode="numeric" maxlength="3" aria-label="Total de la série (optionnel)"></span></label><label class="f">Nom (optionnel)<input id="scw" placeholder="Dracaufeu"></label></div><button class="btn ghost" id="scgo" type="button">Chercher</button></details></div>`);
   $('#scint').onclick = e => { const b = e.target.closest('[data-si]'); if (!b) return; scanState.intent = b.dataset.si; $('#scint').querySelectorAll('button').forEach(x => x.setAttribute('aria-pressed', x === b)); if (scanState.shown) showScan(scanState.shown); };
   $('#scf').onchange = async e => { const f = e.target.files[0]; if (f) analyse(await fileToCard(f)); };
   $('#scgo').onclick = () => manualSearch();
+  $('#scn').oninput = e => { if (/^\d{3}$/.test(e.target.value)) $('#sct').focus(); }; // 3 chiffres : on passe au total
+  $('#scman').onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); manualSearch(); } };
   const cam = await startCam($('#cam video'), $('#frame'));
   if (cam && $('#cam')) { $('#cam').hidden = false; $('#cap').hidden = false; $('#cap').onclick = () => analyse(cam.capture()); }
 }
@@ -368,7 +370,7 @@ async function analyse(cv) {
   $('#scr').innerHTML = `<div class="scanwait"><img src="${URL.createObjectURL(scanState.photo)}" alt=""><span>Lecture de la carte…<br><small class="mut">la première fois peut prendre 10 secondes</small></span></div>`; $('#scs').textContent = '';
   try {
     const { nums, words } = await readCard(cv, scanH());
-    if (nums[0]) { $('#scn').value = `${nums[0].num}/${nums[0].total}`; Game.track('scan'); }
+    if (nums[0]) { $('#scn').value = nums[0].num; $('#sct').value = nums[0].total; Game.track('scan'); }
     let found = [];
     for (const n of nums) { const { data } = await sb.rpc('scan_match', { p_num: n.num, p_total: n.total, p_words: words, p_lang: S.lang }); found.push(...(data || [])); }
     // le nom lu sert de filet si un chiffre a été mal lu (8 au lieu de 9…) : la comparaison visuelle tranche
@@ -380,7 +382,7 @@ async function analyse(cv) {
   } catch (err) { $('#scr').innerHTML = ''; $('#scs').textContent = err.message; }
 }
 async function manualSearch() {
-  const v = $('#scn').value.match(/(\d{1,3})\s*(?:\/\s*(\d{2,3}))?/), words = $('#scw').value.split(/\s+/).filter(w => w.length >= 4);
+  const v = ($('#scn').value + ' ' + $('#sct').value).match(/(\d{1,3})\D*(\d{2,3})?/), words = $('#scw').value.split(/\s+/).filter(w => w.length >= 4);
   if (!v && !words.length) return $('#scs').textContent = 'Saisis le numéro (ex. 199/165) ou le nom.';
   const { data, error } = await sb.rpc('scan_match', { p_num: v?.[1] || null, p_total: v?.[2] ? +v[2] : null, p_words: words, p_lang: S.lang });
   if (error) return $('#scs').textContent = error.message;

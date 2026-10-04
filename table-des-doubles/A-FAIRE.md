@@ -100,7 +100,7 @@ Stripe sépare « Votre compte » (paiements) et « Comptes connectés » (vende
 ## ÉTAPE 5 — Avant d'ouvrir au public (administratif, gratuit)
 1. **Micro-entreprise** : https://autoentrepreneur.urssaf.fr → **Créer mon auto-entreprise**. Activité : « plateforme de mise en relation, commerce en ligne ». Environ 15 min, puis réception du numéro SIRET sous 1 à 4 semaines.
 2. **Nom libre ?** https://data.inpi.fr → recherche « Table des Doubles » en marques. Si rien d'identique en classes 9/35/42 : OK. (Le dépôt de marque est payant, 190 € : pas obligatoire pour démarrer.)
-3. **Textes légaux** ✅ rédigés et remplis (nom, SIRET, adresse) — reste : le **médiateur** (et plus tard l'e-mail dédié de l'appli) (page « Infos légales » en bas du site). Il te reste à remplir **une seule fois** le haut du fichier `legal.js` (je peux le faire si tu me donnes les infos) :
+3. **Textes légaux** ✅ complets (nom, SIRET, adresse, e-mail, médiateur CM2C). Si ton contrat CM2C donne un n° d'adhérent à afficher, envoie-le-moi (page « Infos légales » en bas du site). Il te reste à remplir **une seule fois** le haut du fichier `legal.js` (je peux le faire si tu me donnes les infos) :
    - ton prénom NOM, ton n° SIRET, ton adresse postale, un e-mail de contact ;
    - un **médiateur de la consommation** (obligatoire dès que tu vends un service à des particuliers ; environ 50 à 150 €/an, ex. CM2C, Medicys) ;
    - conseil : faire relire les textes gratuitement (permanences juridiques de ta mairie, de la CCI ou de l'ordre des avocats).

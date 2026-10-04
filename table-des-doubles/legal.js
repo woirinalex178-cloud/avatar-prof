@@ -5,7 +5,7 @@ export const LEGAL = {
   editeur: 'Alexandre Woirin', statut: 'Entrepreneur individuel (micro-entreprise)',
   siret: '106 507 239 00015', adresse: '36 rue Sheffer, 75016 Paris',
   email: 'contact@celesteroom.com', directeur: 'Alexandre Woirin',
-  mediateur: '[À COMPLÉTER : nom et site du médiateur de la consommation]',
+  mediateur: 'CM2C (Centre de la Médiation de la Consommation de Conciliateurs de Justice), 14 rue Saint-Jean, 75017 Paris — saisine en ligne sur www.cm2c.net',
   maj: '1er octobre 2026'
 };
 const L = LEGAL;

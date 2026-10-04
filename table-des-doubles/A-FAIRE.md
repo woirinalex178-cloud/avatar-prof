@@ -1,5 +1,15 @@
 # À faire (toi) — étape par étape
 
+## Où en es-tu ? (au 04/10)
+- [ ] **Test à deux** du nouveau parcours avec bordereaux (étape 2)
+- [ ] **Scores d'authenticité** vraie / fausse carte (étape 4)
+- [ ] **INPI** : vérifier que « Sharing Cards » est libre (étape 5.2)
+- [ ] **Accès de ton frère** : GitHub → Collaborators + Supabase → Team
+- [ ] **CM2C** : n° d'adhérent à afficher ? (en attente)
+- [ ] **Ouverture** : Stripe en mode réel (SIRET, IBAN) → puis `BOXTAL_LIVE=1` + carte enregistrée chez Boxtal (étape 5 ter)
+- ✅ Inscriptions, Stripe test, Boxtal, textes légaux, médiateur
+
+
 Environ 1 h 30 pour les étapes 1 à 3. Tout est gratuit.
 
 
@@ -29,18 +39,16 @@ Le service d'e-mails fourni par défaut n'envoie que 2 à 3 mails par heure : le
 
 ---
 
-## ÉTAPE 2 — Tester l'appli à deux (20 min)
-1. Ton frère crée son compte (étape 1.c) sur son téléphone.
-2. Chacun ajoute quelques cartes au classeur, dont une en double (bouton **+**).
-3. Toi : sur la carte en double, bouton **Poser**, choisis l'état et un prix de moins de 50 € (la photo n'est pas obligatoire sous 50 €).
-4. Lui : **La table** → ta carte → **Acheter**.
-5. Toi : **Offres** → **Reçues** → **Accepter**.
-6. Lui : **Payer (mode test)**. Aucun argent réel n'est débité.
-7. Toi : **J'ai expédié**, puis mets un faux numéro de suivi (ex. `TEST12345678`).
-8. Lui : **Vérifier la carte reçue** (test d'authenticité), puis **J'ai reçu la carte**.
-9. Chacun laisse un avis. Regardez aussi vos trophées (🏆).
-10. Essayez d'écrire un numéro de téléphone ou « snap » dans le chat : ça doit être bloqué.
-11. Note tout ce qui coince et envoie-le-moi.
+## ÉTAPE 2 — Tester l'appli à deux (30 min) — À REFAIRE avec les bordereaux
+1. Chacun : **Compte** → *Mon adresse d'expédition* : adresse + **téléphone** → Enregistrer, puis **📍 Mon point relais → Choisir** (vrais points Mondial Relay).
+2. Chacun ajoute quelques cartes au classeur, dont une en ×2 (bouton **+**).
+3. Toi : sur le double, **Poser** (état, prix < 50 €).
+4. Lui : **La table** → ta carte → **Acheter** → livraison **📍 Point relais** → Confirmer.
+5. Toi : **Offres → Reçues → Accepter**. Lui : **Payer** avec la carte test `4242 4242 4242 4242`.
+6. Toi : **📄 Générer mon bordereau** → un PDF d'essai (marqué TEST) se télécharge, le suivi se remplit seul.
+7. Lui : **Vérifier la carte reçue** → **J'ai reçu la carte**. Chacun laisse un avis.
+8. Refaites la même chose en **échange** (bouton *Proposer un échange*) : chacun paie et télécharge son propre bordereau.
+9. Note tout ce qui coince (capture d'écran) et envoie-le-moi.
 
 ---
 
@@ -99,7 +107,7 @@ Stripe sépare « Votre compte » (paiements) et « Comptes connectés » (vende
 
 ## ÉTAPE 5 — Avant d'ouvrir au public (administratif, gratuit)
 1. **Micro-entreprise** : https://autoentrepreneur.urssaf.fr → **Créer mon auto-entreprise**. Activité : « plateforme de mise en relation, commerce en ligne ». Environ 15 min, puis réception du numéro SIRET sous 1 à 4 semaines.
-2. **Nom libre ?** https://data.inpi.fr → recherche « Table des Doubles » en marques. Si rien d'identique en classes 9/35/42 : OK. (Le dépôt de marque est payant, 190 € : pas obligatoire pour démarrer.)
+2. **Nom libre ?** https://data.inpi.fr → recherche « **Sharing Cards** » en marques. Si rien d'identique en classes 9/35/42 : OK. (Le dépôt de marque est payant, 190 € : pas obligatoire pour démarrer.)
 3. **Textes légaux** ✅ complets (nom, SIRET, adresse, e-mail, médiateur CM2C). Si ton contrat CM2C donne un n° d'adhérent à afficher, envoie-le-moi (page « Infos légales » en bas du site). Il te reste à remplir **une seule fois** le haut du fichier `legal.js` (je peux le faire si tu me donnes les infos) :
    - ton prénom NOM, ton n° SIRET, ton adresse postale, un e-mail de contact ;
    - un **médiateur de la consommation** (obligatoire dès que tu vends un service à des particuliers ; environ 50 à 150 €/an, ex. CM2C, Medicys) ;

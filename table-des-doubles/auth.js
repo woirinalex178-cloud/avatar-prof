@@ -7,7 +7,7 @@ import { SUPABASE_URL } from './config.js';
 const W = 252, H = 352; // format 63 x 88 mm
 const clamp = (v, a = 0, b = 100) => Math.max(a, Math.min(b, v));
 
-async function toCanvas(src, w = W, h = H) {
+export async function toCanvas(src, w = W, h = H) {
   const bmp = await createImageBitmap(src);
   const r = w / h, sr = bmp.width / bmp.height;
   let sx = 0, sy = 0, sw = bmp.width, sh = bmp.height;
@@ -30,7 +30,7 @@ function lev(a, b) {
 }
 
 // 1) Couleurs + mise en page : grille 12x16, normalisée (retire l'effet de l'éclairage), corrélation avec l'officielle
-function gridVec(d) {
+export function gridVec(d) {
   const gx = 12, gy = 16, v = [];
   for (let y = 0; y < gy; y++) for (let x = 0; x < gx; x++) {
     let r = 0, g = 0, b = 0, n = 0;
@@ -43,7 +43,7 @@ function gridVec(d) {
   }
   return v;
 }
-const corr = (a, b) => a.reduce((s, x, i) => s + x * b[i], 0) / a.length;
+export const corr = (a, b) => a.reduce((s, x, i) => s + x * b[i], 0) / a.length;
 function satMean(d) { let s = 0, n = 0; for (let i = 0; i < d.length; i += 16) { s += hsv(d[i], d[i + 1], d[i + 2])[1]; n++; } return s / n; }
 function sharp(d) { // variance du laplacien : photo nette ou floue
   const g = new Float32Array(W * H); for (let i = 0; i < W * H; i++) g[i] = lum(d, i * 4);
@@ -116,6 +116,7 @@ export function openAuth(card, H, opts = {}) {
   <button class="btn" id="agogo" disabled>Analyser</button><div id="ares" role="status"></div>
   <p class="small mut">Indicatif : un contrôle photo ne remplace pas une expertise. Pour une carte de plus de 100 €, préfère une carte gradée (PSA, CGC, PCA).</p></div>`);
   H.$('#dbody').onchange = e => { const k = e.target.dataset.k; if (!k) return; files[k] = e.target.files[0]; H.$('#st-' + k).textContent = '✔ Prise'; H.$('#agogo').disabled = !files.recto; };
+  if (opts.recto) { files.recto = opts.recto; H.$('#st-recto').textContent = '✔ Prise'; H.$('#agogo').disabled = false; } // photo déjà prise au scanner
   H.$('#agogo').onclick = async () => {
     const box = H.$('#ares'); H.$('#agogo').disabled = true; box.innerHTML = '<p class="small">Analyse en cours… (10 à 20 secondes)</p>';
     const rep = {};

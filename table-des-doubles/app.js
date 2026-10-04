@@ -1,6 +1,7 @@
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/+esm';
 import { SUPABASE_URL, SUPABASE_KEY } from './config.js';
 import { openAuth } from './auth.js';
+import { startCam, fileToCard, toBlob, readCard, rank } from './scan.js';
 import * as Game from './game.js';
 import { renderLegal } from './legal.js';
 import { playIntro } from './intro.js';
@@ -180,7 +181,7 @@ async function home() {
   <section class="hero">
     <div><h1>Par des collectionneurs,<br>pour des <span style="color:var(--gold)">collectionneurs</span>.</h1>
     <p class="lead">Coche les cartes que tu possèdes, suis la cote de ta collection, puis pose tes doubles sur la table pour les échanger ou les vendre en toute sécurité.</p>
-    <div class="seg"><a class="btn" href="#/classeur">Remplir mon classeur</a><a class="btn ghost" href="#/table">Voir la table</a><a class="btn ghost" href="#/guide">📖 Guide des échanges</a><button class="btn ghost" data-scan>📷 Scanner / 🔍 Authentifier</button></div>
+    <div class="seg"><a class="btn" href="#/classeur">Remplir mon classeur</a><a class="btn ghost" href="#/table">Voir la table</a><a class="btn ghost" href="#/guide">📖 Guide des échanges</a><button class="btn ghost" data-scan>📷 Scanner une carte</button><button class="btn ghost" data-scan="auth">🔍 Authentifier</button></div>
     <div class="stats"><div><b>${nbCards}</b><span class="mut small">cartes · ${S.sets.length} sets · ${Object.keys(LANGS).length} langues</span></div><div><b>${count ?? 0}</b><span class="mut small">doubles sur la table</span></div><div><b>0 %</b><span class="mut small">de frais vendeur</span></div></div></div>
     <div class="fan">${top.map((c, i) => `<img src="${c.image}/low.webp" alt="${esc(nm(c))}" style="--r:${(i - 2) * 11}deg">`).join('')}</div>
   </section>
@@ -345,32 +346,76 @@ async function loadTesseract() {
   if (window.Tesseract) return;
   await new Promise((r, j) => { const sc = document.createElement('script'); sc.src = 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js'; sc.onload = r; sc.onerror = () => j(new Error('Lecture photo indisponible, saisis le numéro.')); document.head.append(sc); });
 }
-function scanModal() {
-  modal(`<div class="form"><h2 style="margin:0">Scanner une carte</h2><p class="small mut" style="margin:0">Carte à plat, bien éclairée, en entier. L'appli lit le numéro en bas (ex. 199/165) et le nom, puis te propose les cartes correspondantes.</p>
-  <label class="btn" style="cursor:pointer">📷 Prendre ou choisir une photo<input type="file" id="scf" accept="image/*" capture="environment" hidden></label>
-  <div class="row2"><label class="f">Ou saisis le numéro<input id="scn" placeholder="199/165" inputmode="numeric"></label><label class="f">Nom (optionnel)<input id="scw" placeholder="Dracaufeu"></label></div>
-  <button class="btn ghost" id="scgo">Chercher</button><p class="small mut" id="scs" role="status"></p><div class="grid" id="scr"></div></div>`);
-  $('#scf').onchange = async e => {
-    const f = e.target.files[0]; if (!f) return; $('#scs').textContent = 'Lecture de la carte… (la première fois peut prendre 10 secondes)';
-    try {
-      await loadTesseract();
-      const { data: { text } } = await Tesseract.recognize(await shrink(f), 'eng');
-      const m = [...text.matchAll(/(\d{1,3})\s*\/\s*(\d{2,3})/g)].pop(), words = (text.match(/[A-Za-zÀ-ÿ-]{4,}/g) || []).slice(0, 15);
-      if (m) { $('#scn').value = `${m[1]}/${m[2]}`; Game.track('scan'); }
-      await scanSearch(words);
-    } catch (err) { $('#scs').textContent = err.message; }
-  };
-  $('#scgo').onclick = () => scanSearch();
+let scanState = {};
+const authH = () => ({ modal, $, esc, nm, sb, toast, shrink, loadTesseract, loggedIn: () => !!S.profile, done: () => { Game.track('auth'); checkUnlock(); } });
+const scanH = () => ({ loadTesseract, totals: () => new Set(S.sets.map(s => +s.total).filter(Boolean)) });
+async function scanModal(intent = 'add') {
+  scanState = { intent, photo: null, cv: null };
+  modal(`<div class="form scan"><h2 style="margin:0">Scanner une carte</h2>
+  <div class="seg" id="scint"><button type="button" data-si="add" aria-pressed="${intent === 'add'}">➕ Identifier / Ajouter</button><button type="button" data-si="auth" aria-pressed="${intent === 'auth'}">🔍 Authentifier</button></div>
+  <div class="cam" id="cam" hidden><video playsinline muted></video><div class="frame" id="frame"><i></i><i></i><i></i><i></i></div><p class="camtip">Carte à plat, dans le cadre, sans reflet</p></div>
+  <div class="acts"><button class="btn" id="cap" type="button" hidden>📸 Capturer</button><label class="btn ghost" style="cursor:pointer">🖼️ ${'Choisir une photo'}<input type="file" id="scf" accept="image/*" hidden></label></div>
+  <p class="small mut" id="scs" role="status">Cadre la carte en entier : l'appli lit le numéro (ex. 199/165) et la compare aux images officielles.</p><div id="scr"></div>
+  <details id="scman"><summary class="small">✍️ Saisir le numéro à la main</summary><div class="row2"><label class="f">Numéro<input id="scn" placeholder="199/165" inputmode="numeric"></label><label class="f">Nom (optionnel)<input id="scw" placeholder="Dracaufeu"></label></div><button class="btn ghost" id="scgo" type="button">Chercher</button></details></div>`);
+  $('#scint').onclick = e => { const b = e.target.closest('[data-si]'); if (!b) return; scanState.intent = b.dataset.si; $('#scint').querySelectorAll('button').forEach(x => x.setAttribute('aria-pressed', x === b)); if (scanState.shown) showScan(scanState.shown); };
+  $('#scf').onchange = async e => { const f = e.target.files[0]; if (f) analyse(await fileToCard(f)); };
+  $('#scgo').onclick = () => manualSearch();
+  const cam = await startCam($('#cam video'), $('#frame'));
+  if (cam && $('#cam')) { $('#cam').hidden = false; $('#cap').hidden = false; $('#cap').onclick = () => analyse(cam.capture()); }
 }
-async function scanSearch(extra = []) {
-  const v = $('#scn').value.match(/(\d{1,3})\s*(?:\/\s*(\d{2,3}))?/);
-  if (!v) return $('#scs').textContent = 'Numéro non trouvé sur la photo : saisis-le (ex. 199/165).';
-  const words = [...extra, ...$('#scw').value.split(/\s+/)].filter(w => w.length >= 4);
-  const { data, error } = await sb.rpc('scan_match', { p_num: v[1], p_total: v[2] ? +v[2] : null, p_words: words, p_lang: S.lang });
+async function analyse(cv) {
+  scanState.cv = cv; scanState.photo = await toBlob(cv); scanState.shown = null;
+  $('#scr').innerHTML = `<div class="scanwait"><img src="${URL.createObjectURL(scanState.photo)}" alt=""><span>Lecture de la carte…<br><small class="mut">la première fois peut prendre 10 secondes</small></span></div>`; $('#scs').textContent = '';
+  try {
+    const { nums, words } = await readCard(cv, scanH());
+    if (nums[0]) { $('#scn').value = `${nums[0].num}/${nums[0].total}`; Game.track('scan'); }
+    let found = [];
+    for (const n of nums) { const { data } = await sb.rpc('scan_match', { p_num: n.num, p_total: n.total, p_words: words, p_lang: S.lang }); found.push(...(data || [])); }
+    // le nom lu sert de filet si un chiffre a été mal lu (8 au lieu de 9…) : la comparaison visuelle tranche
+    if (words.length) { const { data } = await sb.rpc('scan_match', { p_num: null, p_total: null, p_words: words, p_lang: S.lang }); found.push(...(data || [])); }
+    found = [...new Map(found.map(c => [c.id, c])).values()].slice(0, 16);
+    if (!found.length) { $('#scr').innerHTML = ''; $('#scman').open = true; return $('#scs').innerHTML = '😕 Carte non reconnue. Rapproche-toi pour que le <b>numéro en bas</b> soit net, évite les reflets, ou saisis le numéro ci-dessous.'; }
+    $('#scs').textContent = 'Comparaison avec les images officielles…';
+    showRanked(await rank(found, cv, S.lang));
+  } catch (err) { $('#scr').innerHTML = ''; $('#scs').textContent = err.message; }
+}
+async function manualSearch() {
+  const v = $('#scn').value.match(/(\d{1,3})\s*(?:\/\s*(\d{2,3}))?/), words = $('#scw').value.split(/\s+/).filter(w => w.length >= 4);
+  if (!v && !words.length) return $('#scs').textContent = 'Saisis le numéro (ex. 199/165) ou le nom.';
+  const { data, error } = await sb.rpc('scan_match', { p_num: v?.[1] || null, p_total: v?.[2] ? +v[2] : null, p_words: words, p_lang: S.lang });
   if (error) return $('#scs').textContent = error.message;
-  remember(data);
-  $('#scs').textContent = data.length ? 'Touche la bonne carte pour l\'ajouter à ton classeur, ou « Authentifier » pour vérifier qu\'elle est vraie :' : 'Aucune carte trouvée. Vérifie le numéro.';
-  $('#scr').innerHTML = data.map(c => `<div class="tile"><button class="tile" data-scanadd="${c.id}" title="Ajouter au classeur">${img(c)}<div class="meta"><span class="nm">${flag(c.lang)} ${esc(nm(c))}</span></div><div class="small mut">${esc(c.set_name)} · ${c.local_id}${S.coll[c.id] ? ' · déjà ×' + S.coll[c.id] : ''}</div></button><button class="btn sm ghost" data-auth="${c.id}">🔍 Authentifier</button></div>`).join('');
+  if (!data.length) return $('#scs').textContent = 'Aucune carte trouvée. Vérifie le numéro.';
+  showRanked(scanState.cv ? await rank(data, scanState.cv, S.lang) : { list: data, sure: data.length === 1 });
+}
+function showRanked({ list, sure }) {
+  remember(list); scanState.list = list;
+  if (sure) return showScan(list[0]);
+  $('#scs').textContent = list.length > 1 ? 'Plusieurs cartes possibles : touche la bonne.' : '';
+  $('#scr').innerHTML = `<div class="alts big">${list.map((c, i) => `<button type="button" data-alt="${i}">${img(c)}<small>${flag(c.lang)} ${esc(nm(c))}<br>${esc(c.set_name)} · ${esc(c.local_id)}</small></button>`).join('')}</div>`;
+  $('#scr').onclick = e => { const b = e.target.closest('[data-alt]'); if (b) showScan(list[+b.dataset.alt]); };
+}
+function showScan(c) {
+  scanState.shown = c; scanState.qty = scanState.qty || 1;
+  const add = scanState.intent === 'add', list = scanState.list || [], twins = list.filter(x => x.local_id === c.local_id && x.id !== c.id && x.set_name === c.set_name || (x.image && x.image === c.image && x.id !== c.id));
+  const others = list.filter(x => x !== c && !twins.includes(x));
+  const bAdd = `<div class="qtyrow"><button type="button" class="btn sm ghost" data-q="-1" aria-label="Moins">−</button><b id="sq">${scanState.qty}</b><button type="button" class="btn sm ghost" data-q="1" aria-label="Plus">+</button><button type="button" class="btn${add ? '' : ' ghost'}" id="sadd">➕ Ajouter au classeur</button></div>`;
+  const bAuth = `<button type="button" class="btn${add ? ' ghost' : ''}" id="sauth">🔍 ${add ? 'L\'authentifier aussi' : 'Lancer le contrôle avec cette photo'}</button>`;
+  $('#scs').textContent = '';
+  $('#scr').innerHTML = `<div class="scanres panel"><div class="sr-img">${img(c, true)}</div><div class="sr-txt">
+    <p class="small" style="margin:0"><span class="pill p-NM">✓ Carte reconnue</span></p>
+    <h3>${flag(c.lang)} ${esc(nm(c))}</h3><p class="small mut">${esc(c.set_name)} · n° ${esc(c.local_id)} · cote <b>${eur(c.price_eur)}</b>${S.coll[c.id] ? ` · déjà <b>×${S.coll[c.id]}</b> dans ton classeur` : ''}</p>
+    ${twins.length ? `<p class="small" style="margin:6px 0">Autre langue ? ${twins.map(x => `<button type="button" class="chip" data-tw="${x.id}">${flag(x.lang)}</button>`).join(' ')}</p>` : ''}
+    </div><div class="sr-acts"><p class="small" style="margin:0"><b>C'est bien elle ?</b></p>${add ? bAdd + bAuth : bAuth + bAdd}</div></div>
+    ${others.length ? `<details class="small"><summary>Pas la bonne ? (${others.length} autres)</summary><div class="alts">${others.map(x => `<button type="button" data-tw="${x.id}">${img(x)}<small>${flag(x.lang)} ${esc(nm(x))}<br>${esc(x.set_name)} · ${esc(x.local_id)}</small></button>`).join('')}</div></details>` : ''}`;
+  $('#scr').onclick = async e => {
+    const t = e.target.closest('[data-tw],[data-q],#sadd,#sauth'); if (!t) return;
+    if (t.dataset.tw) return showScan(list.find(x => x.id === t.dataset.tw));
+    if (t.dataset.q) { scanState.qty = Math.max(1, Math.min(20, scanState.qty + +t.dataset.q)); $('#sq').textContent = scanState.qty; return; }
+    if (t.id === 'sadd') { await setQty(c.id, (S.coll[c.id] || 0) + scanState.qty); Game.track('add'); checkUnlock(); if (S.bySet[c.set_id]) S.bySet[c.set_id] = null;
+      toast(`${nm(c)} ajoutée au classeur (×${S.coll[c.id]})`); scanState.qty = 1;
+      $('#scr').insertAdjacentHTML('afterbegin', `<p class="small okline">✅ Ajoutée ! Tu peux scanner la suivante.</p>`); setTimeout(() => showScan(c), 1500); return; }
+    if (t.id === 'sauth') openAuth(c, authH(), { recto: scanState.photo });
+  };
 }
 
 // ---------- offres ----------
@@ -603,7 +648,7 @@ function deleteAccount() {
 
 // ---------- événements ----------
 document.addEventListener('click', async e => {
-  const t = e.target.closest('[data-set],[data-f],[data-tog],[data-iq],[data-dq],[data-put],[data-l],[data-buy],[data-trade],[data-rmlist],[data-report],[data-act],[data-ot],[data-am],[data-ts],[data-card],[data-close],[data-delpost],[data-scan],[data-scanadd],[data-connect],[data-auth],[data-export],[data-delacct],[data-prep],[data-label],[data-dl],[data-paylbl],[data-ordlbl],[data-pickrelay],[data-avk],[data-avh]');
+  const t = e.target.closest('[data-set],[data-f],[data-tog],[data-iq],[data-dq],[data-put],[data-l],[data-buy],[data-trade],[data-rmlist],[data-report],[data-act],[data-ot],[data-am],[data-ts],[data-card],[data-close],[data-delpost],[data-scan],[data-connect],[data-auth],[data-export],[data-delacct],[data-prep],[data-label],[data-dl],[data-paylbl],[data-ordlbl],[data-pickrelay],[data-avk],[data-avh]');
   if (!t) return;
   const d = t.dataset;
   if (d.set) { S.set = d.set; classeur(); }
@@ -631,11 +676,10 @@ document.addEventListener('click', async e => {
   else if (d.ts !== undefined) { S.tset = d.ts || null; document.querySelectorAll('#tset button').forEach(b => b.setAttribute('aria-pressed', b === t)); drawListings(); }
   else if (d.card) { S.tq = S.cards[d.card]?.name || ''; }
   else if ('close' in d) close();
-  else if (d.auth) openAuth(S.cards[d.auth], { modal, $, esc, nm, sb, toast, shrink, loadTesseract, loggedIn: () => !!S.profile, done: () => { Game.track('auth'); checkUnlock(); } }, { listingId: d.lid, offerId: d.oid });
+  else if (d.auth) openAuth(S.cards[d.auth], authH(), { listingId: d.lid, offerId: d.oid });
   else if ('export' in d) exportData();
   else if ('delacct' in d) deleteAccount();
-  else if ('scan' in d) scanModal();
-  else if (d.scanadd) { await setQty(d.scanadd, (S.coll[d.scanadd] || 0) + 1); Game.track('add'); checkUnlock(); toast(`${nm(S.cards[d.scanadd])} ajoutée au classeur (×${S.coll[d.scanadd]})`); await scanSearch(); if (location.hash.startsWith('#/classeur')) { S.bySet[S.cards[d.scanadd].set_id] = null; } }
+  else if ('scan' in d) scanModal(d.scan || 'add');
   else if ('connect' in d) { const { data, error } = await sb.functions.invoke('payments/connect'); if (error || !data?.url) return toast(data?.error || 'Activation des ventes bientôt disponible.', true); location.href = data.url; }
   else if (d.delpost) { await sb.from('posts').delete().eq('id', d.delpost); forum(); }
 });

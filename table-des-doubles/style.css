@@ -376,3 +376,38 @@ dialog::backdrop{background:#000a;backdrop-filter:blur(6px)}
 .form .gtip,.panel>.gtip{justify-self:start;align-self:flex-start}
 .flash{animation:gflash 1.6s ease-out}
 @keyframes gflash{0%,40%{box-shadow:0 0 0 3px #e0b85c,0 0 24px #e0b85c88}100%{box-shadow:none}}
+
+/* scanner : caméra cadrée au format carte */
+.cam{position:relative;width:100%;max-width:420px;margin:0 auto;aspect-ratio:3/4;border-radius:16px;overflow:hidden;background:#000;box-shadow:inset 0 0 0 1px #fff2,0 10px 30px #0008}
+.cam video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.cam .frame{position:absolute;left:50%;top:47%;width:72%;aspect-ratio:63/88;transform:translate(-50%,-50%);border-radius:4.5%/3.2%;box-shadow:0 0 0 999px #0009;outline:1px dashed #fff6}
+.cam .frame i{position:absolute;width:22px;height:22px;border:3px solid #e0b85c;filter:drop-shadow(0 0 4px #e0b85c)}
+.cam .frame i:nth-child(1){left:-3px;top:-3px;border-right:0;border-bottom:0;border-radius:8px 0 0 0}
+.cam .frame i:nth-child(2){right:-3px;top:-3px;border-left:0;border-bottom:0;border-radius:0 8px 0 0}
+.cam .frame i:nth-child(3){left:-3px;bottom:-3px;border-right:0;border-top:0;border-radius:0 0 0 8px}
+.cam .frame i:nth-child(4){right:-3px;bottom:-3px;border-left:0;border-top:0;border-radius:0 0 8px 0}
+.cam .camtip{position:absolute;left:0;right:0;bottom:6px;margin:0;text-align:center;font-size:12px;color:#fff;text-shadow:0 1px 3px #000}
+.scanwait{display:flex;align-items:center;gap:14px}
+.scanwait img{width:70px;border-radius:6px;animation:pulse 1.2s ease-in-out infinite alternate}
+@keyframes pulse{from{opacity:.5;transform:scale(.97)}to{opacity:1;transform:scale(1)}}
+.scanres{display:grid;grid-template-columns:minmax(0,150px) minmax(0,1fr);gap:16px;align-items:start}
+.scanres .sr-img .cimg{width:100%;border-radius:8px;box-shadow:0 8px 22px #0009}
+.scanres h3{margin:6px 0 2px}
+.qtyrow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:6px 0}
+.qtyrow b{min-width:22px;text-align:center}
+.scanres #sauth{margin-top:4px}
+.chip{border:1px solid #e0b85c66;background:#0003;color:inherit;border-radius:999px;padding:2px 8px;cursor:pointer}
+.alts{display:grid;grid-template-columns:repeat(auto-fill,minmax(88px,1fr));gap:8px;margin-top:8px}
+.alts.big{grid-template-columns:repeat(auto-fill,minmax(110px,1fr))}
+.alts button{background:#0003;border:1px solid #fff2;border-radius:10px;padding:6px;color:inherit;cursor:pointer;text-align:center}
+.alts button .cimg{width:100%;border-radius:5px}
+.alts small{display:block;margin-top:4px;line-height:1.25}
+.okline{color:#7fd79b;margin:0 0 8px}
+@media (max-width:480px){.scanres{grid-template-columns:minmax(0,110px) minmax(0,1fr);gap:12px}}
+.scan .seg{display:flex;flex-wrap:nowrap}
+.scan .seg button{flex:1;white-space:nowrap;font-size:13px;padding-left:8px;padding-right:8px}
+.scanres .sr-acts{grid-column:1/-1;display:grid;gap:8px}
+.scanres .sr-acts .qtyrow{margin:0}
+.scanres .sr-acts .qtyrow #sadd{flex:1}
+.scanres .sr-acts>.btn{width:100%}
+.scanres{width:100%;box-sizing:border-box}.scanres #sadd{white-space:nowrap}

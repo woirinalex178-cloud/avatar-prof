@@ -51,7 +51,7 @@
       <button class="btn">Ajouter ces devoirs</button>
     </form>
 
-    <h2>Mes missions</h2>
+    <div class="h2row"><h2>Mes missions</h2><button id="go-fiches" class="btn alt">📚 Mes fiches</button></div>
     <ul id="list" class="list"></ul>
     <div id="empty" class="empty" hidden><span>🎒</span><p>Aucun devoir à venir.<br>Prends ton cahier de textes en photo !</p></div>
   </section>
@@ -61,9 +61,24 @@
     <button id="back" class="ghost">← Mes missions</button>
     <p id="t-kind" class="tag"></p>
     <h1 id="t-title"></h1>
-    <details id="t-memo" class="card memo" open><summary>📌 À retenir avant de commencer</summary><ul></ul></details>
+    <details id="t-memo" class="card memo" open><summary>📌 À retenir avant de commencer</summary><ul></ul><button id="t-fiche" class="ghost">📘 Relire la fiche complète</button></details>
     <div id="t-q" class="card qcard"></div>
     <div id="t-end" class="card end" hidden></div>
+  </section>
+
+  <!-- Bibliothèque de fiches -->
+  <section id="v-fiches" hidden>
+    <button class="ghost to-home">← Mes missions</button>
+    <h1>📚 Mes fiches</h1>
+    <input id="f-search" type="search" placeholder="🔎 Chercher une fiche (ex : fractions, Louis XIV…)">
+    <ul id="f-list" class="list"></ul>
+    <div id="f-empty" class="empty" hidden><span>📘</span><p>Tes fiches apparaîtront ici dès qu'un devoir est préparé.</p></div>
+  </section>
+
+  <!-- Une fiche -->
+  <section id="v-fiche" hidden>
+    <button id="fiche-back" class="ghost">← Retour</button>
+    <div id="fiche-box"></div>
   </section>
 </main>
 <canvas id="confetti" aria-hidden="true"></canvas>

@@ -15,7 +15,9 @@ Devoirs de Céleste → entraînement adapté, **automatiquement**. Coût : **0 
 
 4. **📎 Fichier** : image, PDF ou texte (ex. une capture d'écran envoyée par une autre maman).
 
-Chaque nouveau devoir est préparé tout seul. Étoiles ⭐, série de jours 🔥, trophées et confettis pour motiver.
+Chaque nouveau devoir est préparé tout seul : **fiche pédagogique** (cours, exemples, à retenir, astuce, pièges) + **banque de questions** qui change à chaque partie (l'IA en ajoute quand il en manque). Évaluations : mode **🎯 Objectif 20/20** (20 questions, les erreurs reviennent jusqu'à être réussies). Toutes les fiches restent dans **📚 Mes fiches** (recherche, impression).
+
+ Étoiles ⭐, série de jours 🔥, trophées et confettis pour motiver.
 
 **Tous les appareils** : même code famille = mêmes devoirs et scores sur téléphone, tablette, ordi (sauvegarde Supabase gratuite, fusion automatique).
 

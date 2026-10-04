@@ -34,6 +34,8 @@ function merge(a = {}, b = {}) {
     packs: pick(a.packs, b.packs),
     results: pick(a.results, b.results),
     deleted,
+    fiches: Object.fromEntries([...new Set([...Object.keys(a.fiches || {}), ...Object.keys(b.fiches || {})])]
+      .filter(id => !deleted['fiche:' + id]).map(id => [id, later(a.fiches?.[id], b.fiches?.[id])])),
     jours: [...new Set([...(a.jours || []), ...(b.jours || [])])].sort().slice(-60),
   };
 }

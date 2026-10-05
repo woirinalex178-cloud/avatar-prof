@@ -45,13 +45,29 @@ async function api(path, body) {
 let syncTimer, syncing = false, again = false;
 function save() { store.set('etat', S); clearTimeout(syncTimer); syncTimer = setTimeout(sync, 1500); }
 
+// Même fusion que le serveur (api/sync.js) : rien ne se perd entre appareils ni pendant une synchro.
+const later = (x, y) => ((x?.at || 0) >= (y?.at || 0) ? x : y);
+function merge(a = {}, b = {}) {
+  const deleted = { ...a.deleted, ...b.deleted }, devoirs = {};
+  for (const d of [...(a.devoirs || []), ...(b.devoirs || [])]) if (d?.id && !deleted[d.id]) devoirs[d.id] = d;
+  const pick = (x = {}, y = {}, all) => Object.fromEntries([...new Set([...Object.keys(x), ...Object.keys(y)])]
+    .filter(id => all || devoirs[id]).map(id => [id, later(x[id], y[id])]));
+  return { devoirs: Object.values(devoirs).sort((p, q) => p.pour.localeCompare(q.pour)), packs: pick(a.packs, b.packs),
+    results: pick(a.results, b.results), deleted, fiches: pick(a.fiches, b.fiches, true),
+    jours: [...new Set([...(a.jours || []), ...(b.jours || [])])].sort().slice(-60) };
+}
+
 async function sync() {
   if (!store.get('pin', '')) return;
   if (syncing) { again = true; return; }
   syncing = true; $('#cloud').className = 'pill cloud busy';
   try {
     const r = await api('sync', S);
-    if (!r.off) { S = r; store.set('etat', S); }
+    if (!r.off) {
+      // Fusion (et non remplacement) : garde ce qui a été ajouté pendant l'aller-retour (ex. devoirs ONE).
+      const local = S; S = merge(r, local); store.set('etat', S);
+      if (S.devoirs.length !== r.devoirs.length || Object.keys(S.packs).length !== Object.keys(r.packs || {}).length) again = true;
+    }
     $('#cloud').className = 'pill cloud' + (r.off ? ' off' : '');
     $('#cloud').title = r.off ? 'Synchro non configurée' : 'Sauvegardé sur tous les appareils';
     if (!$('#v-home').hidden) render();

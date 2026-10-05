@@ -112,10 +112,17 @@ function render() {
   const ul = $('#list'); ul.replaceChildren();
   const up = S.devoirs.filter(d => d.pour >= today());
   $('#empty').hidden = up.length > 0;
+  let jour = '';
   for (const d of up) {
+    if (d.pour !== jour) {   // un titre par jour : « 📅 Demain · mardi 6 octobre »
+      jour = d.pour; const k = daysTo(jour);
+      const rel = k === 0 ? "Aujourd'hui" : k === 1 ? 'Demain' : `Dans ${k} jours`;
+      ul.append(el('li', 'dayhead' + (k <= 1 ? ' soon' : ''), `📅 ${rel} · ${fmt(jour)}`));
+    }
     const p = S.packs[d.id], r = S.results[d.id], j = daysTo(d.pour);
     const li = el('li', 'item' + (p ? ' k-' + p.type : ''));
-    const when = el('span', 'when' + (j <= 1 ? ' soon' : ''), j === 0 ? "Pour aujourd'hui" : j === 1 ? 'Pour demain' : 'Pour ' + fmt(d.pour));
+    const when = el('span', 'when ' + (j <= 1 ? 'soon' : j <= 3 ? 'mid' : 'far'),
+      '⏰ ' + (j === 0 ? "Pour aujourd'hui" : j === 1 ? 'Pour demain' : 'Pour ' + fmt(d.pour)));
     li.append(el('span', 'emoji', emojiOf(d)), el('h3', null, d.matiere), el('p', null, d.consigne), when);
     const foot = el('div', 'foot');
     if (p) {
@@ -264,6 +271,7 @@ async function train(d, goal = false) {
   $('#t-kind').textContent = goal ? '🎯 Objectif 20/20' : KIND[p.type] || 'Entraînement';
   $('#t-kind').className = 'tag k-' + p.type;
   $('#t-title').textContent = emojiOf(d) + ' ' + (p.titre || d.matiere);
+  $('#t-kind').textContent += ' · ⏰ pour ' + (daysTo(d.pour) === 0 ? "aujourd'hui" : daysTo(d.pour) === 1 ? 'demain' : fmt(d.pour));
   const f = ficheOf(p), memo = $('#t-memo');
   memo.hidden = !f.a_retenir.length; memo.open = !goal;
   memo.querySelector('ul').replaceChildren(...f.a_retenir.map(m => el('li', null, m)));

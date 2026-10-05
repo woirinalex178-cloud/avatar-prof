@@ -101,3 +101,9 @@ textarea{resize:vertical}
 .fitem{cursor:pointer}
 @media print{.top,.ghost,.fiche-actions,#v-home,#v-train,#v-fiches,#confetti{display:none!important}body{background:#fff}.fiche{box-shadow:none;border:0}.fiche-head{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
 .box p{margin:0}
+/* dates */
+.dayhead{list-style:none;font:600 17px var(--disp);color:var(--pri);margin:10px 2px -2px;text-transform:none}
+.dayhead:first-letter{text-transform:uppercase}.dayhead.soon{color:var(--eva)}
+.when{justify-self:start;font-size:13px;font-weight:800;padding:3px 10px;border-radius:99px;margin-top:2px}
+.when.soon{background:#ffe3e8;color:#c0273f}.when.mid{background:#fff0d1;color:#9a5a00}.when.far{background:var(--pri2);color:var(--pri)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .when.soon{background:#4a1a24;color:#ffb3c0}:root:not([data-theme="light"]) .when.mid{background:#45330c;color:#ffd78a}}

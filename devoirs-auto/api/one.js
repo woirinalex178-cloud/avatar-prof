@@ -44,6 +44,20 @@ function extract(node, ctx, out) {
   for (const [k, v] of Object.entries(node)) if (v && typeof v === 'object' && k !== 'owner' && k !== 'shared') extract(v, { date, mat }, out);
 }
 
+// Pas de révision pour les tâches pratiques (signatures, affaires à apporter…).
+const ADMIN = /\b(faire signer|signer|signature|rapporter|apporter|ramener|permis|autorisation)\b/i;
+// Classe à double niveau : « CM1: … CM2: … » -> on ne garde que la partie du niveau de l'élève.
+const NIV = (process.env.NIVEAU || 'CM2').toUpperCase();
+function pourNiveau(txt) {
+  const parts = txt.split(/\b(CM1|CM2|CE1|CE2|CP)\s*:\s*/i);
+  if (parts.length < 3) {
+    const seul = txt.match(/^\s*(CM1|CM2|CE1|CE2|CP)\b/i)?.[1];   // « CM1 leçon H2 » : autre niveau seulement
+    return seul && seul.toUpperCase() !== NIV ? '' : txt;
+  }
+  for (let i = 1; i < parts.length; i += 2) if (parts[i].toUpperCase() === NIV) return parts[i + 1].trim();
+  return parts[0].trim();   // aucune partie pour ce niveau -> consigne commune s'il y en a une
+}
+
 // Devoirs à venir + petit diagnostic (pour comprendre si ONE change son format).
 export async function fetchOne() {
   if (!process.env.ONE_LOGIN) return { devoirs: [], info: 'ONE non configuré' };
@@ -54,8 +68,12 @@ export async function fetchOne() {
   if (CAHIER && !cahiers.some(h => h._id === CAHIER)) cahiers.unshift({ _id: CAHIER });
   for (const h of cahiers.slice(0, 10)) extract(await get(`/homeworks/get/${h._id}`, cookie) || h, {}, out);
   const today = new Date().toISOString().slice(0, 10);
+  const horizon = new Date(Date.now() + 14 * 864e5).toISOString().slice(0, 10);   // 2 semaines
   const seen = new Set();
-  const devoirs = out.filter(d => d.pour >= today && !seen.has(d.pour + d.consigne) && seen.add(d.pour + d.consigne))
+  const devoirs = out
+    .map(d => ({ ...d, consigne: pourNiveau(d.consigne) }))
+    .filter(d => d.consigne && !ADMIN.test(d.consigne) && d.pour >= today && d.pour <= horizon
+      && !seen.has(d.pour + d.consigne) && seen.add(d.pour + d.consigne))
     .sort((a, b) => a.pour.localeCompare(b.pour));
   return { devoirs, info: `ONE connecté : ${cahiers.length} cahier(s), ${devoirs.length} devoir(s) à venir` };
 }

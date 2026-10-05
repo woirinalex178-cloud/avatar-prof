@@ -376,13 +376,16 @@ async function identify(cv) {
   if (vis?.length && vis[0].score >= .45) {
     const ids = vis.flatMap(v => ALL_LANGS.map(l => `${l}:${v.key}`));
     const { data } = await sb.from('cards').select('id,name,name_fr,lang,local_id,image,price_eur,set_id,set:sets(name,name_fr)').in('id', ids);
+    // l'édition japonaise partage souvent l'illustration : sauf si tu collectionnes en japonais, elle passe après
+    const jaOnly = k => (data || []).some(c => c.id.endsWith(':' + k)) && (data || []).filter(c => c.id.endsWith(':' + k)).every(c => c.lang === 'ja');
+    if (S.lang !== 'ja') { vis.forEach(v => { v.ja = jaOnly(v.key); v.adj = v.score - (v.ja ? .03 : 0); }); vis.sort((a, b) => b.adj - a.adj); }
     const list = [];
     for (const v of vis) { // par illustration : la langue de l'utilisateur d'abord, puis anglais, puis les autres
       const vs = (data || []).filter(c => c.id.replace(/^[a-z]{2}:/, '') === v.key).sort((a, b) => (a.lang === S.lang ? -2 : a.lang === 'en' ? -1 : 0) - (b.lang === S.lang ? -2 : b.lang === 'en' ? -1 : 0));
       vs.forEach((c, i) => list.push({ ...c, set_name: c.set?.name_fr || c.set?.name || '', art: v.key, sim: v.score, alt: i > 0 }));
     }
     if (list.length) {
-      const main = list.filter(c => !c.alt), sure = vis[0].score >= .6 && (vis.length < 2 || vis[0].score - vis[1].score >= .04);
+      const main = list.filter(c => !c.alt), rival = vis.slice(1).find(v => !(v.ja && !vis[0].ja)), sure = vis[0].score >= .6 && (!rival || vis[0].score - rival.score >= .04);
       remember(list); return { list: [...main, ...list.filter(c => c.alt)], sure, nums: [] };
     }
   }

@@ -1,7 +1,7 @@
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/+esm';
 import { SUPABASE_URL, SUPABASE_KEY } from './config.js';
 import { openAuth } from './auth.js';
-import { startCam, fileToCard, toBlob, readCard, rank } from './scan.js';
+import { startCam, fileToCard, toBlob, readCard, rank, thumb, frameDiff, isBlank, splitPage } from './scan.js';
 import * as Game from './game.js';
 import { renderLegal } from './legal.js';
 import { playIntro } from './intro.js';
@@ -230,7 +230,7 @@ async function classeur() {
     </div>
   </div>
   <div class="bar" style="margin-top:18px"><div class="seg" id="flt">${[['all', 'Toutes'], ['own', 'Possédées'], ['miss', 'Manquantes'], ['dbl', 'Doubles']].map(([k, n]) => `<button data-f="${k}" aria-pressed="${S.filter === k}">${n}</button>`).join('')}</div>
-  <button class="btn sm" data-scan>📷 Scanner une carte</button></div>
+  <button class="btn sm" data-scan>📷 Scanner</button><button class="btn sm" data-scan="burst">⚡ Rafale</button><button class="btn sm ghost" data-express>⌨️ Saisie express</button></div>
   <div class="grid">${list.map(c => { const q = S.coll[c.id] || 0; return `<div class="tile ${q ? '' : 'miss'}" data-id="${c.id}">
     <button class="tile" data-tog="${c.id}" aria-label="${esc(nm(c))} : ${q} exemplaire(s)" style="padding:0">${img(c)}</button>
     ${q ? `<span class="qty ${q > 1 ? 'dbl' : ''}">×${q}</span>` : ''}
@@ -346,41 +346,192 @@ async function loadTesseract() {
   if (window.Tesseract) return;
   await new Promise((r, j) => { const sc = document.createElement('script'); sc.src = 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js'; sc.onload = r; sc.onerror = () => j(new Error('Lecture photo indisponible, saisis le numéro.')); document.head.append(sc); });
 }
-let scanState = {};
+let scanState = {}, burst = null, actx;
 const authH = () => ({ modal, $, esc, nm, sb, toast, shrink, loadTesseract, loggedIn: () => !!S.profile, done: () => { Game.track('auth'); checkUnlock(); } });
 const scanH = () => ({ loadTesseract, totals: () => new Set(S.sets.map(s => +s.total).filter(Boolean)) });
+// ajoute (ou retire, n < 0) plusieurs cartes d'un coup : une seule requête
+async function addMany(m) {
+  const up = [], del = []; let added = 0;
+  for (const [id, n] of Object.entries(m)) {
+    const q = Math.max(0, Math.min(99, (S.coll[id] || 0) + n)); S.coll[id] = q; if (n > 0) added += n;
+    (q ? up : del).push(id); const c = S.cards[id]; if (c) S.bySet[c.set_id] = null;
+  }
+  if (!S.profile) { try { localStorage.setItem(GUEST, JSON.stringify(S.coll)); } catch { } }
+  else {
+    const r = up.length ? await sb.from('collection').upsert(up.map(id => ({ user_id: S.user.id, card_id: id, qty: S.coll[id] }))) : {};
+    if (del.length) await sb.from('collection').delete().eq('user_id', S.user.id).in('card_id', del);
+    if (r.error) toast(r.error.message, true);
+  }
+  if (added) { Game.track('add', added); checkUnlock(); }
+}
+const beep = () => { try { actx ||= new (window.AudioContext || window.webkitAudioContext)(); const o = actx.createOscillator(), g = actx.createGain(), t = actx.currentTime;
+  o.frequency.value = 880; g.gain.setValueAtTime(.18, t); g.gain.exponentialRampToValueAtTime(.001, t + .15); o.connect(g).connect(actx.destination); o.start(); o.stop(t + .16); } catch { } navigator.vibrate?.(60); };
+// photo cadrée -> cartes candidates classées ; sure = une seule carte possible
+async function identify(cv) {
+  const { nums, words } = await readCard(cv, scanH());
+  let found = [];
+  for (const n of nums) { const { data } = await sb.rpc('scan_match', { p_num: n.num, p_total: n.total, p_words: words, p_lang: S.lang }); found.push(...(data || [])); }
+  // le nom lu sert de filet si un chiffre a été mal lu (8 au lieu de 9…) : la comparaison visuelle tranche
+  if (words.length) { const { data } = await sb.rpc('scan_match', { p_num: null, p_total: null, p_words: words, p_lang: S.lang }); found.push(...(data || [])); }
+  found = [...new Map(found.map(c => [c.id, c])).values()].slice(0, 16);
+  if (!found.length) return { list: [], sure: false, nums };
+  const r = await rank(found, cv, S.lang); remember(r.list); return { ...r, nums };
+}
+const INTENTS = [['add', '➕ Ajouter'], ['burst', '⚡ Rafale'], ['page', '📒 Page 3×3'], ['auth', '🔍 Authentifier']];
+const TIPS = { add: 'Cadre la carte en entier : l\'appli lit le numéro (ex. 199/165) et la compare aux images officielles.', auth: 'Prends le recto en photo : la carte est reconnue puis le contrôle démarre avec la même photo.',
+  burst: 'Passe tes cartes une à une dans le cadre : chaque carte reconnue est ajoutée toute seule (bip). Change de carte au signal ✅.', page: 'Photographie une page de classeur 9 cases, à plat, cadrée bord à bord, sans reflet.' };
 async function scanModal(intent = 'add') {
-  scanState = { intent, photo: null, cv: null };
-  modal(`<div class="form scan"><h2 style="margin:0">Scanner une carte</h2>
-  <div class="seg" id="scint"><button type="button" data-si="add" aria-pressed="${intent === 'add'}">➕ Identifier / Ajouter</button><button type="button" data-si="auth" aria-pressed="${intent === 'auth'}">🔍 Authentifier</button></div>
-  <div class="cam" id="cam" hidden><video playsinline muted></video><div class="frame" id="frame"><i></i><i></i><i></i><i></i></div><p class="camtip">Carte à plat, dans le cadre, sans reflet</p></div>
-  <div class="acts"><button class="btn" id="cap" type="button" hidden>📸 Capturer</button><label class="btn ghost" style="cursor:pointer">🖼️ ${'Choisir une photo'}<input type="file" id="scf" accept="image/*" hidden></label></div>
-  <p class="small mut" id="scs" role="status">Cadre la carte en entier : l'appli lit le numéro (ex. 199/165) et la compare aux images officielles.</p><div id="scr"></div>
+  scanState = { intent, photo: null, cv: null }; burst = null;
+  modal(`<div class="form scan"><h2 style="margin:0">Scanner des cartes</h2>
+  <div class="seg quad" id="scint">${INTENTS.map(([k, t]) => `<button type="button" data-si="${k}" aria-pressed="${intent === k}">${t}</button>`).join('')}</div>
+  <div class="cam" id="cam" hidden><video playsinline muted></video><div class="frame" id="frame"><i></i><i></i><i></i><i></i></div><p class="camtip" id="camtip">Carte à plat, dans le cadre, sans reflet</p></div>
+  <div class="acts" id="scacts"><button class="btn" id="cap" type="button" hidden>📸 Capturer</button><button class="btn" id="bgo" type="button" hidden>▶️ Démarrer la rafale</button>
+    <label class="btn" id="pgcap" style="cursor:pointer" hidden>📸 Photographier la page<input type="file" id="pgf" accept="image/*" capture="environment" hidden></label>
+    <label class="btn ghost" id="scpick" style="cursor:pointer">🖼️ Choisir une photo<input type="file" id="scf" accept="image/*" hidden></label></div>
+  <p class="small mut" id="scs" role="status"></p><div id="bst"></div><div id="scr"></div>
   <details id="scman"><summary class="small">✍️ Saisir le numéro à la main</summary><div class="row2"><label class="f">Numéro (ex. 091/132)<span class="numpair"><input id="scn" placeholder="091" inputmode="numeric" maxlength="7" aria-label="Numéro de la carte"><b>/</b><input id="sct" placeholder="132" inputmode="numeric" maxlength="3" aria-label="Total de la série (optionnel)"></span></label><label class="f">Nom (optionnel)<input id="scw" placeholder="Dracaufeu"></label></div><button class="btn ghost" id="scgo" type="button">Chercher</button></details></div>`);
-  $('#scint').onclick = e => { const b = e.target.closest('[data-si]'); if (!b) return; scanState.intent = b.dataset.si; $('#scint').querySelectorAll('button').forEach(x => x.setAttribute('aria-pressed', x === b)); if (scanState.shown) showScan(scanState.shown); };
-  $('#scf').onchange = async e => { const f = e.target.files[0]; if (f) analyse(await fileToCard(f)); };
+  $('#scint').onclick = e => { const b = e.target.closest('[data-si]'); if (b) setIntent(b.dataset.si); };
+  $('#scf').onchange = async e => { const f = e.target.files[0]; if (!f) return; scanState.intent === 'page' ? scanPage(f) : analyse(await fileToCard(f)); };
+  $('#pgf').onchange = e => { const f = e.target.files[0]; if (f) scanPage(f); };
   $('#scgo').onclick = () => manualSearch();
   $('#scn').oninput = e => { if (/^\d{3}$/.test(e.target.value)) $('#sct').focus(); }; // 3 chiffres : on passe au total
   $('#scman').onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); manualSearch(); } };
-  const cam = await startCam($('#cam video'), $('#frame'));
-  if (cam && $('#cam')) { $('#cam').hidden = false; $('#cap').hidden = false; $('#cap').onclick = () => analyse(cam.capture()); }
+  setIntent(intent);
+  scanState.cam = await startCam($('#cam video'), $('#frame'));
+  if (scanState.cam) { $('#cap').onclick = () => analyse(scanState.cam.capture()); $('#bgo').onclick = toggleBurst; }
+  setIntent(scanState.intent);
+}
+function setIntent(k) {
+  if (!$('#scint')) return;
+  scanState.intent = k; if (burst?.on && k !== 'burst') toggleBurst();
+  $('#scint').querySelectorAll('button').forEach(x => x.setAttribute('aria-pressed', x.dataset.si === k));
+  const cam = !!scanState.cam, page = k === 'page';
+  $('#cam').hidden = !cam || page; $('#cap').hidden = !cam || page || k === 'burst'; $('#bgo').hidden = !cam || k !== 'burst';
+  $('#pgcap').hidden = !page; $('#scman').hidden = page || k === 'burst'; $('#scpick').hidden = k === 'burst';
+  $('#scs').innerHTML = k === 'burst' && !cam ? '⚠️ La rafale a besoin de la caméra : autorise-la dans ton navigateur.' : TIPS[k];
+  if (k === 'add' || k === 'auth') { if (scanState.shown) showScan(scanState.shown); } else if (!burst) $('#scr').innerHTML = '';
 }
 async function analyse(cv) {
   scanState.cv = cv; scanState.photo = await toBlob(cv); scanState.shown = null;
   $('#scr').innerHTML = `<div class="scanwait"><img src="${URL.createObjectURL(scanState.photo)}" alt=""><span>Lecture de la carte…<br><small class="mut">la première fois peut prendre 10 secondes</small></span></div>`; $('#scs').textContent = '';
   try {
-    const { nums, words } = await readCard(cv, scanH());
-    if (nums[0]) { $('#scn').value = nums[0].num; $('#sct').value = nums[0].total; Game.track('scan'); }
-    let found = [];
-    for (const n of nums) { const { data } = await sb.rpc('scan_match', { p_num: n.num, p_total: n.total, p_words: words, p_lang: S.lang }); found.push(...(data || [])); }
-    // le nom lu sert de filet si un chiffre a été mal lu (8 au lieu de 9…) : la comparaison visuelle tranche
-    if (words.length) { const { data } = await sb.rpc('scan_match', { p_num: null, p_total: null, p_words: words, p_lang: S.lang }); found.push(...(data || [])); }
-    found = [...new Map(found.map(c => [c.id, c])).values()].slice(0, 16);
-    if (!found.length) { $('#scr').innerHTML = ''; $('#scman').open = true; return $('#scs').innerHTML = '😕 Carte non reconnue. Rapproche-toi pour que le <b>numéro en bas</b> soit net, évite les reflets, ou saisis le numéro ci-dessous.'; }
-    $('#scs').textContent = 'Comparaison avec les images officielles…';
-    showRanked(await rank(found, cv, S.lang));
+    const r = await identify(cv);
+    if (r.nums[0]) { $('#scn').value = r.nums[0].num; $('#sct').value = r.nums[0].total; Game.track('scan'); }
+    if (!r.list.length) { $('#scr').innerHTML = ''; $('#scman').open = true; return $('#scs').innerHTML = '😕 Carte non reconnue. Rapproche-toi pour que le <b>numéro en bas</b> soit net, évite les reflets, ou saisis le numéro ci-dessous.'; }
+    showRanked(r);
   } catch (err) { $('#scr').innerHTML = ''; $('#scs').textContent = err.message; }
 }
+
+// ---------- rafale : la caméra reste ouverte, chaque carte reconnue est ajoutée ----------
+function toggleBurst() {
+  if (burst?.on) { burst.on = false; $('#bgo').textContent = '▶️ Reprendre la rafale'; $('#camtip').textContent = 'En pause'; return; }
+  try { actx ||= new (window.AudioContext || window.webkitAudioContext)(); actx.resume?.(); } catch { } // le son doit être activé par un geste
+  burst ||= { added: [], last: null, prev: null }; burst.on = true; burst.busy = false; $('#bgo').textContent = '⏸ Pause'; drawBurst(); tickBurst();
+}
+const camtip = t => { if ($('#camtip')) $('#camtip').textContent = t; };
+async function tickBurst() {
+  if (!burst?.on || !$('#cam')?.isConnected) return;
+  if (!burst.busy) {
+    const cv = scanState.cam.capture(), g = thumb(cv), blank = isBlank(g), stable = frameDiff(g, burst.prev) < 9; burst.prev = g;
+    // la carte a été retirée (cadre vide) ou l'image a bien changé : on peut lire la suivante
+    if (blank || frameDiff(g, burst.last) > 28) burst.cleared = true;
+    const fresh = burst.cleared || frameDiff(g, burst.last) > 12;
+    if (blank) camtip('📇 Place une carte dans le cadre');
+    else if (!fresh) camtip('✅ Carte suivante !');
+    else if (!stable) camtip('✋ Ne bouge plus…');
+    else {
+      burst.busy = true; camtip('🔎 Lecture…');
+      try {
+        const r = await identify(cv);
+        if (r.sure && r.list[0].id === burst.added[0]?.id && !burst.cleared) burst.last = g; // même carte toujours là : pas de doublon
+        else if (r.sure) await burstAdd(r.list[0], g);
+        else if (r.list.length) return burstAsk(r.list.slice(0, 6), g);
+        else { burst.last = g; burst.cleared = false; camtip('😕 Non reconnue : retourne-la un peu ou passe à la suivante'); }
+      } catch (e) { camtip(e.message); }
+      burst.busy = false;
+    }
+  }
+  setTimeout(tickBurst, 600);
+}
+async function burstAdd(c, g) {
+  burst.last = g; burst.cleared = false; burst.added.unshift(c); beep(); camtip(`✅ ${nm(c)} ajoutée`);
+  await addMany({ [c.id]: 1 }); drawBurst();
+}
+function burstAsk(list, g) {
+  camtip('🤔 Laquelle est-ce ?');
+  $('#scr').innerHTML = `<p class="small" style="margin:6px 0"><b>Pas sûr : touche la bonne carte</b> (ou passe)</p><div class="alts">${list.map((c, i) => `<button type="button" data-ba="${i}">${img(c)}<small>${flag(c.lang)} ${esc(nm(c))}<br>${esc(c.set_name)} · ${esc(c.local_id)}</small></button>`).join('')}</div><button type="button" class="btn sm ghost" data-ba="-1" style="margin-top:8px">Passer cette carte</button>`;
+  $('#scr').onclick = async e => { const b = e.target.closest('[data-ba]'); if (!b) return; $('#scr').innerHTML = ''; $('#scr').onclick = null;
+    if (+b.dataset.ba >= 0) await burstAdd(list[+b.dataset.ba], g); else { burst.last = g; burst.cleared = false; }
+    burst.busy = false; setTimeout(tickBurst, 600); };
+}
+function drawBurst() {
+  const a = burst.added;
+  $('#bst').innerHTML = `<div class="bpanel panel"><b>⚡ ${a.length} carte${a.length > 1 ? 's' : ''} ajoutée${a.length > 1 ? 's' : ''}</b>${a.length ? ` · <span class="mut small">${eur(a.reduce((s, c) => s + (+c.price_eur || 0), 0))}</span>` : ''}
+    <div class="bstrip">${a.slice(0, 30).map((c, i) => `<span>${img(c)}<button type="button" data-bu="${i}" aria-label="Annuler ${esc(nm(c))}">×</button></span>`).join('')}</div></div>`;
+  $('#bst').onclick = async e => { const b = e.target.closest('[data-bu]'); if (!b) return; const [c] = burst.added.splice(+b.dataset.bu, 1); await addMany({ [c.id]: -1 }); toast(`${nm(c)} retirée`); drawBurst(); };
+}
+
+// ---------- saisie express : « 1, 4, 12..18, 25x2 » dans la série affichée ----------
+export function parseExpress(text, cs) {
+  const key = v => /^\d+$/.test(v) ? String(+v) : v.toLowerCase(), idx = new Map(cs.map(c => [key(c.local_id), c])), map = {}, bad = [];
+  const toks = text.toLowerCase().replace(/\s*(?:à|-|–)\s*/g, '..').replace(/\s*[x×*]\s*(\d)/g, 'x$1').split(/[\s,;]+|(?<!\.)\.(?!\.)/).filter(Boolean);
+  for (const t of toks) {
+    const m = t.match(/^([a-z]*\d+[a-z]*)(?:\.\.([a-z]*\d+[a-z]*))?(?:x(\d+))?$/); if (!m) { bad.push(t); continue; }
+    const q = Math.min(20, +(m[3] || 1)), ids = [];
+    if (m[2] && /^\d+$/.test(m[1]) && /^\d+$/.test(m[2]) && +m[2] >= +m[1] && +m[2] - +m[1] < 400) { for (let i = +m[1]; i <= +m[2]; i++) ids.push(String(i)); }
+    else ids.push(key(m[1]));
+    for (const k of ids) { const c = idx.get(k); if (c) map[c.id] = (map[c.id] || 0) + q; else bad.push(k); }
+  }
+  return { map, bad };
+}
+async function expressModal() {
+  await loadSet(S.set); const set = S.sets.find(x => x.id === S.set), cs = S.bySet[S.set] || [];
+  modal(`<div class="form express"><h2 style="margin:0">⌨️ Saisie express</h2>
+  <p class="small mut" style="margin:0">${flag(S.lang)} <b>${esc(setName(set))}</b> · ${cs.length} cartes. Tape les numéros de tes cartes, séparés par des virgules.</p>
+  <input id="exin" inputmode="decimal" autocomplete="off" placeholder="1, 4, 12..18, 25x2" aria-label="Numéros des cartes">
+  <div class="exkeys"><button type="button" data-k=", ">,</button><button type="button" data-k="..">à (de… à…)</button><button type="button" data-k="x2">×2</button><button type="button" data-k="⌫">⌫</button></div>
+  <p class="small mut" style="margin:0">Exemples : <b>1, 4, 7</b> · <b>12..18</b> (du 12 au 18) · <b>25x2</b> (deux exemplaires)</p>
+  <div id="exprev"></div><button class="btn" id="exgo" type="button" disabled>Ajouter</button></div>`);
+  const inp = $('#exin'), upd = () => {
+    const { map, bad } = parseExpress(inp.value, cs), ids = Object.keys(map), n = ids.reduce((a, id) => a + map[id], 0);
+    $('#exprev').innerHTML = (ids.length ? `<div class="alts">${ids.slice(0, 60).map(id => `<span class="exc">${img(S.cards[id])}<small>${esc(S.cards[id].local_id)}${map[id] > 1 ? ` ×${map[id]}` : ''}</small></span>`).join('')}</div>` : '')
+      + (bad.length ? `<p class="small err">Introuvable dans cette série : ${bad.slice(0, 12).map(esc).join(', ')}</p>` : '');
+    $('#exgo').disabled = !n; $('#exgo').textContent = n ? `➕ Ajouter ${n} carte${n > 1 ? 's' : ''}` : 'Ajouter';
+    return map;
+  };
+  inp.oninput = upd;
+  $('.exkeys').onpointerdown = e => { const b = e.target.closest('[data-k]'); if (!b) return; e.preventDefault(); // garde le clavier ouvert
+    inp.value = b.dataset.k === '⌫' ? inp.value.slice(0, -1) : inp.value.replace(/\s+$/, '') + b.dataset.k; upd(); };
+  $('#exgo').onclick = async () => { const m = upd(), n = Object.values(m).reduce((a, b) => a + b, 0); await addMany(m); toast(`${n} carte${n > 1 ? 's' : ''} ajoutée${n > 1 ? 's' : ''} au classeur`); close(); await classeur(); };
+  inp.focus();
+}
+
+// ---------- page de classeur : 9 cartes d'une photo ----------
+async function scanPage(file) {
+  const cells = await splitPage(file), res = cells.map(() => ({ st: 'wait' }));
+  scanState.page = res;
+  const draw = () => {
+    const n = res.filter(r => r.on && r.pick).length;
+    $('#scr').innerHTML = `<div class="pagegrid">${res.map((r, i) => `<button type="button" class="pcell ${r.st}${r.on ? ' on' : ''}" data-pc="${i}">${r.pick ? img(r.pick) : `<span>${{ wait: '…', blank: 'vide', none: '✖', run: '🔎' }[r.st] || '?'}</span>`}${r.st === 'unsure' ? '<i>?</i>' : r.on ? '<i>✓</i>' : ''}</button>`).join('')}</div>
+      <div id="pcpick"></div><button type="button" class="btn" id="pcadd" ${n ? '' : 'disabled'}>➕ Ajouter ${n} carte${n > 1 ? 's' : ''} au classeur</button>`;
+    $('#pcadd').onclick = async () => { const m = {}; res.forEach(r => { if (r.on && r.pick) m[r.pick.id] = (m[r.pick.id] || 0) + 1; }); await addMany(m); toast(`${n} carte${n > 1 ? 's' : ''} ajoutée${n > 1 ? 's' : ''} au classeur`); $('#scr').innerHTML = '<p class="okline">✅ Page ajoutée ! Photographie la suivante.</p>'; };
+  };
+  $('#scr').onclick = e => { const b = e.target.closest('[data-pc]'); if (!b) return; const r = res[+b.dataset.pc]; if (!r.list?.length) return;
+    $('#pcpick').innerHTML = `<p class="small" style="margin:8px 0 4px"><b>Case ${+b.dataset.pc + 1}</b> : laquelle ?</p><div class="alts">${r.list.slice(0, 6).map((c, j) => `<button type="button" data-pp="${j}">${img(c)}<small>${flag(c.lang)} ${esc(nm(c))}<br>${esc(c.local_id)}</small></button>`).join('')}<button type="button" data-pp="-1"><small>Ne pas ajouter</small></button></div>`;
+    $('#pcpick').onclick = ev => { const p = ev.target.closest('[data-pp]'); if (!p) return; ev.stopPropagation(); const j = +p.dataset.pp; if (j >= 0) { r.pick = r.list[j]; r.on = true; r.st = 'sure'; } else r.on = false; draw(); }; };
+  draw();
+  for (let i = 0; i < cells.length; i++) {
+    $('#scs').textContent = `Lecture de la case ${i + 1}/9…`;
+    if (isBlank(thumb(cells[i]))) { res[i].st = 'blank'; draw(); continue; }
+    res[i].st = 'run'; draw();
+    try { const r = await identify(cells[i]); Object.assign(res[i], { list: r.list, pick: r.list[0] || null, st: !r.list.length ? 'none' : r.sure ? 'sure' : 'unsure', on: r.sure }); }
+    catch { res[i].st = 'none'; }
+    if (scanState.page !== res || !$('#scr')) return; draw();
+  }
+  const ok = res.filter(r => r.st === 'sure').length, doubt = res.filter(r => r.st === 'unsure').length;
+  $('#scs').innerHTML = `${ok} carte${ok > 1 ? 's' : ''} reconnue${ok > 1 ? 's' : ''}${doubt ? `, <b>${doubt} à vérifier</b> (touche les cases « ? »)` : ''}.`;
+}
+
 async function manualSearch() {
   const v = ($('#scn').value + ' ' + $('#sct').value).match(/(\d{1,3})\D*(\d{2,3})?/), words = $('#scw').value.split(/\s+/).filter(w => w.length >= 4);
   if (!v && !words.length) return $('#scs').textContent = 'Saisis le numéro (ex. 199/165) ou le nom.';
@@ -650,7 +801,7 @@ function deleteAccount() {
 
 // ---------- événements ----------
 document.addEventListener('click', async e => {
-  const t = e.target.closest('[data-set],[data-f],[data-tog],[data-iq],[data-dq],[data-put],[data-l],[data-buy],[data-trade],[data-rmlist],[data-report],[data-act],[data-ot],[data-am],[data-ts],[data-card],[data-close],[data-delpost],[data-scan],[data-connect],[data-auth],[data-export],[data-delacct],[data-prep],[data-label],[data-dl],[data-paylbl],[data-ordlbl],[data-pickrelay],[data-avk],[data-avh]');
+  const t = e.target.closest('[data-set],[data-f],[data-tog],[data-iq],[data-dq],[data-put],[data-l],[data-buy],[data-trade],[data-rmlist],[data-report],[data-act],[data-ot],[data-am],[data-ts],[data-card],[data-close],[data-delpost],[data-scan],[data-express],[data-connect],[data-auth],[data-export],[data-delacct],[data-prep],[data-label],[data-dl],[data-paylbl],[data-ordlbl],[data-pickrelay],[data-avk],[data-avh]');
   if (!t) return;
   const d = t.dataset;
   if (d.set) { S.set = d.set; classeur(); }
@@ -682,6 +833,7 @@ document.addEventListener('click', async e => {
   else if ('export' in d) exportData();
   else if ('delacct' in d) deleteAccount();
   else if ('scan' in d) scanModal(d.scan || 'add');
+  else if ('express' in d) expressModal();
   else if ('connect' in d) { const { data, error } = await sb.functions.invoke('payments/connect'); if (error || !data?.url) return toast(data?.error || 'Activation des ventes bientôt disponible.', true); location.href = data.url; }
   else if (d.delpost) { await sb.from('posts').delete().eq('id', d.delpost); forum(); }
 });

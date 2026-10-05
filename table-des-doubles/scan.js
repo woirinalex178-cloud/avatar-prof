@@ -94,17 +94,42 @@ export async function readCard(cv, H) {
 }
 
 // ---------- ressemblance visuelle ----------
+const refs = new Map(); // empreintes des images officielles déjà chargées (utile en rafale)
+function refVec(c) {
+  if (!c.image) return null;
+  if (!refs.has(c.image)) refs.set(c.image, fetch(`${SUPABASE_URL}/functions/v1/img?u=${encodeURIComponent(c.image + '/low.webp')}`)
+    .then(async r => r.ok ? gridVec(await toCanvas(await r.blob())) : null).catch(() => null));
+  return refs.get(c.image);
+}
 const art = id => id.replace(/^[a-z]{2}:/, '').toLowerCase(); // même illustration dans toutes les langues
 export async function rank(cards, cv, lang) {
   const me = gridVec(await toCanvas(cv));
-  const sims = await Promise.all(cards.map(async c => {
-    if (!c.image) return -1;
-    try { const r = await fetch(`${SUPABASE_URL}/functions/v1/img?u=${encodeURIComponent(c.image + '/low.webp')}`); if (!r.ok) return -1; return corr(me, gridVec(await toCanvas(await r.blob()))); }
-    catch { return -1; }
-  }));
+  const sims = await Promise.all(cards.map(async c => { const v = await refVec(c); return v ? corr(me, v) : -1; }));
   const list = cards.map((c, i) => ({ ...c, sim: sims[i] })).sort((a, b) => (b.sim + b.score * .02 + (b.lang === lang ? .03 : 0)) - (a.sim + a.score * .02 + (a.lang === lang ? .03 : 0)));
   const top = list[0], rival = list.find(c => art(c.id) !== art(top?.id || '') && (c.lang !== 'ja' || top.lang === 'ja')); // l'édition japonaise partage souvent l'illustration
   const seen = list.some(c => c.sim > -1);
   const sure = !!top && (seen ? top.sim >= .6 && (!rival || top.sim - rival.sim >= .05) : !rival);
   return { list, sure, art };
+}
+
+// ---------- rafale : la carte a-t-elle bougé / changé ? ----------
+export function thumb(cv) { // miniature 24x34 en niveaux de gris
+  const t = Object.assign(document.createElement('canvas'), { width: 24, height: 34 }), x = t.getContext('2d', { willReadFrequently: true });
+  x.drawImage(cv, 0, 0, 24, 34); const d = x.getImageData(0, 0, 24, 34).data, g = new Float32Array(24 * 34);
+  for (let i = 0; i < g.length; i++) g[i] = (d[i * 4] + d[i * 4 + 1] + d[i * 4 + 2]) / 3;
+  return g;
+}
+export const frameDiff = (a, b) => { if (!a || !b) return 255; let s = 0; for (let i = 0; i < a.length; i++) s += Math.abs(a[i] - b[i]); return s / a.length; };
+// image presque unie (pochette vide, table) : pas de carte
+export const isBlank = g => { let m = 0; for (const v of g) m += v; m /= g.length; let s = 0; for (const v of g) s += (v - m) ** 2; return Math.sqrt(s / g.length) < 14; };
+
+// ---------- page de classeur 3 x 3 ----------
+export async function splitPage(file) {
+  const bmp = await createImageBitmap(file), cells = [], cw = bmp.width / 3, ch = bmp.height / 3, mx = cw * .04, my = ch * .03;
+  for (let r = 0; r < 3; r++) for (let c = 0; c < 3; c++) {
+    const cv = Object.assign(document.createElement('canvas'), { width: CW, height: CH });
+    cv.getContext('2d').drawImage(bmp, c * cw + mx, r * ch + my, cw - 2 * mx, ch - 2 * my, 0, 0, CW, CH);
+    cells.push(cv);
+  }
+  return cells;
 }

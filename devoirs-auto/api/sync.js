@@ -4,9 +4,9 @@ import { createHash } from 'node:crypto';
 import { checkPin } from './_lib.js';
 
 const { SUPABASE_URL, SUPABASE_KEY, SYNC_SECRET = '' } = process.env;
-const famille = pin => createHash('sha256').update(SYNC_SECRET + ':' + pin).digest('hex');
+export const famille = pin => createHash('sha256').update(SYNC_SECRET + ':' + pin).digest('hex');
 
-async function rpc(fn, body) {
+export async function rpc(fn, body) {
   const r = await fetch(`${SUPABASE_URL}/rest/v1/rpc/${fn}`, {
     method: 'POST',
     headers: { apikey: SUPABASE_KEY, 'Content-Type': 'application/json' },
@@ -19,7 +19,7 @@ async function rpc(fn, body) {
 
 const later = (x, y) => ((x?.at || 0) >= (y?.at || 0) ? x : y);
 
-function merge(a = {}, b = {}) {
+export function merge(a = {}, b = {}) {
   const month = Date.now() - 30 * 864e5;
   const deleted = Object.fromEntries(Object.entries({ ...a.deleted, ...b.deleted }).filter(([, t]) => t > month));
   const devoirs = {};

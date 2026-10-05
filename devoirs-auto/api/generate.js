@@ -44,6 +44,13 @@ Crée {N} NOUVELLES questions différentes sur le même thème, des 3 niveaux.
 ${REGLES_Q}
 JSON strict : {"questions":[${FORMAT_Q}]}`;
 
+// Fiche + banque de questions pour un devoir (utilisé aussi par la tâche automatique).
+export async function makePack(devoir, today = new Date().toISOString().slice(0, 10)) {
+  const p = MAKE.replace('{MAT}', devoir.matiere || '?').replace('{TXT}', devoir.consigne.slice(0, 1500))
+    .replace('{POUR}', devoir.pour || 'bientôt').replace('{TODAY}', today);
+  return gemini([{ text: p }]);
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).end();
   if (!checkPin(req, res)) return;
@@ -60,9 +67,7 @@ export default async function handler(req, res) {
       return res.json(await gemini(parts, { temperature: 0.1 }));
     }
     if (action === 'make' && devoir?.consigne) {
-      const p = MAKE.replace('{MAT}', devoir.matiere || '?').replace('{TXT}', devoir.consigne.slice(0, 1500))
-        .replace('{POUR}', devoir.pour || 'bientôt').replace('{TODAY}', today);
-      return res.json(await gemini([{ text: p }]));
+      return res.json(await makePack(devoir, today));
     }
     if (action === 'more' && devoir?.consigne) {
       const p = MORE.replace('{MAT}', devoir.matiere || '?').replace('{TXT}', devoir.consigne.slice(0, 1500))

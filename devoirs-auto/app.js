@@ -152,8 +152,9 @@ async function syncOne() {
   try {
     const r = await api('one');
     const n = addDevoirs(r.devoirs);
-    if (n) status(`${n} nouveau(x) devoir(s) depuis ONE ✔`);
-  } catch {}
+    if (n) status(`🏫 ${n} nouveau(x) devoir(s) depuis ONE ✔`);
+    else if (r.info && r.info !== 'ONE non configuré') console.info(r.info);
+  } catch (e) { status('🏫 ONE : ' + e.message); }
 }
 
 // ---------- Ajout : photo / fichier / texte ----------

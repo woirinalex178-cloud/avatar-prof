@@ -1,0 +1,30 @@
+# Index de reconnaissance des cartes (empreintes visuelles). Gratuit : tourne sur les serveurs GitHub.
+name: Index reconnaissance cartes
+on:
+  workflow_dispatch:
+  push:
+    branches: [claude/pokemon-cards-marketplace-wiwxqw]
+    paths: ['.github/scripts/build-index.mjs', '.github/workflows/card-index.yml']
+  schedule:
+    - cron: '23 4 1 * *' # le 1er du mois : ajoute les nouvelles séries
+permissions:
+  contents: write
+concurrency: { group: card-index, cancel-in-progress: true }
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+      - run: npm i --no-save --no-package-lock @huggingface/transformers@3.8.1 ml-matrix@6 sharp@0.33
+      - run: node .github/scripts/build-index.mjs
+      - name: Enregistrer l'index
+        run: |
+          git config user.name "card-index-bot"
+          git config user.email "card-index-bot@users.noreply.github.com"
+          git add table-des-doubles/idx
+          git commit -m "Index de reconnaissance des cartes mis à jour" || exit 0
+          git pull --rebase origin ${GITHUB_REF_NAME}
+          git push origin HEAD:${GITHUB_REF_NAME}

@@ -1,6 +1,7 @@
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/+esm';
 import { SUPABASE_URL, SUPABASE_KEY } from './config.js';
 import { openAuth } from './auth.js';
+import { recognize, loadRecog } from './recog.js';
 import { startCam, fileToCard, toBlob, readCard, rank, thumb, frameDiff, isBlank, splitPage } from './scan.js';
 import * as Game from './game.js';
 import { renderLegal } from './legal.js';
@@ -367,7 +368,27 @@ async function addMany(m) {
 const beep = () => { try { actx ||= new (window.AudioContext || window.webkitAudioContext)(); const o = actx.createOscillator(), g = actx.createGain(), t = actx.currentTime;
   o.frequency.value = 880; g.gain.setValueAtTime(.18, t); g.gain.exponentialRampToValueAtTime(.001, t + .15); o.connect(g).connect(actx.destination); o.start(); o.stop(t + .16); } catch { } navigator.vibrate?.(60); };
 // photo cadrée -> cartes candidates classées ; sure = une seule carte possible
+// 1) reconnaissance visuelle (empreinte de l'illustration comparée aux ~24 000 officielles), 2) secours : lecture du numéro
+const ALL_LANGS = ['fr', 'en', 'ja', 'de', 'it', 'es', 'pt'];
 async function identify(cv) {
+  let vis = null;
+  try { vis = await recognize(cv, 8); } catch (e) { console.warn('reco visuelle indisponible', e); }
+  if (vis?.length && vis[0].score >= .45) {
+    const ids = vis.flatMap(v => ALL_LANGS.map(l => `${l}:${v.key}`));
+    const { data } = await sb.from('cards').select('id,name,name_fr,lang,local_id,image,price_eur,set_id,set:sets(name,name_fr)').in('id', ids);
+    const list = [];
+    for (const v of vis) { // par illustration : la langue de l'utilisateur d'abord, puis anglais, puis les autres
+      const vs = (data || []).filter(c => c.id.replace(/^[a-z]{2}:/, '') === v.key).sort((a, b) => (a.lang === S.lang ? -2 : a.lang === 'en' ? -1 : 0) - (b.lang === S.lang ? -2 : b.lang === 'en' ? -1 : 0));
+      vs.forEach((c, i) => list.push({ ...c, set_name: c.set?.name_fr || c.set?.name || '', art: v.key, sim: v.score, alt: i > 0 }));
+    }
+    if (list.length) {
+      const main = list.filter(c => !c.alt), sure = vis[0].score >= .6 && (vis.length < 2 || vis[0].score - vis[1].score >= .04);
+      remember(list); return { list: [...main, ...list.filter(c => c.alt)], sure, nums: [] };
+    }
+  }
+  return identifyOCR(cv);
+}
+async function identifyOCR(cv) {
   const { nums, words } = await readCard(cv, scanH());
   let found = [];
   for (const n of nums) { const { data } = await sb.rpc('scan_match', { p_num: n.num, p_total: n.total, p_words: words, p_lang: S.lang }); found.push(...(data || [])); }
@@ -397,6 +418,10 @@ async function scanModal(intent = 'add') {
   $('#scn').oninput = e => { if (/^\d{3}$/.test(e.target.value)) $('#sct').focus(); }; // 3 chiffres : on passe au total
   $('#scman').onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); manualSearch(); } };
   setIntent(intent);
+  // moteur de reconnaissance : ~24 Mo téléchargés une seule fois, puis gardés par le navigateur
+  let pct = 0;
+  loadRecog(e => { if (e.status === 'progress' && /onnx/.test(e.file || '') && $('#scs') && e.progress - pct >= 3) { pct = e.progress; $('#scs').textContent = `⏳ Préparation de la reconnaissance (1re fois seulement, 24 Mo)… ${Math.round(pct)} %`; } })
+    .then(() => { if (pct && $('#scs')) $('#scs').innerHTML = '✅ Reconnaissance prête. ' + TIPS[scanState.intent]; }).catch(() => { });
   scanState.cam = await startCam($('#cam video'), $('#frame'));
   if (scanState.cam) { $('#cap').onclick = () => analyse(scanState.cam.capture()); $('#bgo').onclick = toggleBurst; }
   setIntent(scanState.intent);
@@ -544,13 +569,13 @@ function showRanked({ list, sure }) {
   remember(list); scanState.list = list;
   if (sure) return showScan(list[0]);
   $('#scs').textContent = list.length > 1 ? 'Plusieurs cartes possibles : touche la bonne.' : '';
-  $('#scr').innerHTML = `<div class="alts big">${list.map((c, i) => `<button type="button" data-alt="${i}">${img(c)}<small>${flag(c.lang)} ${esc(nm(c))}<br>${esc(c.set_name)} · ${esc(c.local_id)}</small></button>`).join('')}</div>`;
+  $('#scr').innerHTML = `<div class="alts big">${list.map((c, i) => c.alt ? '' : `<button type="button" data-alt="${i}">${img(c)}<small>${flag(c.lang)} ${esc(nm(c))}<br>${esc(c.set_name)} · ${esc(c.local_id)}</small></button>`).join('')}</div>`;
   $('#scr').onclick = e => { const b = e.target.closest('[data-alt]'); if (b) showScan(list[+b.dataset.alt]); };
 }
 function showScan(c) {
   scanState.shown = c; scanState.qty = scanState.qty || 1;
-  const add = scanState.intent === 'add', list = scanState.list || [], twins = list.filter(x => x.local_id === c.local_id && x.id !== c.id && x.set_name === c.set_name || (x.image && x.image === c.image && x.id !== c.id));
-  const others = list.filter(x => x !== c && !twins.includes(x));
+  const add = scanState.intent === 'add', list = scanState.list || [], twins = list.filter(x => x.id !== c.id && (c.art ? x.art === c.art : x.local_id === c.local_id && x.set_name === c.set_name));
+  const others = list.filter(x => x !== c && !twins.includes(x) && !x.alt);
   const bAdd = `<div class="qtyrow"><button type="button" class="btn sm ghost" data-q="-1" aria-label="Moins">−</button><b id="sq">${scanState.qty}</b><button type="button" class="btn sm ghost" data-q="1" aria-label="Plus">+</button><button type="button" class="btn${add ? '' : ' ghost'}" id="sadd">➕ Ajouter au classeur</button></div>`;
   const bAuth = `<button type="button" class="btn${add ? ' ghost' : ''}" id="sauth">🔍 ${add ? 'L\'authentifier aussi' : 'Lancer le contrôle avec cette photo'}</button>`;
   $('#scs').textContent = '';

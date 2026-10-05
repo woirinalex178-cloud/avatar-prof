@@ -1,5 +1,5 @@
 // Appli installable : le site s'ouvre même avec un réseau faible (dernière version en cache)
-const C = 'tdd-v19', SHELL = ['/', '/index.html', '/style.css', '/app.js', '/config.js', '/auth.js', '/game.js', '/legal.js', '/intro.js', '/critters.js', '/fx.js', '/guide.js', '/scan.js', '/manifest.json', '/img/logo.webp', '/img/banner.webp', '/img/favicon.png'];
+const C = 'tdd-v20', SHELL = ['/', '/index.html', '/style.css', '/app.js', '/config.js', '/auth.js', '/game.js', '/legal.js', '/intro.js', '/critters.js', '/fx.js', '/guide.js', '/scan.js', '/recog.js', '/manifest.json', '/img/logo.webp', '/img/banner.webp', '/img/favicon.png'];
 self.addEventListener('install', e => { e.waitUntil(caches.open(C).then(c => c.addAll(SHELL))); self.skipWaiting(); });
 self.addEventListener('activate', e => { e.waitUntil(caches.keys().then(k => Promise.all(k.filter(x => x !== C).map(x => caches.delete(x))))); self.clients.claim(); });
 self.addEventListener('fetch', e => {

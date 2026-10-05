@@ -1,5 +1,6 @@
 // Diagnostic de la connexion ONE (protégé par ?k=CRON_SECRET). N'affiche jamais identifiant ni mot de passe.
-const BASE = (process.env.ONE_URL || 'https://one.opendigitaleducation.com').replace(/\/$/, '');
+const RAW = process.env.ONE_URL || 'https://one.opendigitaleducation.com';
+const BASE = new URL(RAW.includes('://') ? RAW : 'https://' + RAW).origin;
 const names = h => (h.getSetCookie?.() || []).map(c => c.split('=')[0]);
 
 export default async function handler(req, res) {

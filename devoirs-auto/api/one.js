@@ -2,7 +2,11 @@
 // ONE n'a pas d'API publique : on se connecte comme le navigateur puis on lit le JSON de l'appli.
 import { checkPin } from './_lib.js';
 
-const BASE = (process.env.ONE_URL || 'https://one.opendigitaleducation.com').replace(/\/$/, '');
+// ONE_URL peut être l'adresse du site ou celle d'une page copiée du navigateur : on garde le site,
+// et l'identifiant du cahier de textes s'il y est (…/homeworks/id/<id>).
+const RAW = process.env.ONE_URL || 'https://one.opendigitaleducation.com';
+const BASE = new URL(RAW.includes('://') ? RAW : 'https://' + RAW).origin;
+const CAHIER = RAW.match(/homeworks\/(?:id\/|#\/view\/)?([0-9a-f-]{20,})/i)?.[1];
 const strip = s => String(s || '').replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim();
 const day = v => {
   if (!v) return '';
@@ -47,6 +51,7 @@ export async function fetchOne() {
   const out = [];
   const list = await get('/homeworks/list', cookie);
   const cahiers = Array.isArray(list) ? list : [];
+  if (CAHIER && !cahiers.some(h => h._id === CAHIER)) cahiers.unshift({ _id: CAHIER });
   for (const h of cahiers.slice(0, 10)) extract(await get(`/homeworks/get/${h._id}`, cookie) || h, {}, out);
   const today = new Date().toISOString().slice(0, 10);
   const seen = new Set();

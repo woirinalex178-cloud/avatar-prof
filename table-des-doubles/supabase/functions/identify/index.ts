@@ -3,7 +3,7 @@ import { createClient } from 'npm:@supabase/supabase-js@2';
 // Identification d'une carte par IA de vision (Google Gemini, palier gratuit) :
 // l'IA lit le nom, le numéro complet (123/124), la langue et la série, puis la base trouve la carte exacte.
 // Secret requis : GEMINI_API_KEY (Supabase -> Edge Functions -> Secrets). Optionnel : GEMINI_MODEL.
-const KEY = Deno.env.get('GEMINI_API_KEY'), MODELS = [Deno.env.get('GEMINI_MODEL'), 'gemini-flash-latest', 'gemini-2.5-flash'].filter(Boolean) as string[];
+const KEY = Deno.env.get('GEMINI_API_KEY'), MODELS = [...new Set([Deno.env.get('GEMINI_MODEL'), 'gemini-2.5-flash', 'gemini-flash-latest', 'gemini-2.5-flash-lite', 'gemini-flash-lite-latest'].filter(Boolean))] as string[];
 const db = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
 const cors = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'authorization, content-type, apikey, x-client-info' };
 const json = (b: unknown, s = 200) => new Response(JSON.stringify(b), { status: s, headers: { ...cors, 'Content-Type': 'application/json' } });
@@ -23,21 +23,25 @@ Read what is PRINTED on the card and answer ONLY with this JSON:
  "confidence": 0.0-1.0}
 Never invent: use null when you cannot read a field.`;
 
+// si un modèle est saturé (503) ou indisponible, on passe au suivant : les modèles gratuits ont chacun leur quota
 async function gemini(b64: string) {
   let last = '';
-  for (const m of MODELS) {
+  for (const m of MODELS) for (let attempt = 0; attempt < 2; attempt++) {
     const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent?key=${KEY}`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ contents: [{ parts: [{ inline_data: { mime_type: 'image/jpeg', data: b64 } }, { text: PROMPT }] }],
         generationConfig: { temperature: 0, responseMimeType: 'application/json' } })
     });
-    if (r.status === 404) { last = 'modèle ' + m + ' introuvable'; continue; }
-    if (r.status === 429) throw new Error('quota');
-    if (!r.ok) throw new Error('gemini ' + r.status + ' ' + (await r.text()).slice(0, 200));
+    if (!r.ok) {
+      last = `${m} ${r.status} ${(await r.text()).slice(0, 160)}`; console.error('gemini', last);
+      if (r.status === 503 || r.status === 500) { if (attempt === 0) { await new Promise(t => setTimeout(t, 800)); continue; } break; }
+      if (r.status === 404 || r.status === 429) break; // modèle absent ou quota épuisé : modèle suivant
+      throw new Error('gemini ' + last);
+    }
     const j = await r.json(), t = j.candidates?.[0]?.content?.parts?.map((p: { text?: string }) => p.text || '').join('') || '{}';
     return { model: m, read: JSON.parse(t.replace(/^```json|```$/g, '').trim()) };
   }
-  throw new Error(last || 'aucun modèle');
+  throw new Error(/ 429 /.test(last) ? 'quota' : 'IA indisponible : ' + (last || 'aucun modèle'));
 }
 
 Deno.serve(async (req) => {
@@ -61,7 +65,7 @@ Deno.serve(async (req) => {
     }
     return json({ model, read, cards: data ?? [] });
   } catch (e) {
-    const m = String((e as Error).message ?? e);
+    const m = String((e as Error).message ?? e); console.error('identify', m);
     return json({ error: m === 'quota' ? 'quota' : m }, m === 'quota' ? 429 : 500);
   }
 });

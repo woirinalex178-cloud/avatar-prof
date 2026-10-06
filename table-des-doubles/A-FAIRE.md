@@ -1,6 +1,7 @@
 # À faire (toi) — étape par étape
 
 ## Où en es-tu ? (au 04/10)
+- [ ] **Clé IA Gemini (gratuite, 2 min)** pour la reconnaissance des cartes : 1) aistudio.google.com/apikey → « Create API key » (compte Google, pas de carte bancaire) ; 2) Supabase → Edge Functions → **Secrets** → ajouter `GEMINI_API_KEY` = ta clé. Ne la colle jamais dans le chat. Sans clé, le scanner marche quand même (moteur local seul).
 - [ ] **Test à deux** du nouveau parcours avec bordereaux (étape 2)
 - [ ] **Scores d'authenticité** vraie / fausse carte (étape 4)
 - [ ] **INPI** : vérifier que « Sharing Cards » est libre (étape 5.2)

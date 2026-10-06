@@ -386,10 +386,31 @@ async function identify(cv) {
     }
     if (list.length) {
       const main = list.filter(c => !c.alt), rival = vis.slice(1).find(v => !(v.ja && !vis[0].ja)), sure = vis[0].score >= .6 && (!rival || vis[0].score - rival.score >= .04);
-      remember(list); return { list: [...main, ...list.filter(c => c.alt)], sure, nums: [] };
+      if (sure) { remember(list); return { list: [...main, ...list.filter(c => c.alt)], sure, nums: [] }; }
+      vis.list = [...main, ...list.filter(c => c.alt)];
     }
   }
-  return identifyOCR(cv);
+  // le moteur local hésite : l'IA lit la carte (nom, numéro, langue, série) et la base trouve la carte exacte
+  const ai = await identifyAI(cv);
+  if (ai?.cards?.length) {
+    const top = ai.cards[0], second = ai.cards[1], seen = new Set(ai.cards.map(c => c.id));
+    const list = [...ai.cards.map(c => ({ ...c, ai: true })), ...(vis?.list || []).filter(c => !seen.has(c.id) && !c.alt)];
+    const sure = top.score >= 12 || (top.score >= 9 && (!second || top.score - second.score >= 3));
+    remember(list); return { list, sure, nums: [], read: ai.read };
+  }
+  if (vis?.list?.length) { remember(vis.list); return { list: vis.list, sure: false, nums: [], read: ai?.read }; }
+  return { ...(await identifyOCR(cv)), read: ai?.read };
+}
+// IA de vision côté serveur (palier gratuit) : désactivée d'elle-même si la clé n'est pas configurée
+async function identifyAI(cv) {
+  if (S.aiOff) return null;
+  const c = Object.assign(document.createElement('canvas'), { width: 640, height: Math.round(640 * cv.height / cv.width) });
+  c.getContext('2d').drawImage(cv, 0, 0, c.width, c.height);
+  try {
+    const { data, error } = await sb.functions.invoke('identify', { body: { image: c.toDataURL('image/jpeg', .85) } });
+    if (error) { const b = await error.context?.json?.().catch(() => null); if (b?.error === 'ia_off') S.aiOff = true; else if (b?.error === 'quota') toast('IA momentanément saturée, réessaie dans une minute', true); return null; }
+    return data;
+  } catch { return null; }
 }
 async function identifyOCR(cv) {
   const { nums, words } = await readCard(cv, scanH());
@@ -568,11 +589,12 @@ async function manualSearch() {
   if (!data.length) return $('#scs').textContent = 'Aucune carte trouvée. Vérifie le numéro.';
   showRanked(scanState.cv ? await rank(data, scanState.cv, S.lang) : { list: data, sure: data.length === 1 });
 }
-function showRanked({ list, sure }) {
-  remember(list); scanState.list = list;
+const readLine = r => r && r.is_card !== false && (r.name || r.number) ? `<p class="small mut readline">🤖 Lu sur la carte : <b>${esc(r.name || '?')}</b>${r.number ? ` · ${esc(r.number)}${r.total ? '/' + esc(r.total) : ''}` : ''}${r.language ? ` · ${esc(String(r.language).toUpperCase())}` : ''}${r.set_name_en ? ` · ${esc(r.set_name_en)}` : ''}</p>` : '';
+function showRanked({ list, sure, read }) {
+  remember(list); scanState.list = list; scanState.read = read;
   if (sure) return showScan(list[0]);
   $('#scs').textContent = list.length > 1 ? 'Plusieurs cartes possibles : touche la bonne.' : '';
-  $('#scr').innerHTML = `<div class="alts big">${list.map((c, i) => c.alt ? '' : `<button type="button" data-alt="${i}">${img(c)}<small>${flag(c.lang)} ${esc(nm(c))}<br>${esc(c.set_name)} · ${esc(c.local_id)}</small></button>`).join('')}</div>`;
+  $('#scr').innerHTML = readLine(read) + `<div class="alts big">${list.map((c, i) => c.alt ? '' : `<button type="button" data-alt="${i}">${img(c)}<small>${flag(c.lang)} ${esc(nm(c))}<br>${esc(c.set_name)} · ${esc(c.local_id)}</small></button>`).join('')}</div>`;
   $('#scr').onclick = e => { const b = e.target.closest('[data-alt]'); if (b) showScan(list[+b.dataset.alt]); };
 }
 function showScan(c) {
@@ -584,7 +606,7 @@ function showScan(c) {
   $('#scs').textContent = '';
   $('#scr').innerHTML = `<div class="scanres panel"><div class="sr-img">${img(c, true)}</div><div class="sr-txt">
     <p class="small" style="margin:0"><span class="pill p-NM">✓ Carte reconnue</span></p>
-    <h3>${flag(c.lang)} ${esc(nm(c))}</h3><p class="small mut">${esc(c.set_name)} · n° ${esc(c.local_id)} · cote <b>${eur(c.price_eur)}</b>${S.coll[c.id] ? ` · déjà <b>×${S.coll[c.id]}</b> dans ton classeur` : ''}</p>
+    <h3>${flag(c.lang)} ${esc(nm(c))}</h3>${readLine(scanState.read)}<p class="small mut">${esc(c.set_name)} · n° ${esc(c.local_id)} · cote <b>${eur(c.price_eur)}</b>${S.coll[c.id] ? ` · déjà <b>×${S.coll[c.id]}</b> dans ton classeur` : ''}</p>
     ${twins.length ? `<p class="small" style="margin:6px 0">Autre langue ? ${twins.map(x => `<button type="button" class="chip" data-tw="${x.id}">${flag(x.lang)}</button>`).join(' ')}</p>` : ''}
     </div><div class="sr-acts"><p class="small" style="margin:0"><b>C'est bien elle ?</b></p>${add ? bAdd + bAuth : bAuth + bAdd}</div></div>
     ${others.length ? `<details class="small"><summary>Pas la bonne ? (${others.length} autres)</summary><div class="alts">${others.map(x => `<button type="button" data-tw="${x.id}">${img(x)}<small>${flag(x.lang)} ${esc(nm(x))}<br>${esc(x.set_name)} · ${esc(x.local_id)}</small></button>`).join('')}</div></details>` : ''}`;

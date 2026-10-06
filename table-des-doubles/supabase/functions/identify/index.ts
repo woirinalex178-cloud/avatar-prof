@@ -63,7 +63,9 @@ Deno.serve(async (req) => {
       const seen = new Map((data ?? []).map((c: { id: string }) => [c.id, c])); for (const c of r2.data ?? []) { const o = seen.get(c.id) as { score: number } | undefined; if (!o || o.score < c.score) seen.set(c.id, c); }
       data = [...seen.values()].sort((a: { score: number }, b: { score: number }) => b.score - a.score).slice(0, 10);
     }
-    return json({ model, read, cards: data ?? [] });
+    // la langue lue sur la carte départage les versions d'une même carte
+    const cards = (data ?? []).map((c: { lang: string; score: number }) => ({ ...c, score: c.score + (c.lang === read.language ? 2 : 0) })).sort((a: { score: number }, b: { score: number }) => b.score - a.score);
+    return json({ model, read, cards });
   } catch (e) {
     const m = String((e as Error).message ?? e); console.error('identify', m);
     return json({ error: m === 'quota' ? 'quota' : m }, m === 'quota' ? 429 : 500);

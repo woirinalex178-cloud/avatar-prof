@@ -422,21 +422,25 @@ async function identifyOCR(cv) {
   if (!found.length) return { list: [], sure: false, nums };
   const r = await rank(found, cv, S.lang); remember(r.list); return { ...r, nums };
 }
-const INTENTS = [['add', '➕ Ajouter'], ['burst', '⚡ Rafale'], ['page', '📒 Page 3×3'], ['auth', '🔍 Authentifier']];
+const PAGE_FMT = ['2x2', '2x3', '3x2', '3x3', '4x3']; // colonnes x lignes
+const pageFmt = () => { try { return PAGE_FMT.includes(localStorage.getItem('sc_page')) ? localStorage.getItem('sc_page') : '3x3'; } catch { return '3x3'; } };
+const INTENTS = [['add', '➕ Ajouter'], ['burst', '⚡ Rafale'], ['page', '📒 Page classeur'], ['auth', '🔍 Authentifier']];
 const TIPS = { add: 'Cadre la carte en entier : l\'appli lit le numéro (ex. 199/165) et la compare aux images officielles.', auth: 'Prends le recto en photo : la carte est reconnue puis le contrôle démarre avec la même photo.',
-  burst: 'Passe tes cartes une à une dans le cadre : chaque carte reconnue est ajoutée toute seule (bip). Change de carte au signal ✅.', page: 'Photographie une page de classeur 9 cases, à plat, cadrée bord à bord, sans reflet.' };
+  burst: 'Passe tes cartes une à une dans le cadre : chaque carte reconnue est ajoutée toute seule (bip). Change de carte au signal ✅.', page: 'Choisis le format de ta page, puis photographie-la à plat, cadrée bord à bord, sans reflet.' };
 async function scanModal(intent = 'add') {
   scanState = { intent, photo: null, cv: null }; burst = null;
   modal(`<div class="form scan"><h2 style="margin:0">Scanner des cartes</h2>
   <div class="seg quad" id="scint">${INTENTS.map(([k, t]) => `<button type="button" data-si="${k}" aria-pressed="${intent === k}">${t}</button>`).join('')}</div>
   <div class="cam" id="cam" hidden><video playsinline muted></video><div class="frame" id="frame"><i></i><i></i><i></i><i></i></div><p class="camtip" id="camtip">Carte à plat, dans le cadre, sans reflet</p></div>
   <div class="acts" id="scacts"><button class="btn" id="cap" type="button" hidden>📸 Capturer</button><button class="btn" id="bgo" type="button" hidden>▶️ Démarrer la rafale</button>
+    <div class="seg pgfmt" id="pgfmt" hidden>${PAGE_FMT.map(f => `<button type="button" data-pf="${f}" aria-pressed="${f === pageFmt()}">${f.replace('x', '×')}</button>`).join('')}</div>
     <label class="btn" id="pgcap" style="cursor:pointer" hidden>📸 Photographier la page<input type="file" id="pgf" accept="image/*" capture="environment" hidden></label>
     <label class="btn ghost" id="scpick" style="cursor:pointer">🖼️ Choisir une photo<input type="file" id="scf" accept="image/*" hidden></label></div>
   <p class="small mut" id="scs" role="status"></p><div id="bst"></div><div id="scr"></div>
   <details id="scman"><summary class="small">✍️ Saisir le numéro à la main</summary><div class="row2"><label class="f">Numéro (ex. 091/132)<span class="numpair"><input id="scn" placeholder="091" inputmode="numeric" maxlength="7" aria-label="Numéro de la carte"><b>/</b><input id="sct" placeholder="132" inputmode="numeric" maxlength="3" aria-label="Total de la série (optionnel)"></span></label><label class="f">Nom (optionnel)<input id="scw" placeholder="Dracaufeu"></label></div><button class="btn ghost" id="scgo" type="button">Chercher</button></details></div>`);
   $('#scint').onclick = e => { const b = e.target.closest('[data-si]'); if (b) setIntent(b.dataset.si); };
   $('#scf').onchange = async e => { const f = e.target.files[0]; if (!f) return; scanState.intent === 'page' ? scanPage(f) : analyse(await fileToCard(f)); };
+  $('#pgfmt').onclick = e => { const b = e.target.closest('[data-pf]'); if (!b) return; try { localStorage.setItem('sc_page', b.dataset.pf); } catch { } $('#pgfmt').querySelectorAll('button').forEach(x => x.setAttribute('aria-pressed', x === b)); };
   $('#pgf').onchange = e => { const f = e.target.files[0]; if (f) scanPage(f); };
   $('#scgo').onclick = () => manualSearch();
   $('#scn').oninput = e => { if (/^\d{3}$/.test(e.target.value)) $('#sct').focus(); }; // 3 chiffres : on passe au total
@@ -456,7 +460,7 @@ function setIntent(k) {
   $('#scint').querySelectorAll('button').forEach(x => x.setAttribute('aria-pressed', x.dataset.si === k));
   const cam = !!scanState.cam, page = k === 'page';
   $('#cam').hidden = !cam || page; $('#cap').hidden = !cam || page || k === 'burst'; $('#bgo').hidden = !cam || k !== 'burst';
-  $('#pgcap').hidden = !page; $('#scman').hidden = page || k === 'burst'; $('#scpick').hidden = k === 'burst';
+  $('#pgcap').hidden = !page; $('#pgfmt').hidden = !page; $('#scman').hidden = page || k === 'burst'; $('#scpick').hidden = k === 'burst';
   $('#scs').innerHTML = k === 'burst' && !cam ? '⚠️ La rafale a besoin de la caméra : autorise-la dans ton navigateur.' : TIPS[k];
   if (k === 'add' || k === 'auth') { if (scanState.shown) showScan(scanState.shown); } else if (!burst) $('#scr').innerHTML = '';
 }
@@ -557,11 +561,11 @@ async function expressModal() {
 
 // ---------- page de classeur : 9 cartes d'une photo ----------
 async function scanPage(file) {
-  const cells = await splitPage(file), res = cells.map(() => ({ st: 'wait' }));
+  const [cols, rows] = pageFmt().split('x').map(Number), cells = await splitPage(file, cols, rows), res = cells.map(() => ({ st: 'wait' }));
   scanState.page = res;
   const draw = () => {
     const n = res.filter(r => r.on && r.pick).length;
-    $('#scr').innerHTML = `<div class="pagegrid">${res.map((r, i) => `<button type="button" class="pcell ${r.st}${r.on ? ' on' : ''}" data-pc="${i}">${r.pick ? img(r.pick) : `<span>${{ wait: '…', blank: 'vide', none: '✖', run: '🔎' }[r.st] || '?'}</span>`}${r.st === 'unsure' ? '<i>?</i>' : r.on ? '<i>✓</i>' : ''}</button>`).join('')}</div>
+    $('#scr').innerHTML = `<div class="pagegrid" style="--cols:${cols}">${res.map((r, i) => `<button type="button" class="pcell ${r.st}${r.on ? ' on' : ''}" data-pc="${i}">${r.pick ? img(r.pick) : `<span>${{ wait: '…', blank: 'vide', none: '✖', run: '🔎' }[r.st] || '?'}</span>`}${r.st === 'unsure' ? '<i>?</i>' : r.on ? '<i>✓</i>' : ''}</button>`).join('')}</div>
       <div id="pcpick"></div><button type="button" class="btn" id="pcadd" ${n ? '' : 'disabled'}>➕ Ajouter ${n} carte${n > 1 ? 's' : ''} au classeur</button>`;
     $('#pcadd').onclick = async () => { const m = {}; res.forEach(r => { if (r.on && r.pick) m[r.pick.id] = (m[r.pick.id] || 0) + 1; }); await addMany(m); toast(`${n} carte${n > 1 ? 's' : ''} ajoutée${n > 1 ? 's' : ''} au classeur`); $('#scr').innerHTML = '<p class="okline">✅ Page ajoutée ! Photographie la suivante.</p>'; };
   };
@@ -570,7 +574,7 @@ async function scanPage(file) {
     $('#pcpick').onclick = ev => { const p = ev.target.closest('[data-pp]'); if (!p) return; ev.stopPropagation(); const j = +p.dataset.pp; if (j >= 0) { r.pick = r.list[j]; r.on = true; r.st = 'sure'; } else r.on = false; draw(); }; };
   draw();
   for (let i = 0; i < cells.length; i++) {
-    $('#scs').textContent = `Lecture de la case ${i + 1}/9…`;
+    $('#scs').textContent = `Lecture de la case ${i + 1}/${cells.length}…`;
     if (isBlank(thumb(cells[i]))) { res[i].st = 'blank'; draw(); continue; }
     res[i].st = 'run'; draw();
     try { const r = await identify(cells[i]); Object.assign(res[i], { list: r.list, pick: r.list[0] || null, st: !r.list.length ? 'none' : r.sure ? 'sure' : 'unsure', on: r.sure }); }

@@ -124,9 +124,9 @@ export const frameDiff = (a, b) => { if (!a || !b) return 255; let s = 0; for (l
 export const isBlank = g => { let m = 0; for (const v of g) m += v; m /= g.length; let s = 0; for (const v of g) s += (v - m) ** 2; return Math.sqrt(s / g.length) < 14; };
 
 // ---------- page de classeur 3 x 3 ----------
-export async function splitPage(file) {
-  const bmp = await createImageBitmap(file), cells = [], cw = bmp.width / 3, ch = bmp.height / 3, mx = cw * .04, my = ch * .03;
-  for (let r = 0; r < 3; r++) for (let c = 0; c < 3; c++) {
+export async function splitPage(file, cols = 3, rows = 3) {
+  const bmp = await createImageBitmap(file), cells = [], cw = bmp.width / cols, ch = bmp.height / rows, mx = cw * .04, my = ch * .03;
+  for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
     const cv = Object.assign(document.createElement('canvas'), { width: CW, height: CH });
     cv.getContext('2d').drawImage(bmp, c * cw + mx, r * ch + my, cw - 2 * mx, ch - 2 * my, 0, 0, CW, CH);
     cells.push(cv);

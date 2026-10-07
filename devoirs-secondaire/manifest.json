@@ -1,0 +1,15 @@
+{
+  "name": "Devoirs Malins · Collège & Lycée",
+  "short_name": "Malins Secondaire",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f6f4ff",
+  "theme_color": "#6d5dfc",
+  "icons": [
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ]
+}

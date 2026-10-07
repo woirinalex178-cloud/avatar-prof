@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Devoirs Malins · Collège & Lycée</title>
+<meta name="theme-color" content="#6d5dfc">
+<link rel="manifest" href="manifest.json"><link rel="icon" href="icon.svg">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Nunito:wght@400;600;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="top">
+  <span class="logo">🦉 Devoirs <b>malins</b></span>
+  <div class="stats">
+    <span class="pill" role="button" tabindex="0" title="Étoiles gagnées">⭐ <b id="stars">0</b></span>
+    <span class="pill" role="button" tabindex="0" title="Jours d'entraînement d'affilée">🔥 <b id="streak">0</b></span>
+    <span id="cloud" class="pill cloud" title="Sauvegarde entre appareils">☁️</span>
+  </div>
+</header>
+
+<main class="wrap">
+  <!-- Code famille -->
+  <section id="v-pin" hidden>
+    <div class="owl-big">🦉</div>
+    <h1>Ton prochain déclic commence ici.</h1>
+    <p class="mut">Prototype privé · collège et lycée. Entre ton code d’accès. Le même code sur chaque téléphone ou tablette = les mêmes devoirs partout.</p>
+    <form id="f-pin" class="row"><input id="pin" inputmode="numeric" autocomplete="off" type="password" placeholder="Code d’accès" required><button class="btn">C'est parti !</button></form>
+    <button id="demo" class="ghost">Découvrir les exemples sans connexion →</button>
+  </section>
+
+  <!-- Liste des devoirs -->
+  <section id="v-home" hidden>
+    <div class="secondary-intro"><span class="tag">COLLÈGE & LYCÉE · PREMIÈRE BASE</span><h1>Comprendre. S’entraîner.<br>Et progresser à ton rythme.</h1><p class="mut">Tes devoirs deviennent des fiches, des défis et des révisions utiles.</p></div>
+    <form id="f-profile" class="card profile"><label>Ma classe<select id="classe"><option value="6e">6e</option><option value="5e">5e</option><option value="4e">4e</option><option value="3e">3e</option><option value="2de">Seconde</option><option value="1re">Première</option><option value="terminale">Terminale</option></select></label><label id="voie-field" hidden>Ma voie<select id="voie"><option value="general">Générale</option><option value="technologique">Technologique</option><option value="professionnelle">Professionnelle</option></select></label><button class="btn alt">Enregistrer</button></form>
+    <details class="card"><summary>Mon cahier de textes · Pronote / ENT</summary><p id="connection-state">Pronote et les autres ENT restent à connecter. Tu peux déjà ajouter une photo, un fichier ou le texte de ton devoir.</p><button id="refresh-ent" class="btn alt">Vérifier la connexion</button></details>
+    <div class="card lab-teaser"><div><b>🔬 Le labo des sciences</b><p>Ouvre et ferme un circuit. Observe, prédis, puis vérifie.</p></div><button id="open-lab" class="btn">Explorer le mini-labo</button></div>
+    <div class="bubble-row"><span class="owl">🦉</span><p id="tip" class="bubble"></p></div>
+    <p id="status" class="status" aria-live="polite" hidden></p>
+
+    <div class="adds">
+      <label class="add add-photo">
+        <span class="add-ico">📷</span><b>Photo</b><small>du cahier de textes</small>
+        <input id="photo" type="file" accept="image/*" capture="environment" hidden>
+      </label>
+      <label class="add add-file">
+        <span class="add-ico">📎</span><b>Fichier</b><small>image, PDF, texte</small>
+        <input id="file" type="file" accept="image/*,application/pdf,.pdf,text/plain,.txt" hidden>
+      </label>
+    </div>
+
+    <form id="f-txt" class="card">
+      <label for="txt"><b>✏️ Ou dis-le avec tes mots</b> <span class="small mut">(aussi pour préciser une photo pas claire)</span></label>
+      <textarea id="txt" rows="3" placeholder="Ex : pour jeudi réviser les équations ; contrôle vendredi sur la Révolution française. Joins la leçon et les énoncés pour un entraînement précis."></textarea>
+      <button class="btn">Ajouter ces devoirs</button>
+    </form>
+
+    <div class="h2row"><h2>Mes missions</h2><button id="go-fiches" class="btn alt">📚 Mes fiches</button></div>
+    <ul id="list" class="list"></ul>
+    <div id="empty" class="empty" hidden><span>🎒</span><p>Aucun devoir à venir.<br>Prends ton cahier de textes en photo !</p></div>
+  </section>
+
+  <!-- Entraînement -->
+  <section id="v-train" hidden>
+    <button id="back" class="ghost">← Mes missions</button>
+    <p id="t-kind" class="tag"></p>
+    <h1 id="t-title"></h1>
+    <details id="t-memo" class="card memo" open><summary>📌 À retenir avant de commencer</summary><ul></ul><button id="t-fiche" class="ghost">📘 Relire la fiche complète</button></details>
+    <div id="t-q" class="card qcard"></div>
+    <div id="t-end" class="card end" hidden></div>
+  </section>
+
+  <!-- Bibliothèque de fiches -->
+  <section id="v-fiches" hidden>
+    <button class="ghost to-home">← Mes missions</button>
+    <h1>📚 Mes fiches</h1>
+    <input id="f-search" type="search" placeholder="🔎 Chercher une fiche (ex : fractions, Louis XIV…)">
+    <div id="f-cats" class="chips"></div>
+    <ul id="f-list" class="list"></ul>
+    <div id="f-empty" class="empty" hidden><span>📘</span><p>Tes fiches apparaîtront ici dès qu'un devoir est préparé.</p></div>
+  </section>
+
+  <!-- Une fiche -->
+  <section id="v-fiche" hidden>
+    <button id="fiche-back" class="ghost">← Retour</button>
+    <div id="fiche-box"></div>
+  </section>
+</main>
+<dialog id="perso"><form method="dialog"><button class="ghost close" aria-label="Fermer">✕</button></form><div class="perso-box"></div></dialog>
+<dialog id="lab" aria-labelledby="lab-title"><form method="dialog"><button class="ghost close" aria-label="Fermer le labo">✕</button></form><span class="tag">PHYSIQUE · SIMULATION</span><h2 id="lab-title">Fais circuler le courant</h2><p>Une pile, une lampe et un interrupteur. La lampe va-t-elle s’allumer si le circuit est ouvert ?</p><div class="row" id="prediction"><button class="btn alt" data-predict="yes">Oui</button><button class="btn alt" data-predict="no">Non</button></div><p id="lab-feedback" aria-live="polite"></p><svg viewBox="0 0 400 200" role="img" aria-labelledby="circuit-title"><title id="circuit-title">Circuit ouvert : lampe éteinte</title><path d="M110 35 H180 M240 35 H335 V165 H210 M185 165 H65 V35 H110" fill="none" stroke="currentColor" stroke-width="4"/><path id="switch-line" d="M180 35 L236 10" stroke="currentColor" stroke-width="4"/><circle cx="180" cy="35" r="5"/><circle cx="240" cy="35" r="5"/><circle id="bulb" cx="335" cy="100" r="27" fill="#dde3e7" stroke="currentColor" stroke-width="3"/><path d="M316 81 L354 119 M354 81 L316 119" stroke="currentColor" stroke-width="3"/><path d="M185 145 V185 M210 152 V178" stroke="currentColor" stroke-width="4"/><text x="180" y="135" font-size="14">+   −</text><text x="20" y="192" font-size="13">Pile</text></svg><button id="toggle-circuit" class="btn" aria-pressed="false">Fermer l’interrupteur</button><p id="circuit-observation" aria-live="polite">Circuit ouvert : la boucle est interrompue, la lampe est éteinte.</p><p class="mut small">Modèle simplifié : une pile et une lampe compatibles, reliées par des fils conducteurs.</p></dialog>
+<canvas id="confetti" aria-hidden="true"></canvas>
+<script src="examples.js"></script>
+<script src="app.js"></script>
+<script src="lab.js"></script>
+</body>
+</html>

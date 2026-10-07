@@ -287,24 +287,56 @@ async function train(d, goal = false) {
     fill.style.width = rocket.style.left = (Math.min(k, n) / Math.max(queue.length, n) * 100) + '%'; bar.append(fill, rocket);
     box.append(head, bar, el('p', 'q-text', q.enonce));
 
-    const answer = (given, btn) => {
-      const good = [q.reponse, ...(q.accepte || [])].some(a => norm(a) === norm(given));
+    const finish = (good, correction) => {
       if (good && q.first) score++;
       tries++;
       // Objectif 20/20 : une question ratée revient à la fin jusqu'à ce qu'elle soit réussie.
       if (!good && goal) queue.push({ ...q, first: false, choix: shuffle(q.choix || []) });
-      box.querySelectorAll('button,input').forEach(x => x.disabled = true);
-      box.querySelectorAll('.choice').forEach(c => { if (norm(c.textContent) === norm(q.reponse)) c.classList.add('ok'); });
-      if (btn && !good) btn.classList.add('ko');
+      box.querySelectorAll('button,input,select').forEach(x => x.disabled = true);
       const fb = el('div', 'fb ' + (good ? 'ok' : 'ko'));
-      fb.append(el('strong', null, good ? BRAVO[tries % BRAVO.length] : `Presque ! La réponse : ${q.reponse}. `), document.createTextNode(q.explication || ''));
+      fb.append(el('strong', null, good ? BRAVO[tries % BRAVO.length] : `Presque ! ${correction} `), document.createTextNode(q.explication || ''));
       if (!good && goal) fb.append(el('div', 'small', '🔁 Cette question reviendra à la fin.'));
       const next = el('button', 'btn', k + 1 < queue.length ? 'Suivant →' : 'Voir mon score 🎉');
       next.onclick = () => { k++; k < queue.length ? step() : end(); };
       box.append(fb, next); next.focus();
     };
+    const answer = (given, btn) => {
+      const good = [q.reponse, ...(q.accepte || [])].some(a => norm(a) === norm(given));
+      box.querySelectorAll('.choice').forEach(c => { if (norm(c.textContent) === norm(q.reponse)) c.classList.add('ok'); });
+      if (btn && !good) btn.classList.add('ko');
+      finish(good, `La réponse : ${q.reponse}.`);
+    };
+    // Frise / carte à trous : une liste déroulante par trou, on valide quand tout est rempli.
+    const holes = (pairs, render) => {
+      const opts = shuffle(pairs.map(x => x.attendu));
+      const sels = pairs.map(() => {
+        const sel = el('select', 'hole'); sel.append(el('option', null, '— choisis —'));
+        opts.forEach(o => sel.append(Object.assign(el('option', null, o), { value: o })));
+        sel.firstChild.value = ''; return sel;
+      });
+      render(sels);
+      const ok = el('button', 'btn', 'Valider'); ok.disabled = true;
+      sels.forEach(x => x.onchange = () => ok.disabled = sels.some(y => !y.value));
+      ok.onclick = () => {
+        let all = true;
+        sels.forEach((x, i) => { const bon = x.value === pairs[i].attendu; all &&= bon; x.classList.add(bon ? 'ok' : 'ko');
+          if (!bon) x.after(el('span', 'fix', '→ ' + pairs[i].attendu)); });
+        finish(all, 'Regarde les corrections en vert ci-dessus.');
+      };
+      box.append(ok);
+    };
 
-    if (q.type === 'courte') {
+    if (q.type === 'frise' && q.items?.length) {
+      const tr = new Set(q.trous?.length ? q.trous : [1]);
+      const pairs = q.items.map((it, i) => ({ i, attendu: it.texte })).filter(x => tr.has(x.i));
+      holes(pairs, sels => box.append(friseNode(q.items, (it, i) => tr.has(i) ? sels[pairs.findIndex(x => x.i === i)] : null)));
+    } else if (q.type === 'carte' && q.lieux?.length) {
+      const pairs = q.lieux.map(l => ({ attendu: l.nom }));
+      holes(pairs, sels => {
+        const m = el('div', 'map'); box.append(m); drawMap(m, q.lieux, { numeros: true });
+        const ul = el('ol', 'map-legend'); sels.forEach(x => { const li = el('li'); li.append(x); ul.append(li); }); box.append(ul);
+      });
+    } else if (q.type === 'courte') {
       const fm = el('form', 'row'), inp = el('input'); inp.placeholder = 'Ta réponse'; inp.autocomplete = 'off';
       fm.append(inp, el('button', 'btn', 'Valider'));
       fm.onsubmit = e => { e.preventDefault(); if (inp.value.trim()) answer(inp.value); };
@@ -349,7 +381,8 @@ async function train(d, goal = false) {
 // Anciennes missions (sans fiche) : on en fabrique une à partir du mémo.
 const ficheOf = p => {
   const f = p.fiche || {};
-  return { intro: f.intro || '', sections: f.sections || [], a_retenir: f.a_retenir || p.memo || [], astuce: f.astuce || '', pieges: f.pieges || [] };
+  return { intro: f.intro || '', sections: f.sections || [], a_retenir: f.a_retenir || p.memo || [], astuce: f.astuce || '', pieges: f.pieges || [],
+    frise: f.frise || [], personnages: f.personnages || [], carte: f.carte || null, visuels: f.visuels };
 };
 
 function ficheNode(meta) {
@@ -371,6 +404,16 @@ function ficheNode(meta) {
     else { const ul = el('ul'); items.forEach(t => ul.append(el('li', null, t))); b.append(ul); }
     body.append(b);
   };
+  if (f.frise?.length) { const sct = el('section'); sct.append(el('h3', null, '🕰️ La frise chronologique'), friseNode(f.frise)); body.append(sct); }
+  if (f.personnages?.length) {
+    const sct = el('section'); sct.append(el('h3', null, '👤 Les personnages importants'));
+    const g = el('div', 'persos'); f.personnages.forEach(pp => g.append(persoCard(pp))); sct.append(g); body.append(sct);
+  }
+  if (f.carte?.lieux?.length) {
+    const sct = el('section'), m = el('div', 'map');
+    sct.append(el('h3', null, '🗺️ ' + (f.carte.titre || 'La carte'))); sct.append(m); body.append(sct);
+    requestAnimationFrame(() => drawMap(m, f.carte.lieux, { noms: true }));
+  }
   box('box-retenir', '⭐ À retenir', f.a_retenir);
   box('box-astuce', '🦉 L\'astuce de Plume', f.astuce ? [f.astuce] : []);
   box('box-pieges', '⚠️ Pièges à éviter', f.pieges);
@@ -390,19 +433,128 @@ function openFiche(id, from = 'fiches') {
   const pr = el('button', 'btn alt', '🖨️ Imprimer'); pr.onclick = () => print(); acts.append(pr);
   box.querySelector('.fiche').append(acts);
   show('fiche');
+  enrichir(id, meta);
+}
+
+// Anciennes fiches d'histoire / géographie / sciences : on demande les visuels une seule fois.
+async function enrichir(id, meta) {
+  const f = meta.fiche || {}, cat = catOf(meta);
+  if (f.visuels || !['Histoire', 'Géographie', 'Sciences'].includes(cat) || f.frise?.length || f.carte || f.personnages?.length) return;
+  const d = S.devoirs.find(x => x.id === id) || { matiere: meta.matiere, consigne: meta.consigne };
+  status('');
+  const note = el('p', 'status', '🦉 J\'ajoute une frise, des personnages ou une carte à ta fiche…'); $('#fiche-box').prepend(note);
+  try {
+    const v = await api('generate', { action: 'visuels', devoir: d, titre: meta.titre });
+    const plus = { frise: v.frise || [], personnages: v.personnages || [], carte: v.carte || null, visuels: true };
+    S.fiches[id] = { ...S.fiches[id], ...meta, fiche: { ...f, ...plus }, at: Date.now() };
+    const p = S.packs[id];
+    if (p) { p.fiche = { ...(p.fiche || {}), ...plus }; p.questions.push(...(v.questions || [])); p.at = Date.now(); }
+    save();
+    if (!$('#v-fiche').hidden) openFiche(id, ficheFrom);
+  } catch { note.textContent = '⚠️ Visuels indisponibles pour le moment.'; }
+}
+
+// ---------- Visuels : frise, personnages (Wikipédia / Vikidia), cartes (OpenStreetMap) ----------
+function friseNode(items, slot = () => null) {
+  const ol = el('ol', 'frise');
+  items.forEach((it, i) => {
+    const li = el('li'); li.append(el('span', 'an', it.label || String(it.annee)));
+    const sl = slot(it, i); li.append(sl || el('span', 'ev', it.texte)); ol.append(li);
+  });
+  return ol;
+}
+
+const wikiCache = store.get('wiki', {});
+async function wiki(titre) {
+  if (wikiCache[titre]) return wikiCache[titre];
+  const get = t => fetch('https://fr.wikipedia.org/api/rest_v1/page/summary/' + encodeURIComponent(t.replace(/ /g, '_'))).then(r => r.ok ? r.json() : null);
+  let w = await get(titre).catch(() => null);
+  if (!w || w.type === 'disambiguation') {   // titre approximatif -> recherche
+    const r = await fetch(`https://fr.wikipedia.org/w/api.php?action=query&list=search&srlimit=1&format=json&origin=*&srsearch=${encodeURIComponent(titre)}`).then(r => r.json()).catch(() => null);
+    const t = r?.query?.search?.[0]?.title; if (t) w = await get(t).catch(() => null);
+  }
+  const out = w ? { img: w.thumbnail?.source || '', extrait: w.extract || '', url: w.content_urls?.desktop?.page || '', desc: w.description || '' } : {};
+  wikiCache[titre] = out; store.set('wiki', wikiCache);
+  return out;
+}
+
+function persoCard(pp) {
+  const b = el('button', 'perso'), img = el('span', 'portrait', '👤');
+  b.append(img, el('b', null, pp.nom), el('small', null, pp.dates || pp.role || ''));
+  wiki(pp.wiki || pp.nom).then(w => {
+    if (!w.img) return;
+    const im = Object.assign(el('img'), { src: w.img, alt: '', loading: 'lazy' });
+    im.onerror = () => img.replaceChildren('👤'); img.replaceChildren(im);
+  });
+  b.onclick = () => openPerso(pp);
+  return b;
+}
+
+async function openPerso(pp) {
+  const dlg = $('#perso'), box = dlg.querySelector('.perso-box');
+  box.replaceChildren(el('p', 'mut', '🦉 Je cherche…')); dlg.showModal();
+  const w = await wiki(pp.wiki || pp.nom);
+  const head = el('div', 'perso-head');
+  if (w.img) head.append(Object.assign(el('img'), { src: w.img, alt: pp.nom }));
+  const t = el('div'); t.append(el('h2', null, pp.nom), el('p', 'mut', [pp.dates, w.desc].filter(Boolean).join(' · '))); head.append(t);
+  const links = el('div', 'row');
+  links.append(Object.assign(el('a', 'btn alt', '📗 Vikidia (pour les enfants)'), { href: 'https://fr.vikidia.org/w/index.php?search=' + encodeURIComponent(pp.nom), target: '_blank', rel: 'noopener' }));
+  if (w.url) links.append(Object.assign(el('a', 'btn alt', '🌐 Wikipédia'), { href: w.url, target: '_blank', rel: 'noopener' }));
+  box.replaceChildren(head, el('p', 'role', pp.role || ''), el('p', null, w.extrait || ''), links);
+}
+
+let leafletP;
+function leaflet() {
+  return leafletP ||= new Promise((ok, ko) => {
+    const base = 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/';
+    document.head.append(Object.assign(document.createElement('link'), { rel: 'stylesheet', href: base + 'leaflet.min.css' }));
+    const sc = Object.assign(document.createElement('script'), { src: base + 'leaflet.min.js' });
+    sc.onload = () => ok(window.L); sc.onerror = ko; document.head.append(sc);
+  });
+}
+// Fond de carte sans noms (carte à trous) ou avec noms (fiche).
+async function drawMap(div, lieux, { numeros = false, noms = false } = {}) {
+  try {
+    const L = await leaflet();
+    const map = L.map(div, { scrollWheelZoom: false, attributionControl: true });
+    L.tileLayer(`https://{s}.basemaps.cartocdn.com/${numeros ? 'light_nolabels' : 'voyager'}/{z}/{x}/{y}{r}.png`,
+      { attribution: '© OpenStreetMap © CARTO', subdomains: 'abcd', maxZoom: 12 }).addTo(map);
+    const pts = lieux.filter(l => isFinite(l.lat) && isFinite(l.lon)).map((l, i) => {
+      const icon = L.divIcon({ className: 'pin', html: `<span>${numeros ? i + 1 : '●'}</span>${noms ? `<em>${l.nom.replace(/</g, '')}</em>` : ''}`, iconSize: null });
+      const m = L.marker([l.lat, l.lon], { icon }).addTo(map);
+      if (noms && l.info) m.bindPopup(`<b>${l.nom.replace(/</g, '')}</b><br>${String(l.info).replace(/</g, '')}`);
+      return [l.lat, l.lon];
+    });
+    if (pts.length > 1) map.fitBounds(pts, { padding: [30, 30], maxZoom: 9 }); else map.setView(pts[0] || [46.6, 2.4], pts.length ? 8 : 5);
+  } catch { div.replaceChildren(el('p', 'mut small', 'Carte indisponible hors connexion.')); }
 }
 $('#fiche-back').onclick = () => (ficheFrom === 'fiches' ? showFiches() : ficheFrom === 'train' ? show('train') : home());
+
+const CATS = [['Maths', /math|calcul|fraction|g[ée]om[ée]trie|nombre|table|probl|mesure/i], ['Français', /fran[cç]|dict[ée]e|orthog|conjug|gramm|vocab|lecture|po[ée]s|homophon|r[ée]daction/i],
+  ['Histoire', /hist/i], ['Géographie', /g[ée]og/i], ['Sciences', /scien|svt|techno/i], ['Langues', /angl|allem|espagn|ital|langue/i]];
+const CAT_EMO = { Maths: '🔢', Français: '✍️', Histoire: '🏰', Géographie: '🌍', Sciences: '🔬', Langues: '🗣️', Autres: '📚' };
+const catOf = m => (CATS.find(([, re]) => re.test(m.matiere)) || CATS.find(([, re]) => re.test(m.consigne || '')) || ['Autres'])[0];
+let catSel = 'Toutes';
 
 function renderFiches() {
   const q = norm($('#f-search').value);
   const all = Object.entries(S.fiches).sort((a, b) => b[1].date.localeCompare(a[1].date) || b[1].at - a[1].at);
-  const list = all.filter(([, m]) => !q || norm(m.matiere + ' ' + m.titre + ' ' + m.consigne).includes(q));
+  const cats = [...new Set(all.map(([, m]) => catOf(m)))];
+  if (catSel !== 'Toutes' && !cats.includes(catSel)) catSel = 'Toutes';
+  $('#f-cats').replaceChildren(...['Toutes', ...cats].map(c => {
+    const b = el('button', 'chip' + (c === catSel ? ' on' : ''), `${CAT_EMO[c] || '🗂️'} ${c} (${c === 'Toutes' ? all.length : all.filter(([, m]) => catOf(m) === c).length})`);
+    b.onclick = () => { catSel = c; renderFiches(); }; return b;
+  }));
+  const list = all.filter(([, m]) => (catSel === 'Toutes' || catOf(m) === catSel) && (!q || norm(m.matiere + ' ' + m.titre + ' ' + m.consigne).includes(q)));
   $('#f-empty').hidden = all.length > 0;
-  $('#f-list').replaceChildren(...list.map(([id, m]) => {
+  let cur = '';
+  $('#f-list').replaceChildren(...[...list].sort((a, b) => catOf(a[1]).localeCompare(catOf(b[1]))).flatMap(([id, m]) => {
+    const c = catOf(m), out = [];
+    if (c !== cur) { cur = c; out.push(el('li', 'dayhead', `${CAT_EMO[c]} ${c}`)); }
     const li = el('li', 'item fitem k-' + (m.type || ''));
     li.append(el('span', 'emoji', emojiOf(m)), el('h3', null, m.titre || m.matiere), el('p', 'small mut', `${m.matiere} · ${new Date(m.date + 'T12:00').toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })}`));
     li.onclick = () => openFiche(id, 'fiches');
-    return li;
+    out.push(li); return out;
   }));
 }
 function showFiches() { show('fiches'); renderFiches(); }
@@ -433,6 +585,11 @@ function confetti() {
     if (++t < 200) requestAnimationFrame(f); else x.clearRect(0, 0, c.width, c.height);
   })();
 }
+
+// Explication des compteurs du haut.
+$('#stars').parentElement.onclick = () => { home(); status('⭐ Tes étoiles : une étoile par bonne réponse du premier coup (meilleur score de chaque mission).'); };
+$('#streak').parentElement.onclick = () => { home(); status('🔥 Ta série : le nombre de jours d\'affilée où tu t\'es entraînée. Entraîne-toi chaque jour pour la faire grandir ! Un jour sans entraînement et elle repart à zéro.'); };
+$('#cloud').onclick = () => { home(); status('☁️ ' + $('#cloud').title); };
 
 function home() { show('home'); $('#tip').textContent = TIPS[Math.random() * TIPS.length | 0]; render(); }
 $('#back').onclick = home;

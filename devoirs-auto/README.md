@@ -15,7 +15,9 @@ Devoirs de Céleste → entraînement adapté, **automatiquement**. Coût : **0 
 
 4. **📎 Fichier** : image, PDF ou texte (ex. une capture d'écran envoyée par une autre maman).
 
-Chaque nouveau devoir est préparé tout seul : **fiche pédagogique** (cours, exemples, à retenir, astuce, pièges) + **banque de questions** qui change à chaque partie (l'IA en ajoute quand il en manque). Évaluations : mode **🎯 Objectif 20/20** (20 questions, les erreurs reviennent jusqu'à être réussies). Toutes les fiches restent dans **📚 Mes fiches** (recherche, impression).
+Chaque nouveau devoir est préparé tout seul : **fiche pédagogique** (cours, exemples, à retenir, astuce, pièges) + **banque de questions** qui change à chaque partie (l'IA en ajoute quand il en manque). Évaluations : mode **🎯 Objectif 20/20** (20 questions, les erreurs reviennent jusqu'à être réussies). Toutes les fiches restent dans **📚 Mes fiches** (classées par matière, recherche, impression).
+
+**Visuels** (gratuits) : frise chronologique et portraits de personnages (Wikipédia, lien Vikidia) en histoire, carte (OpenStreetMap/CARTO) en géographie ; exercices **frise à trous** et **carte à trous**.
 
  Étoiles ⭐, série de jours 🔥, trophées et confettis pour motiver.
 

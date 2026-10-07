@@ -14,8 +14,8 @@
 <header class="top">
   <span class="logo">🦉 Devoirs <b>malins</b></span>
   <div class="stats">
-    <span class="pill" title="Étoiles gagnées">⭐ <b id="stars">0</b></span>
-    <span class="pill" title="Jours d'entraînement d'affilée">🔥 <b id="streak">0</b></span>
+    <span class="pill" role="button" tabindex="0" title="Étoiles gagnées">⭐ <b id="stars">0</b></span>
+    <span class="pill" role="button" tabindex="0" title="Jours d'entraînement d'affilée">🔥 <b id="streak">0</b></span>
     <span id="cloud" class="pill cloud" title="Sauvegarde entre appareils">☁️</span>
   </div>
 </header>
@@ -71,6 +71,7 @@
     <button class="ghost to-home">← Mes missions</button>
     <h1>📚 Mes fiches</h1>
     <input id="f-search" type="search" placeholder="🔎 Chercher une fiche (ex : fractions, Louis XIV…)">
+    <div id="f-cats" class="chips"></div>
     <ul id="f-list" class="list"></ul>
     <div id="f-empty" class="empty" hidden><span>📘</span><p>Tes fiches apparaîtront ici dès qu'un devoir est préparé.</p></div>
   </section>
@@ -81,6 +82,7 @@
     <div id="fiche-box"></div>
   </section>
 </main>
+<dialog id="perso"><form method="dialog"><button class="ghost close" aria-label="Fermer">✕</button></form><div class="perso-box"></div></dialog>
 <canvas id="confetti" aria-hidden="true"></canvas>
 <script src="app.js"></script>
 </body>

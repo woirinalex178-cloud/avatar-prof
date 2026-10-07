@@ -442,3 +442,4 @@ dialog::backdrop{background:#000a;backdrop-filter:blur(6px)}
 .exc{text-align:center}.exc .cimg{width:100%;border-radius:4px}.exc small{display:block}
 .bstrip span>.cimg,.bstrip span>.ph{width:52px;height:73px;min-height:0;font-size:8px;overflow:hidden;display:block;border-radius:4px}.bpanel{max-width:100%;box-sizing:border-box}
 .pgfmt{display:flex;gap:4px;flex-wrap:wrap;width:100%}.pgfmt button{flex:1;min-width:52px;font-variant-numeric:tabular-nums}
+.chip.on{background:#e0b85c;color:#0c2820;border-color:#e0b85c}

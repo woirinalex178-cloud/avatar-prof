@@ -601,19 +601,35 @@ function showRanked({ list, sure, read }) {
   $('#scr').innerHTML = readLine(read) + `<div class="alts big">${list.map((c, i) => c.alt ? '' : `<button type="button" data-alt="${i}">${img(c)}<small>${flag(c.lang)} ${esc(nm(c))}<br>${esc(c.set_name)} · ${esc(c.local_id)}</small></button>`).join('')}</div>`;
   $('#scr').onclick = e => { const b = e.target.closest('[data-alt]'); if (b) showScan(list[+b.dataset.alt]); };
 }
+const artKey = id => id.replace(/^[a-z]{2}:/, ''), langCache = new Map();
+// toutes les langues d'une même carte (même illustration, même numéro) : pour corriger la langue proposée
+async function langVersions(c) {
+  const k = artKey(c.id);
+  if (!langCache.has(k)) langCache.set(k, (async () => {
+    const { data } = await sb.from('cards').select('id,name,name_fr,lang,local_id,image,price_eur,set_id,set:sets(name,name_fr)').in('id', ALL_LANGS.map(l => `${l}:${k}`));
+    return (data || []).map(x => ({ ...x, set_name: x.set?.name_fr || x.set?.name || '', alt: true }));
+  })().catch(() => []));
+  return langCache.get(k);
+}
 function showScan(c) {
   scanState.shown = c; scanState.qty = scanState.qty || 1;
-  const add = scanState.intent === 'add', list = scanState.list || [], twins = list.filter(x => x.id !== c.id && (c.art ? x.art === c.art : x.local_id === c.local_id && x.set_name === c.set_name));
-  const others = list.filter(x => x !== c && !twins.includes(x) && !x.alt);
+  const add = scanState.intent === 'add', list = scanState.list || [], seenArt = new Set([artKey(c.id)]);
+  const others = list.filter(x => !x.alt && !seenArt.has(artKey(x.id)) && seenArt.add(artKey(x.id)));
   const bAdd = `<div class="qtyrow"><button type="button" class="btn sm ghost" data-q="-1" aria-label="Moins">−</button><b id="sq">${scanState.qty}</b><button type="button" class="btn sm ghost" data-q="1" aria-label="Plus">+</button><button type="button" class="btn${add ? '' : ' ghost'}" id="sadd">➕ Ajouter au classeur</button></div>`;
   const bAuth = `<button type="button" class="btn${add ? ' ghost' : ''}" id="sauth">🔍 ${add ? 'L\'authentifier aussi' : 'Lancer le contrôle avec cette photo'}</button>`;
   $('#scs').textContent = '';
   $('#scr').innerHTML = `<div class="scanres panel"><div class="sr-img">${img(c, true)}</div><div class="sr-txt">
     <p class="small" style="margin:0"><span class="pill p-NM">✓ Carte reconnue</span></p>
     <h3>${flag(c.lang)} ${esc(nm(c))}</h3>${readLine(scanState.read)}<p class="small mut">${esc(c.set_name)} · n° ${esc(c.local_id)} · cote <b>${eur(c.price_eur)}</b>${S.coll[c.id] ? ` · déjà <b>×${S.coll[c.id]}</b> dans ton classeur` : ''}</p>
-    ${twins.length ? `<p class="small" style="margin:6px 0">Autre langue ? ${twins.map(x => `<button type="button" class="chip" data-tw="${x.id}">${flag(x.lang)}</button>`).join(' ')}</p>` : ''}
+    <p class="small langsw" id="langsw" style="margin:6px 0"></p>
     </div><div class="sr-acts"><p class="small" style="margin:0"><b>C'est bien elle ?</b></p>${add ? bAdd + bAuth : bAuth + bAdd}</div></div>
     ${others.length ? `<details class="small"><summary>Pas la bonne ? (${others.length} autres)</summary><div class="alts">${others.map(x => `<button type="button" data-tw="${x.id}">${img(x)}<small>${flag(x.lang)} ${esc(nm(x))}<br>${esc(x.set_name)} · ${esc(x.local_id)}</small></button>`).join('')}</div></details>` : ''}`;
+  langVersions(c).then(vs => {
+    if (scanState.shown !== c || !$('#langsw')) return;
+    for (const v of vs) if (!list.some(x => x.id === v.id)) list.push(v);
+    remember(vs); scanState.list = list;
+    if (vs.length > 1) $('#langsw').innerHTML = 'Langue : ' + vs.sort((a, b) => ALL_LANGS.indexOf(a.lang) - ALL_LANGS.indexOf(b.lang)).map(x => `<button type="button" class="chip${x.id === c.id ? ' on' : ''}" data-tw="${x.id}" aria-pressed="${x.id === c.id}">${flag(x.lang)}</button>`).join(' ');
+  });
   $('#scr').onclick = async e => {
     const t = e.target.closest('[data-tw],[data-q],#sadd,#sauth'); if (!t) return;
     if (t.dataset.tw) return showScan(list.find(x => x.id === t.dataset.tw));

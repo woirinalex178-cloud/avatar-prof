@@ -517,8 +517,11 @@ async function drawMap(div, lieux, { numeros = false, noms = false } = {}) {
   try {
     const L = await leaflet();
     const map = L.map(div, { scrollWheelZoom: false, attributionControl: true });
-    L.tileLayer(`https://{s}.basemaps.cartocdn.com/${numeros ? 'light_nolabels' : 'voyager'}/{z}/{x}/{y}{r}.png`,
-      { attribution: '© OpenStreetMap © CARTO', subdomains: 'abcd', maxZoom: 12 }).addTo(map);
+    // Fonds gratuits sans clé (Esri) : gris clair sans noms, + calque des noms seulement pour les fiches.
+    const esri = n => `https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/${n}/MapServer/tile/{z}/{y}/{x}`;
+    const attribution = 'Fond © Esri, HERE, Garmin, © contributeurs OpenStreetMap';
+    L.tileLayer(esri('World_Light_Gray_Base'), { attribution, maxZoom: 16 }).addTo(map);
+    if (!numeros) L.tileLayer(esri('World_Light_Gray_Reference'), { maxZoom: 16 }).addTo(map);
     const pts = lieux.filter(l => isFinite(l.lat) && isFinite(l.lon)).map((l, i) => {
       const icon = L.divIcon({ className: 'pin', html: `<span>${numeros ? i + 1 : '●'}</span>${noms ? `<em>${l.nom.replace(/</g, '')}</em>` : ''}`, iconSize: null });
       const m = L.marker([l.lat, l.lon], { icon }).addTo(map);

@@ -386,32 +386,37 @@ async function identify(cv) {
     }
     if (list.length) {
       const main = list.filter(c => !c.alt), rival = vis.slice(1).find(v => !(v.ja && !vis[0].ja)), sure = vis[0].score >= .6 && (!rival || vis[0].score - rival.score >= .04);
-      if (sure) { remember(list); return { list: [...main, ...list.filter(c => c.alt)], sure, nums: [] }; }
+      if (sure) { remember(list); return { list: [...main, ...list.filter(c => c.alt)], sure, nums: [], how: { t: 'vis', s: vis[0].score } }; }
       vis.list = [...main, ...list.filter(c => c.alt)];
     }
   }
   // le moteur local hésite : l'IA lit la carte (nom, numéro, langue, série) et la base trouve la carte exacte
   const ai = await identifyAI(cv);
-  if (ai?.cards?.length) {
-    const top = ai.cards[0], second = ai.cards[1], seen = new Set(ai.cards.map(c => c.id));
-    const list = [...ai.cards.map(c => ({ ...c, ai: true })), ...(vis?.list || []).filter(c => !seen.has(c.id) && !c.alt)];
-    const sure = top.score >= 12 || (top.score >= 9 && (!second || top.score - second.score >= 3));
-    remember(list); return { list, sure, nums: [], read: ai.read };
-  }
-  if (vis?.list?.length) { remember(vis.list); return { list: vis.list, sure: false, nums: [], read: ai?.read }; }
-  return { ...(await identifyOCR(cv)), read: ai?.read };
+  if (ai?.cards?.length) return fromAI(ai, vis?.list);
+  const aiErr = ai?.read?.is_card === false ? 'pas de carte reconnue sur la photo' : S.aiErr;
+  if (vis?.list?.length) { remember(vis.list); return { list: vis.list, sure: false, nums: [], how: { t: 'vis', s: vis[0].score, aiErr } }; }
+  return { ...(await identifyOCR(cv)), how: { t: 'ocr', aiErr } };
+}
+// résultat de l'IA : cartes trouvées dans la base d'après ce qu'elle a lu, puis les propositions du dessin
+function fromAI(ai, extra = []) {
+  const top = ai.cards[0], second = ai.cards[1], seen = new Set(ai.cards.map(c => c.id));
+  const list = [...ai.cards.map(c => ({ ...c, ai: true })), ...extra.filter(c => !seen.has(c.id) && !c.alt)];
+  const sure = top.score >= 12 || (top.score >= 9 && (!second || top.score - second.score >= 3));
+  remember(list); return { list, sure, nums: [], how: { t: 'ai', read: ai.read, model: ai.model } };
 }
 // IA de vision côté serveur (palier gratuit) : désactivée d'elle-même si la clé n'est pas configurée
 async function identifyAI(cv) {
-  if (S.aiOff) return null;
+  if (S.aiOff) { S.aiErr = 'IA non configurée'; return null; }
+  S.aiErr = null;
   const src = cv.raw || cv, k = Math.min(1, 1400 / Math.max(src.width, src.height)); // grande image : le petit numéro reste lisible
   const c = Object.assign(document.createElement('canvas'), { width: Math.round(src.width * k), height: Math.round(src.height * k) });
   c.getContext('2d').drawImage(src, 0, 0, c.width, c.height);
   try {
     const { data, error } = await sb.functions.invoke('identify', { body: { image: c.toDataURL('image/jpeg', .85) } });
-    if (error) { const b = await error.context?.json?.().catch(() => null); if (b?.error === 'ia_off') S.aiOff = true; else if (b?.error === 'quota') toast('IA momentanément saturée, réessaie dans une minute', true); return null; }
+    if (error) { const b = await error.context?.json?.().catch(() => null); if (b?.error === 'ia_off') S.aiOff = true;
+      S.aiErr = b?.error === 'quota' ? 'IA saturée, réessaie dans une minute' : b?.error === 'ia_off' ? 'IA non configurée' : 'IA indisponible pour le moment'; return null; }
     return data;
-  } catch { return null; }
+  } catch { S.aiErr = 'IA injoignable (réseau ?)'; return null; }
 }
 async function identifyOCR(cv) {
   const { nums, words } = await readCard(cv, scanH());
@@ -594,13 +599,29 @@ async function manualSearch() {
   if (!data.length) return $('#scs').textContent = 'Aucune carte trouvée. Vérifie le numéro.';
   showRanked(scanState.cv ? await rank(data, scanState.cv, S.lang) : { list: data, sure: data.length === 1 });
 }
-const readLine = r => r && r.is_card !== false && (r.name || r.number) ? `<p class="small mut readline">🤖 Lu sur la carte : <b>${esc(r.name || '?')}</b>${r.number ? ` · ${esc(r.number)}${r.total ? '/' + esc(r.total) : ''}` : ''}${r.language ? ` · ${esc(String(r.language).toUpperCase())}` : ''}${r.set_name_en ? ` · ${esc(r.set_name_en)}` : ''}</p>` : '';
-function showRanked({ list, sure, read }) {
-  remember(list); scanState.list = list; scanState.read = read;
+// comment la carte a été reconnue : affiché sur chaque résultat (et bouton pour demander l'avis de l'IA)
+const howLine = h => {
+  if (!h) return '';
+  const r = h.read, err = h.aiErr ? ` <span class="err">· ⚠️ ${esc(h.aiErr)}</span>` : '';
+  if (h.t === 'ai') return `<p class="small mut readline">🤖 <b>Lu par l'IA</b> : ${esc(r?.name || '?')}${r?.number ? ` · ${esc(r.number)}${r.total ? '/' + esc(r.total) : ''}` : ''}${r?.language ? ` · ${esc(String(r.language).toUpperCase())}` : ''}${r?.set_name_en ? ` · ${esc(r.set_name_en)}` : ''}</p>`;
+  if (h.t === 'vis') return `<p class="small mut readline">🖼️ <b>Reconnue par le dessin</b> (ressemblance ${Math.round(h.s * 100)} %)${err}</p>`;
+  return `<p class="small mut readline">🔢 <b>Reconnue par le numéro lu</b>${err}</p>`;
+};
+const askAI = h => h && h.t !== 'ai' && scanState.cv ? `<button type="button" class="btn sm ghost" id="askai">🤖 Pas la bonne ? Demander à l'IA</button>` : '';
+async function runAskAI() {
+  const b = $('#askai'); if (b) { b.disabled = true; b.textContent = '🤖 L\'IA lit la carte… (quelques secondes)'; }
+  const ai = await identifyAI(scanState.cv);
+  if (ai?.cards?.length) return showRanked(fromAI(ai, scanState.list || []));
+  if (b) { b.disabled = false; b.textContent = '🤖 Réessayer avec l\'IA'; }
+  toast(ai?.read?.is_card === false ? 'L\'IA ne voit pas de carte sur la photo' : S.aiErr || 'L\'IA n\'a pas trouvé cette carte', true);
+}
+function showRanked({ list, sure, how }) {
+  remember(list); scanState.list = list; scanState.how = how;
   if (sure) return showScan(list[0]);
   $('#scs').textContent = list.length > 1 ? 'Plusieurs cartes possibles : touche la bonne.' : '';
-  $('#scr').innerHTML = readLine(read) + `<div class="alts big">${list.map((c, i) => c.alt ? '' : `<button type="button" data-alt="${i}">${img(c)}<small>${flag(c.lang)} ${esc(nm(c))}<br>${esc(c.set_name)} · ${esc(c.local_id)}</small></button>`).join('')}</div>`;
-  $('#scr').onclick = e => { const b = e.target.closest('[data-alt]'); if (b) showScan(list[+b.dataset.alt]); };
+  $('#scr').innerHTML = howLine(how) + `<div class="alts big">${list.map((c, i) => c.alt ? '' : `<button type="button" data-alt="${i}">${img(c)}<small>${flag(c.lang)} ${esc(nm(c))}<br>${esc(c.set_name)} · ${esc(c.local_id)}</small></button>`).join('')}</div>`;
+  $('#scr').insertAdjacentHTML('beforeend', askAI(how));
+  $('#scr').onclick = e => { if (e.target.closest('#askai')) return runAskAI(); const b = e.target.closest('[data-alt]'); if (b) showScan(list[+b.dataset.alt]); };
 }
 const artKey = id => id.replace(/^[a-z]{2}:/, ''), langCache = new Map();
 // toutes les langues d'une même carte (même illustration, même numéro) : pour corriger la langue proposée
@@ -621,9 +642,9 @@ function showScan(c) {
   $('#scs').textContent = '';
   $('#scr').innerHTML = `<div class="scanres panel"><div class="sr-img">${img(c, true)}</div><div class="sr-txt">
     <p class="small" style="margin:0"><span class="pill p-NM">✓ Carte reconnue</span></p>
-    <h3>${flag(c.lang)} ${esc(nm(c))}</h3>${readLine(scanState.read)}<p class="small mut">${esc(c.set_name)} · n° ${esc(c.local_id)} · cote <b>${eur(c.price_eur)}</b>${S.coll[c.id] ? ` · déjà <b>×${S.coll[c.id]}</b> dans ton classeur` : ''}</p>
+    <h3>${flag(c.lang)} ${esc(nm(c))}</h3>${howLine(scanState.how)}<p class="small mut">${esc(c.set_name)} · n° ${esc(c.local_id)} · cote <b>${eur(c.price_eur)}</b>${S.coll[c.id] ? ` · déjà <b>×${S.coll[c.id]}</b> dans ton classeur` : ''}</p>
     <p class="small langsw" id="langsw" style="margin:6px 0"></p>
-    </div><div class="sr-acts"><p class="small" style="margin:0"><b>C'est bien elle ?</b></p>${add ? bAdd + bAuth : bAuth + bAdd}</div></div>
+    </div><div class="sr-acts"><p class="small" style="margin:0"><b>C'est bien elle ?</b></p>${add ? bAdd + bAuth : bAuth + bAdd}${askAI(scanState.how)}</div></div>
     ${others.length ? `<details class="small"><summary>Pas la bonne ? (${others.length} autres)</summary><div class="alts">${others.map(x => `<button type="button" data-tw="${x.id}">${img(x)}<small>${flag(x.lang)} ${esc(nm(x))}<br>${esc(x.set_name)} · ${esc(x.local_id)}</small></button>`).join('')}</div></details>` : ''}`;
   langVersions(c).then(vs => {
     if (scanState.shown !== c || !$('#langsw')) return;
@@ -632,6 +653,7 @@ function showScan(c) {
     if (vs.length > 1) $('#langsw').innerHTML = 'Langue : ' + vs.sort((a, b) => ALL_LANGS.indexOf(a.lang) - ALL_LANGS.indexOf(b.lang)).map(x => `<button type="button" class="chip${x.id === c.id ? ' on' : ''}" data-tw="${x.id}" aria-pressed="${x.id === c.id}">${flag(x.lang)}</button>`).join(' ');
   });
   $('#scr').onclick = async e => {
+    if (e.target.closest('#askai')) return runAskAI();
     const t = e.target.closest('[data-tw],[data-q],#sadd,#sauth'); if (!t) return;
     if (t.dataset.tw) return showScan(list.find(x => x.id === t.dataset.tw));
     if (t.dataset.q) { scanState.qty = Math.max(1, Math.min(20, scanState.qty + +t.dataset.q)); $('#sq').textContent = scanState.qty; return; }

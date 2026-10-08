@@ -330,6 +330,33 @@ async function train(d, goal = false) {
       const tr = new Set(q.trous?.length ? q.trous : [1]);
       const pairs = q.items.map((it, i) => ({ i, attendu: it.texte })).filter(x => tr.has(x.i));
       holes(pairs, sels => box.append(friseNode(q.items, (it, i) => tr.has(i) ? sels[pairs.findIndex(x => x.i === i)] : null)));
+    } else if (q.type === 'schema' && q.etapes?.length) {
+      const tr = new Set(q.trous?.length ? q.trous : [1]);
+      const pairs = q.etapes.map((e, i) => ({ i, attendu: e.nom })).filter(x => tr.has(x.i));
+      holes(pairs, sels => box.append(schemaNode({ forme: q.forme, etapes: q.etapes.map(e => ({ ...e, desc: '' })) },
+        (e, i) => tr.has(i) ? sels[pairs.findIndex(x => x.i === i)] : null)));
+    } else if (q.type === 'ordre' && q.etapes?.length > 1) {
+      // Jeu : toucher les étapes dans le bon ordre.
+      const bon = q.etapes.map(e => e.nom);
+      let mix = shuffle(q.etapes); while (q.etapes.length > 2 && mix.every((e, i) => e.nom === bon[i])) mix = shuffle(q.etapes);
+      const pris = [], rep = el('ol', 'ordre-rep'), pool = el('div', 'choices'), ok = el('button', 'btn', 'Valider');
+      const reset = el('button', 'btn alt', '↺ Recommencer'); ok.disabled = true;
+      const draw = () => {
+        rep.replaceChildren(...pris.map(e => el('li', null, `${e.icone || ''} ${e.nom}`)));
+        pool.replaceChildren(...mix.filter(e => !pris.includes(e)).map(e => {
+          const b = el('button', 'choice', `${e.icone || ''} ${e.nom}`); b.onclick = () => { pris.push(e); draw(); }; return b;
+        }));
+        ok.disabled = pris.length < mix.length;
+      };
+      reset.onclick = () => { pris.length = 0; draw(); };
+      ok.onclick = () => {
+        let all = true;
+        [...rep.children].forEach((li, i) => { const b = pris[i].nom === bon[i]; all &&= b; li.classList.add(b ? 'ok' : 'ko'); });
+        reset.disabled = true;
+        finish(all, 'Le bon ordre : ' + bon.join(' → ') + '.');
+      };
+      box.append(el('p', 'small mut', '👆 Touche les étapes dans le bon ordre :'), rep, pool);
+      const row = el('div', 'row'); row.append(reset, ok); box.append(row); draw();
     } else if (q.type === 'carte' && q.lieux?.length) {
       const pairs = q.lieux.map(l => ({ attendu: l.nom }));
       holes(pairs, sels => {
@@ -382,7 +409,7 @@ async function train(d, goal = false) {
 const ficheOf = p => {
   const f = p.fiche || {};
   return { intro: f.intro || '', sections: f.sections || [], a_retenir: f.a_retenir || p.memo || [], astuce: f.astuce || '', pieges: f.pieges || [],
-    frise: f.frise || [], personnages: f.personnages || [], carte: f.carte || null, visuels: f.visuels };
+    frise: f.frise || [], personnages: f.personnages || [], carte: f.carte || null, schema: f.schema || null, visuels: f.visuels };
 };
 
 function ficheNode(meta) {
@@ -405,6 +432,19 @@ function ficheNode(meta) {
     body.append(b);
   };
   if (f.frise?.length) { const sct = el('section'); sct.append(el('h3', null, '🕰️ La frise chronologique'), friseNode(f.frise)); body.append(sct); }
+  if (f.schema?.etapes?.length) {
+    const sct = el('section'); sct.append(el('h3', null, '🔬 ' + (f.schema.titre || 'Le schéma')), schemaNode(f.schema));
+    if (f.schema.wiki) {   // vrai schéma illustré (image principale de l'article Wikipédia)
+      const fig = el('figure', 'wikifig'); sct.append(fig);
+      wiki(f.schema.wiki).then(w => {
+        if (!w.img) return fig.remove();
+        const im = Object.assign(el('img'), { src: w.img.replace(/\/\d+px-/, '/640px-'), alt: f.schema.titre || '', loading: 'lazy' });
+        im.onerror = () => fig.remove();
+        fig.append(im, el('figcaption', null, 'Schéma illustré · Wikipédia'));
+      });
+    }
+    body.append(sct);
+  }
   if (f.personnages?.length) {
     const sct = el('section'); sct.append(el('h3', null, '👤 Les personnages importants'));
     const g = el('div', 'persos'); f.personnages.forEach(pp => g.append(persoCard(pp))); sct.append(g); body.append(sct);
@@ -439,13 +479,13 @@ function openFiche(id, from = 'fiches') {
 // Anciennes fiches d'histoire / géographie / sciences : on demande les visuels une seule fois.
 async function enrichir(id, meta) {
   const f = meta.fiche || {}, cat = catOf(meta);
-  if (f.visuels || !['Histoire', 'Géographie', 'Sciences'].includes(cat) || f.frise?.length || f.carte || f.personnages?.length) return;
+  if (f.visuels || !['Histoire', 'Géographie', 'Sciences'].includes(cat) || f.frise?.length || f.carte || f.schema || (cat !== 'Sciences' && f.personnages?.length)) return;
   const d = S.devoirs.find(x => x.id === id) || { matiere: meta.matiere, consigne: meta.consigne };
   status('');
-  const note = el('p', 'status', '🦉 J\'ajoute une frise, des personnages ou une carte à ta fiche…'); $('#fiche-box').prepend(note);
+  const note = el('p', 'status', '🦉 J\'ajoute une frise, un schéma, des personnages ou une carte à ta fiche…'); $('#fiche-box').prepend(note);
   try {
     const v = await api('generate', { action: 'visuels', devoir: d, titre: meta.titre });
-    const plus = { frise: v.frise || [], personnages: v.personnages || [], carte: v.carte || null, visuels: true };
+    const plus = { frise: v.frise || [], personnages: v.personnages || [], carte: v.carte || null, schema: v.schema || null, visuels: true };
     S.fiches[id] = { ...S.fiches[id], ...meta, fiche: { ...f, ...plus }, at: Date.now() };
     const p = S.packs[id];
     if (p) { p.fiche = { ...(p.fiche || {}), ...plus }; p.questions.push(...(v.questions || [])); p.at = Date.now(); }
@@ -461,6 +501,18 @@ function friseNode(items, slot = () => null) {
     const li = el('li'); li.append(el('span', 'an', it.label || String(it.annee)));
     const sl = slot(it, i); li.append(sl || el('span', 'ev', it.texte)); ol.append(li);
   });
+  return ol;
+}
+
+// Schéma : étapes reliées par des flèches (chaîne) ou en boucle (cycle).
+function schemaNode(sc, slot = () => null) {
+  const ol = el('ol', 'schema' + (sc.forme === 'cycle' ? ' cycle' : ''));
+  sc.etapes.forEach((e, i) => {
+    const li = el('li'); li.append(el('span', 'ico', e.icone || '🔹'));
+    const t = el('div'); t.append(slot(e, i) || el('b', null, e.nom)); if (e.desc && !slot(e, i)) t.append(el('small', null, e.desc));
+    li.append(t); ol.append(li);
+  });
+  if (sc.forme === 'cycle') ol.append(el('li', 'boucle', '🔁 … et le cycle recommence'));
   return ol;
 }
 

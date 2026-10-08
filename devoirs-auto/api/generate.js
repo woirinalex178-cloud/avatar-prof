@@ -10,7 +10,7 @@ const READ = `Tu reçois les devoirs d'une élève de ${NIVEAU} : une photo ou u
 Le texte est prioritaire : il précise ou corrige la photo ou le document. Extrais chaque devoir séparément, reformulé clairement. Date du jour : {TODAY} ({JOUR}). Si une date est "lundi", "demain"... convertis en AAAA-MM-JJ (le prochain jour correspondant).
 Réponds en JSON : {"devoirs":[{"matiere":"","consigne":"consigne claire et complète","pour":"AAAA-MM-JJ ou vide"}]}`;
 
-const FORMAT_Q = `{"type":"qcm|vraifaux|courte|frise|carte","niveau":1,"enonce":"","choix":[],"reponse":"","accepte":[],"items":[],"trous":[],"lieux":[],"explication":""}`;
+const FORMAT_Q = `{"type":"qcm|vraifaux|courte|frise|carte|schema|ordre","niveau":1,"enonce":"","choix":[],"reponse":"","accepte":[],"items":[],"trous":[],"lieux":[],"etapes":[],"forme":"chaine","explication":""}`;
 const REGLES_Q = `Types de questions :
  - "qcm" : "choix" (3-4 propositions), "reponse" = texte exact d'un choix
  - "vraifaux" : "reponse" = "Vrai" ou "Faux"
@@ -19,6 +19,9 @@ const REGLES_Q = `Types de questions :
    dans l'ordre chronologique, "trous" = indices (2 ou 3) des textes à retrouver
  - "carte" (GÉOGRAPHIE seulement) : carte à trous. "lieux" = 3 à 5 lieux réels {"nom":"","lat":0,"lon":0} aux coordonnées EXACTES
    (villes, fleuves = un point sur le fleuve, massifs, pays…) ; l'élève devra retrouver le nom de chaque point
+ - "schema" (SCIENCES) : schéma à trous. "forme" = "chaine" ou "cycle", "etapes" = 4 à 7 {"nom":"mot court","icone":"un emoji","desc":"courte"}
+   dans l'ordre, "trous" = indices (2 ou 3) des noms à retrouver
+ - "ordre" (SCIENCES ou HISTOIRE) : remettre dans l'ordre. "etapes" = 4 à 6 {"nom":"","icone":"emoji"} dans le BON ordre (l'app les mélange)
 "niveau" : 1 facile, 2 moyen, 3 difficile. Varie vraiment les questions : autres exemples, autres nombres, autres angles,
 jamais deux fois la même question reformulée. Explications courtes, encourageantes, sans jargon.
 Reste strictement dans le programme de CM2 et le thème du devoir.`;
@@ -28,8 +31,11 @@ const VISUELS = `VISUELS selon la matière :
    "personnages" = 2 à 4 personnages ou groupes importants du thème {"nom":"","wiki":"titre EXACT de l'article Wikipédia français","role":"en une phrase","dates":""}
    (pour la préhistoire : par ex. Homo sapiens, Lucy (australopithèque), l'homme de Néandertal).
  - GÉOGRAPHIE : "carte" = {"titre":"","lieux":[{"nom":"","lat":0,"lon":0,"info":"une phrase"}]} 4 à 8 lieux réels aux coordonnées EXACTES.
+ - SCIENCES : "schema" = {"titre":"","forme":"chaine|cycle","etapes":[{"nom":"mot court","icone":"emoji","desc":"une phrase"}] (4 à 7, dans l'ordre),
+   "wiki":"titre EXACT d'un article Wikipédia français dont l'image principale est un schéma du sujet (ex. Appareil digestif, Cycle de l'eau)"}
+   pour tout phénomène, trajet, cycle ou suite d'étapes (digestion, cycle de l'eau, chaîne alimentaire, circulation, germination…).
  - SCIENCES ou autre : "personnages" seulement si un savant/personnage important fait partie du thème (ex. Pasteur), sinon [].
- Ce qui ne s'applique pas : [] (ou null pour la carte).`;
+ Ce qui ne s'applique pas : [] (ou null pour la carte et le schéma).`;
 
 const MAKE = `Tu es un professeur des écoles bienveillant et pédagogue. Élève : Céleste, ${NIVEAU}.
 Devoir noté : matière "{MAT}", consigne "{TXT}", à rendre le {POUR} (aujourd'hui {TODAY}).
@@ -44,13 +50,14 @@ Devoir noté : matière "{MAT}", consigne "{TXT}", à rendre le {POUR} (aujourd'
 3. Ajoute les VISUELS dans la fiche. ${VISUELS}
 4. Crée une BANQUE de questions variées (on en tirera au hasard à chaque entraînement) :
  exercice : 10 questions ; revision : 16 questions ; evaluation : 24 questions (mélange des 3 niveaux).
- En HISTOIRE inclus 2 à 3 questions "frise" ; en GÉOGRAPHIE 2 à 3 questions "carte".
+ En HISTOIRE inclus 2 à 3 questions "frise" et 1 "ordre" ; en GÉOGRAPHIE 2 à 3 questions "carte" ;
+ en SCIENCES 2 à 3 questions "schema" et 1 à 2 "ordre".
 ${REGLES_Q}
 
 JSON strict :
 {"type":"exercice|revision|evaluation","titre":"","duree_min":5,
  "fiche":{"intro":"","sections":[{"titre":"","points":[""],"exemple":""}],"a_retenir":[""],"astuce":"","pieges":[""],
-   "frise":[],"personnages":[],"carte":null},
+   "frise":[],"personnages":[],"carte":null,"schema":null},
  "questions":[${FORMAT_Q}]}`;
 
 const MORE = `Tu es un professeur des écoles. Élève de ${NIVEAU}. Devoir : matière "{MAT}", consigne "{TXT}".
@@ -63,9 +70,9 @@ JSON strict : {"questions":[${FORMAT_Q}]}`;
 // Ajoute les visuels (frise, personnages, carte + questions) à une fiche existante.
 const PLUS = `Élève de ${NIVEAU}. Devoir : matière "{MAT}", consigne "{TXT}", titre de la fiche "{TITRE}".
 ${VISUELS}
-Ajoute aussi 3 questions visuelles ("frise" en histoire, "carte" en géographie ; sinon "questions":[]).
+Ajoute aussi 3 questions visuelles ("frise"/"ordre" en histoire, "carte" en géographie, "schema"/"ordre" en sciences ; sinon "questions":[]).
 ${REGLES_Q}
-JSON strict : {"frise":[],"personnages":[],"carte":null,"questions":[${FORMAT_Q}]}`;
+JSON strict : {"frise":[],"personnages":[],"carte":null,"schema":null,"questions":[${FORMAT_Q}]}`;
 
 // Fiche + banque de questions pour un devoir (utilisé aussi par la tâche automatique).
 export async function makePack(devoir, today = new Date().toISOString().slice(0, 10)) {

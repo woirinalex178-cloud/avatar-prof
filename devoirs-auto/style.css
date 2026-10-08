@@ -139,3 +139,16 @@ select.hole.ok{border:2px solid var(--ok);background:var(--okbg)}select.hole.ko{
 .pin span{display:grid;place-items:center;width:26px;height:26px;margin:-13px 0 0 -13px;border-radius:50%;background:var(--pink);color:#fff;font:700 14px var(--disp);border:2px solid #fff;box-shadow:0 2px 6px #0005}
 .pin em{position:absolute;left:16px;top:-11px;white-space:nowrap;font:700 13px var(--body);font-style:normal;background:#fffe;color:#231d4a;padding:1px 6px;border-radius:8px}
 .map-legend{margin:0;padding-left:26px;display:grid;gap:8px}.map-legend li::marker{font-weight:800;color:var(--pink)}
+/* schémas (sciences) */
+.schema{list-style:none;margin:6px 0;padding:0;display:grid;gap:22px}
+.schema>li{position:relative;display:flex;gap:12px;align-items:center;background:var(--pri2);border:2px solid var(--line);border-radius:18px;padding:10px 12px}
+.schema>li:not(:last-child)::after{content:"⬇";position:absolute;left:50%;bottom:-21px;transform:translateX(-50%);font-size:16px;color:var(--pri);line-height:1}
+.schema .ico{font-size:30px;flex:none;width:44px;height:44px;display:grid;place-items:center;background:var(--card);border-radius:14px}
+.schema b{display:block}.schema small{color:var(--mut)}.schema>li>div{flex:1;display:grid}
+.schema.cycle>li{border-color:#b9e8d6}.schema .boucle{background:none;border:2px dashed var(--mint);justify-content:center;font-weight:800;color:var(--ok)}
+.wikifig{margin:12px 0 0;text-align:center}.wikifig img{max-width:100%;max-height:340px;border-radius:16px;background:#fff;border:1px solid var(--line)}
+.wikifig figcaption{font-size:12px;color:var(--mut)}
+/* jeu remettre dans l'ordre */
+.ordre-rep{min-height:46px;margin:0;padding:8px 8px 8px 34px;border:2px dashed var(--pri);border-radius:16px;background:var(--pri2);display:grid;gap:6px}
+.ordre-rep li{font-weight:800;padding:4px 8px;border-radius:10px;background:var(--card)}
+.ordre-rep li.ok{background:var(--okbg)}.ordre-rep li.ko{background:var(--kobg)}

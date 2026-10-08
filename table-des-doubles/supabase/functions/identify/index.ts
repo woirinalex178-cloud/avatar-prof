@@ -3,7 +3,12 @@ import { createClient } from 'npm:@supabase/supabase-js@2';
 // Identification d'une carte par IA de vision (Google Gemini, palier gratuit) :
 // l'IA lit le nom, le numéro complet (123/124), la langue et la série, puis la base trouve la carte exacte.
 // Secret requis : GEMINI_API_KEY (Supabase -> Edge Functions -> Secrets). Optionnel : GEMINI_MODEL.
+// IA de secours (gratuites) si Gemini est saturé : GROQ_API_KEY (Llama 4 vision) et/ou MISTRAL_API_KEY (Pixtral).
 const KEY = Deno.env.get('GEMINI_API_KEY'), MODELS = [...new Set([Deno.env.get('GEMINI_MODEL'), 'gemini-2.5-flash', 'gemini-flash-latest', 'gemini-2.5-flash-lite', 'gemini-flash-lite-latest'].filter(Boolean))] as string[];
+const BACKUPS = [
+  { name: 'groq', key: Deno.env.get('GROQ_API_KEY'), url: 'https://api.groq.com/openai/v1/chat/completions', model: Deno.env.get('GROQ_MODEL') || 'meta-llama/llama-4-scout-17b-16e-instruct' },
+  { name: 'mistral', key: Deno.env.get('MISTRAL_API_KEY'), url: 'https://api.mistral.ai/v1/chat/completions', model: Deno.env.get('MISTRAL_MODEL') || 'pixtral-12b-2409' }
+].filter(b => b.key);
 const db = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
 const cors = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'authorization, content-type, apikey, x-client-info' };
 const json = (b: unknown, s = 200) => new Response(JSON.stringify(b), { status: s, headers: { ...cors, 'Content-Type': 'application/json' } });
@@ -25,6 +30,7 @@ Never invent: use null when you cannot read a field.`;
 
 // si un modèle est saturé (503) ou indisponible, on passe au suivant : les modèles gratuits ont chacun leur quota
 async function gemini(b64: string) {
+  if (!KEY) throw new Error('pas de clé Gemini');
   let last = '';
   for (const m of MODELS) for (let attempt = 0; attempt < 2; attempt++) {
     const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent?key=${KEY}`, {
@@ -44,16 +50,36 @@ async function gemini(b64: string) {
   throw new Error(/ 429 /.test(last) ? 'quota' : 'IA indisponible : ' + (last || 'aucun modèle'));
 }
 
+// IA de secours au format « OpenAI » (Groq, Mistral) : même consigne, même réponse JSON
+async function backup(b64: string) {
+  let last = '';
+  for (const b of BACKUPS) {
+    try {
+      const r = await fetch(b.url, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${b.key}` },
+        body: JSON.stringify({ model: b.model, temperature: 0, response_format: { type: 'json_object' }, max_tokens: 600,
+          messages: [{ role: 'user', content: [{ type: 'text', text: PROMPT }, { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${b64}` } }] }] }) });
+      if (!r.ok) { last = `${b.name} ${r.status} ${(await r.text()).slice(0, 160)}`; console.error('secours', last); continue; }
+      const t = (await r.json()).choices?.[0]?.message?.content || '{}';
+      return { model: `${b.name}:${b.model}`, read: JSON.parse(String(t).replace(/^[^{]*/, '').replace(/[^}]*$/, '')) };
+    } catch (e) { last = `${b.name} ${(e as Error).message}`; console.error('secours', last); }
+  }
+  throw new Error(last || 'aucune IA de secours');
+}
+async function readCard(b64: string) {
+  try { return await gemini(b64); }
+  catch (e) { if (!BACKUPS.length) throw e; console.error('gemini indisponible, secours', (e as Error).message); return await backup(b64); }
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response(null, { headers: cors });
-  if (!KEY) return json({ error: 'ia_off' }, 503);
+  if (!KEY && !BACKUPS.length) return json({ error: 'ia_off' }, 503);
   const ip = req.headers.get('x-forwarded-for')?.split(',')[0] ?? '?', now = Date.now(), h = (hits.get(ip) ?? []).filter(t => now - t < 60000);
   if (h.length >= 20) return json({ error: 'trop de demandes, patiente une minute' }, 429);
   h.push(now); hits.set(ip, h);
   try {
     const { image } = await req.json();
-    if (typeof image !== 'string' || image.length > 1_500_000) return json({ error: 'image invalide' }, 400);
-    const { model, read } = await gemini(image.replace(/^data:image\/\w+;base64,/, ''));
+    if (typeof image !== 'string' || image.length > 3_000_000) return json({ error: 'image invalide' }, 400);
+    const { model, read } = await readCard(image.replace(/^data:image\/\w+;base64,/, ''));
     if (read.is_card === false) return json({ read, cards: [] });
     const num = read.number ? String(read.number).replace(/\s/g, '') : null, total = read.total && /^\d+$/.test(String(read.total)) ? +read.total : null;
     const args = { p_num: num, p_total: total, p_lang: read.language || 'fr', p_set: read.set_name_en || null };

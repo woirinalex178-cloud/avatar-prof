@@ -1,6 +1,7 @@
 # À faire (toi) — étape par étape
 
 ## Où en es-tu ? (au 04/10)
+- [ ] **Clé IA de secours Groq (gratuite, 2 min)**, utilisée quand Gemini est saturé : 1) console.groq.com → compte (Google ou e-mail) → **API Keys** → « Create API Key » ; 2) Supabase → Edge Functions → **Secrets** → ajouter `GROQ_API_KEY` = ta clé. (Option : `MISTRAL_API_KEY` depuis console.mistral.ai, palier « Experiment » gratuit.) Ne colle jamais une clé dans le chat.
 - [ ] **Clé IA Gemini (gratuite, 2 min)** pour la reconnaissance des cartes : 1) aistudio.google.com/apikey → « Create API key » (compte Google, pas de carte bancaire) ; 2) Supabase → Edge Functions → **Secrets** → ajouter `GEMINI_API_KEY` = ta clé. Ne la colle jamais dans le chat. Sans clé, le scanner marche quand même (moteur local seul).
 - [ ] **Test à deux** du nouveau parcours avec bordereaux (étape 2)
 - [ ] **Scores d'authenticité** vraie / fausse carte (étape 4)

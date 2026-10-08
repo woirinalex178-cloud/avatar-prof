@@ -404,8 +404,9 @@ async function identify(cv) {
 // IA de vision côté serveur (palier gratuit) : désactivée d'elle-même si la clé n'est pas configurée
 async function identifyAI(cv) {
   if (S.aiOff) return null;
-  const c = Object.assign(document.createElement('canvas'), { width: 640, height: Math.round(640 * cv.height / cv.width) });
-  c.getContext('2d').drawImage(cv, 0, 0, c.width, c.height);
+  const src = cv.raw || cv, k = Math.min(1, 1400 / Math.max(src.width, src.height)); // grande image : le petit numéro reste lisible
+  const c = Object.assign(document.createElement('canvas'), { width: Math.round(src.width * k), height: Math.round(src.height * k) });
+  c.getContext('2d').drawImage(src, 0, 0, c.width, c.height);
   try {
     const { data, error } = await sb.functions.invoke('identify', { body: { image: c.toDataURL('image/jpeg', .85) } });
     if (error) { const b = await error.context?.json?.().catch(() => null); if (b?.error === 'ia_off') S.aiOff = true; else if (b?.error === 'quota') toast('IA momentanément saturée, réessaie dans une minute', true); return null; }
@@ -451,7 +452,7 @@ async function scanModal(intent = 'add') {
   loadRecog(e => { if (e.status === 'progress' && /onnx/.test(e.file || '') && $('#scs') && e.progress - pct >= 3) { pct = e.progress; $('#scs').textContent = `⏳ Préparation de la reconnaissance (1re fois seulement, 24 Mo)… ${Math.round(pct)} %`; } })
     .then(() => { if (pct && $('#scs')) $('#scs').innerHTML = '✅ Reconnaissance prête. ' + TIPS[scanState.intent]; }).catch(() => { });
   scanState.cam = await startCam($('#cam video'), $('#frame'));
-  if (scanState.cam) { $('#cap').onclick = () => analyse(scanState.cam.capture()); $('#bgo').onclick = toggleBurst; }
+  if (scanState.cam) { $('#cap').onclick = () => analyse(scanState.cam.capture(true)); $('#bgo').onclick = toggleBurst; }
   setIntent(scanState.intent);
 }
 function setIntent(k) {

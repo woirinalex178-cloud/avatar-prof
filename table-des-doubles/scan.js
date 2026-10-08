@@ -16,24 +16,47 @@ export async function startCam(video, frame) {
   const stop = () => stream.getTracks().forEach(t => t.stop());
   const watch = setInterval(() => { if (!video.isConnected) { stop(); clearInterval(watch); } }, 500); // fenêtre fermée : on coupe la caméra
   // découpe exactement le cadre affiché (la vidéo est en object-fit: cover)
-  const capture = () => {
+  // raw = même zone avec 10 % de marge, en pleine résolution : c'est elle qu'on envoie à l'IA (petits caractères lisibles)
+  const capture = (raw = false) => {
     const vr = video.getBoundingClientRect(), fr = frame.getBoundingClientRect(), vw = video.videoWidth, vh = video.videoHeight;
     const k = Math.max(vr.width / vw, vr.height / vh), ox = (vr.width - vw * k) / 2, oy = (vr.height - vh * k) / 2;
     const sx = (fr.left - vr.left - ox) / k, sy = (fr.top - vr.top - oy) / k, sw = fr.width / k, sh = fr.height / k;
     const cv = Object.assign(document.createElement('canvas'), { width: CW, height: CH });
     cv.getContext('2d').drawImage(video, sx, sy, sw, sh, 0, 0, CW, CH);
+    if (raw) {
+      const mx = sw * .1, my = sh * .1, x0 = Math.max(0, sx - mx), y0 = Math.max(0, sy - my), x1 = Math.min(vw, sx + sw + mx), y1 = Math.min(vh, sy + sh + my);
+      cv.raw = Object.assign(document.createElement('canvas'), { width: Math.round(x1 - x0), height: Math.round(y1 - y0) });
+      cv.raw.getContext('2d').drawImage(video, x0, y0, x1 - x0, y1 - y0, 0, 0, cv.raw.width, cv.raw.height);
+    }
     return cv;
   };
   return { capture, stop };
 }
 
-// photo de la galerie : recadrage centré au format carte
+// repère la carte dans une photo : ce qui se détache du fond (couleur des bords de la photo)
+export function findCard(src, W, H) {
+  const w = 200, h = Math.max(1, Math.round(200 * H / W)), c = Object.assign(document.createElement('canvas'), { width: w, height: h }), x = c.getContext('2d', { willReadFrequently: true });
+  x.drawImage(src, 0, 0, w, h); const d = x.getImageData(0, 0, w, h).data, border = [];
+  for (let i = 0; i < w; i++) border.push(i * 4, ((h - 1) * w + i) * 4); for (let j = 0; j < h; j++) border.push(j * w * 4, (j * w + w - 1) * 4);
+  const med = k => { const v = border.map(i => d[i + k]).sort((a, b) => a - b); return v[v.length >> 1]; }, bg = [med(0), med(1), med(2)];
+  const rows = new Array(h).fill(0), cols = new Array(w).fill(0);
+  for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) { const o = (j * w + i) * 4; if (Math.abs(d[o] - bg[0]) + Math.abs(d[o + 1] - bg[1]) + Math.abs(d[o + 2] - bg[2]) > 60) { rows[j]++; cols[i]++; } }
+  const span = (a, n, t) => { let s = a.findIndex(v => v > n * t), e = a.length - 1 - [...a].reverse().findIndex(v => v > n * t); return s < 0 ? null : [s, e]; };
+  const ry = span(rows, w, .2), rx = span(cols, h, .2); if (!ry || !rx) return null;
+  const bw = (rx[1] - rx[0] + 1) / w, bh = (ry[1] - ry[0] + 1) / h; if (bw * bh < .05 || bw * bh > .97) return null;
+  return { x: rx[0] / w * W, y: ry[0] / h * H, w: bw * W, h: bh * H };
+}
+// photo de la galerie : on cherche la carte, sinon recadrage centré au format carte
 export async function fileToCard(file) {
-  const bmp = await createImageBitmap(file), r = CW / CH, sr = bmp.width / bmp.height;
-  let sx = 0, sy = 0, sw = bmp.width, sh = bmp.height;
-  if (sr > r) { sw = bmp.height * r; sx = (bmp.width - sw) / 2; } else { sh = bmp.width / r; sy = (bmp.height - sh) / 2; }
+  const bmp = await createImageBitmap(file), r = CW / CH, box = findCard(bmp, bmp.width, bmp.height);
+  let { x: sx, y: sy, w: sw, h: sh } = box || { x: 0, y: 0, w: bmp.width, h: bmp.height };
+  if (sw / sh > r) { const n = sw / r; sy -= (n - sh) / 2; sh = n; } else { const n = sh * r; sx -= (n - sw) / 2; sw = n; } // au format carte, autour de la carte
   const cv = Object.assign(document.createElement('canvas'), { width: CW, height: CH });
   cv.getContext('2d').drawImage(bmp, sx, sy, sw, sh, 0, 0, CW, CH);
+  const k = Math.min(1, 1600 / Math.max(bmp.width, bmp.height)); // photo d'origine pour l'IA
+  cv.raw = Object.assign(document.createElement('canvas'), { width: Math.round(bmp.width * k), height: Math.round(bmp.height * k) });
+  cv.raw.getContext('2d').drawImage(bmp, 0, 0, cv.raw.width, cv.raw.height);
+  cv.found = !!box;
   return cv;
 }
 export const toBlob = cv => new Promise(r => cv.toBlob(r, 'image/jpeg', .9));

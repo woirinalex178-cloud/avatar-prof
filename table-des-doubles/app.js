@@ -231,27 +231,28 @@ async function classeur() {
     </div>
   </div>
   <div class="bar" style="margin-top:18px"><div class="seg" id="flt">${[['all', 'Toutes'], ['own', 'Possédées'], ['miss', 'Manquantes'], ['dbl', 'Doubles']].map(([k, n]) => `<button data-f="${k}" aria-pressed="${S.filter === k}">${n}</button>`).join('')}</div>
-  <button class="btn sm" data-scan>📷 Scanner</button><button class="btn sm" data-scan="burst">⚡ Rafale</button><button class="btn sm ghost" data-express>⌨️ Saisie express</button></div>
+  <button class="btn sm" data-scan>📷 Scanner</button><button class="btn sm" data-scan="burst">⚡ Rafale</button><button class="btn sm ghost" data-names>🔎 Par nom</button><button class="btn sm ghost" data-express>⌨️ Saisie express</button></div>
   <div class="grid">${list.map(c => { const q = S.coll[c.id] || 0; return `<div class="tile ${q ? '' : 'miss'}" data-id="${c.id}">
     <button class="tile" data-tog="${c.id}" aria-label="${esc(nm(c))} : ${q} exemplaire(s)" style="padding:0">${img(c)}</button>
     ${q ? `<span class="qty ${q > 1 ? 'dbl' : ''}">×${q}</span>` : ''}
-    <div class="meta"><span class="nm">${c.local_id} · ${esc(nm(c))}</span><span class="v">${eur(c.price_eur)}${trend(c)}</span></div>${jp(c)}
+    <div class="meta"><span class="nm">${c.local_id} · ${esc(nm(c))}</span><button type="button" class="v cote" data-cote="${c.id}" aria-label="Courbe de la cote">${eur(c.price_eur)}${trend(c)}</button></div>${jp(c)}
     <div class="stepper"><button data-dq="${c.id}" aria-label="Retirer un">−</button>${q > 1 ? `<button class="put" data-put="${c.id}">Poser</button>` : ''}<button data-iq="${c.id}" aria-label="Ajouter un">+</button></div>
   </div>`; }).join('') || '<div class="empty">Rien ici pour l\'instant.</div>'}</div>`;
 }
 
 async function fetchListings(filter = {}) {
-  let q = sb.from('listings').select('*, card:cards(*, set:sets(name,name_fr,code,serie_name))').eq('status', 'active').order('created_at', { ascending: false }).limit(200);
+  let q = sb.from('listings').select('*, card:cards(*, set:sets(name,name_fr,code,serie_name)), auction:auctions(*)').eq('status', 'active').order('created_at', { ascending: false }).limit(200);
   if (filter.card) q = q.eq('card_id', filter.card);
   const { data, error } = await q; if (error) throw error;
   await pseudos((data || []).map(l => l.user_id));
+  for (const l of data || []) l.auc = [].concat(l.auction || [])[0] || null;
   return data || [];
 }
 async function table() {
   view.innerHTML = `<div class="felt"><div class="bar">
     <div class="seg" id="tset"><button data-ts="" aria-pressed="${!S.tset}">Toutes langues</button>${Object.keys(LANGS).map(k => `<button data-ts="${k}" aria-pressed="${S.tset === k}">${k === 'ja' ? 'JP' : k.toUpperCase()}</button>`).join('')}</div>
     <input class="grow" id="tq" placeholder="Chercher une carte…" aria-label="Chercher" value="${esc(S.tq || '')}">
-    <select id="tsort" aria-label="Trier" style="width:auto"><option value="new">Plus récentes</option><option value="cheap">Prix ↑</option><option value="deal">Meilleure affaire</option><option value="miss">Il me manque</option></select>
+    <select id="tsort" aria-label="Trier" style="width:auto"><option value="new">Plus récentes</option><option value="cheap">Prix ↑</option><option value="deal">Meilleure affaire</option><option value="miss">Il me manque</option><option value="auc">🔨 Enchères</option></select>
   </div><div class="grid" id="lgrid">${'<div class="skel"></div>'.repeat(6)}</div></div>`;
   $('#tsort').value = S.tsort || 'new';
   S.listings = await fetchListings();
@@ -263,11 +264,12 @@ function drawListings() {
   if (so === 'cheap') ls.sort((a, b) => (a.price ?? 1e9) - (b.price ?? 1e9));
   if (so === 'deal') ls.sort((a, b) => ((a.price ?? 1e9) / (a.card.price_eur || 1e9)) - ((b.price ?? 1e9) / (b.card.price_eur || 1e9)));
   if (so === 'miss') ls = ls.filter(l => !S.coll[l.card_id]);
+  if (so === 'auc') ls = ls.filter(l => l.auc).sort((a, b) => new Date(a.auc.ends_at) - new Date(b.auc.ends_at));
   $('#lgrid').innerHTML = ls.map(l => {
-    const d = l.price && l.card.price_eur ? l.price / l.card.price_eur - 1 : null, mine = l.user_id === S.user?.id;
+    const d = !l.auc && l.price && l.card.price_eur ? l.price / l.card.price_eur - 1 : null, mine = l.user_id === S.user?.id;
     return `<button class="tile lcard" data-l="${l.id}">${l.photo_path ? `<img class="cimg" loading="lazy" src="${photoUrl(l.photo_path)}" alt="Photo vendeur ${esc(nm(l.card))}">` : img(l.card)}
     ${!S.coll[l.card_id] && !mine ? '<span class="pill p-miss badge-miss">Il te manque</span>' : ''}
-    <div class="meta"><span class="nm">${esc(nm(l.card))}</span><span class="v">${l.price ? eur(l.price) : 'Échange'}</span></div>
+    <div class="meta"><span class="nm">${esc(nm(l.card))}</span><span class="v">${l.auc ? `🔨 ${eur(l.auc.current_bid ?? l.auc.start_price)}` : l.price ? eur(l.price) : 'Échange'}</span></div>${l.auc ? `<div class="seller"><span class="pill p-auc">🔨 enchère · ${l.auc.bids_count} offre${l.auc.bids_count > 1 ? 's' : ''}</span><span class="small">⏱ ${left(l.auc.ends_at)}</span></div>` : ''}
     <div class="seller"><span>${flag(l.card.lang)} ${esc(setName(l.card.set))}</span></div>
     <div class="seller"><span><span class="pill p-${l.condition}">${l.condition}</span> ${l.trade_ok ? '<span class="pill p-tr">échange</span>' : ''} ${authBadge(l)}</span>${d != null ? `<span class="delta ${d > 0 ? 'up' : 'dn'}">${d > 0 ? '+' : ''}${Math.round(d * 100)}% cote</span>` : ''}</div>
     <div class="seller"><span>${mine ? 'Ton annonce' : esc(S.pseudos[l.user_id]?.pseudo || '')}</span><span>${stars(S.pseudos[l.user_id])}${S.pseudos[l.user_id]?.verified ? ' ✔' : ''}${S.pseudos[l.user_id]?.passionne ? ' 🏅' : ''}</span></div></button>`;
@@ -275,20 +277,62 @@ function drawListings() {
 }
 
 function listingModal(l) {
-  setTimeout(sparks, 0);
+  setTimeout(sparks, 0); remember([l.card]);
   const c = l.card, s = S.pseudos[l.user_id] || {}, mine = l.user_id === S.user?.id;
   modal(`<div class="split"><div>${l.photo_path ? `<img class="cimg" src="${photoUrl(l.photo_path)}" alt="Photo du vendeur">` : img(c, true)}${l.photo_path ? `<p class="small mut">Photo du vendeur · <a href="${c.image}/high.webp" target="_blank" rel="noopener">voir la carte officielle</a></p>` : ''}</div>
   <div><p class="mut small">${flag(c.lang)} ${LANGS[c.lang]} · ${esc(setName(S.sets.find(x => x.id === c.set_id)))} · ${c.local_id} · ${esc(c.rarity || '')}</p><h2 style="margin:4px 0 12px">${esc(nm(c))}</h2>${jp(c)}
-  <dl class="kv"><dt>Prix</dt><dd>${l.price ? eur(l.price) : 'Échange uniquement'}</dd><dt>Cote Cardmarket</dt><dd>${eur(c.price_eur)}${trend(c)}${c.price_updated ? ` <span class="small mut">du ${new Date(c.price_updated).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })}</span>` : ''}<div class="spark" data-spark="${esc(c.tcg_id || '')}"></div></dd><dt>État</dt><dd><span class="pill p-${l.condition}">${l.condition}</span> ${COND[l.condition][0]}</dd><dt>Échange</dt><dd>${l.trade_ok ? 'accepté' : 'non'}</dd><dt>Vendeur</dt><dd>${who(l.user_id, s)} · ${stars(s)} · ${s.trades_done || 0} transaction(s)${s.verified ? ' · ✔ identité vérifiée' : ''}${s.passionne ? '<span class="badge-coll">🏅 Collectionneur passionné</span>' : ''} · ${esc(s.region || '')}</dd></dl>
+  <dl class="kv">${l.auc ? '' : `<dt>Prix</dt><dd>${l.price ? eur(l.price) : 'Échange uniquement'}</dd>`}<dt>Cote Cardmarket</dt><dd><button type="button" class="cote" data-cote="${c.id}">${eur(c.price_eur)}${trend(c)} 📈</button>${c.price_updated ? ` <span class="small mut">du ${new Date(c.price_updated).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })}</span>` : ''}<div class="spark" data-spark="${esc(c.tcg_id || '')}"></div></dd><dt>État</dt><dd><span class="pill p-${l.condition}">${l.condition}</span> ${COND[l.condition][0]}</dd><dt>Échange</dt><dd>${l.trade_ok ? 'accepté' : 'non'}</dd><dt>Vendeur</dt><dd>${who(l.user_id, s)} · ${stars(s)} · ${s.trades_done || 0} transaction(s)${s.verified ? ' · ✔ identité vérifiée' : ''}${s.passionne ? '<span class="badge-coll">🏅 Collectionneur passionné</span>' : ''} · ${esc(s.region || '')}</dd></dl>
   ${l.note ? `<p class="panel small" style="margin-top:12px">${esc(l.note)}</p>` : ''}
   ${l.auth_score != null ? `<div class="panel small" style="margin-top:10px">${authBadge(l)} <b>Contrôle photo d'authenticité : ${l.auth_score}/100</b> — ${esc(l.auth_report?.meta?.verdict || '')} (fiabilité ${esc(l.auth_report?.meta?.confidence || '?')}). <span class="mut">Indicatif, tu pourras refaire le contrôle à la réception.</span></div>` : ''}
   ${l.photo_path && l.verify_code ? `<p class="small mut">Code de vérification attendu sur la photo : <b class="mono">${esc(l.verify_code)}</b>. S'il n'y est pas, signale l'annonce.</p>` : ''}
-  <div id="ofr" style="margin-top:16px">${mine ? `<button class="btn ghost" data-rmlist="${l.id}">Retirer de la table</button>` : `<div class="acts">${l.price ? `<button class="btn" data-buy="${l.id}">Acheter ${eur(l.price)}</button>` : ''}${l.trade_ok ? `<button class="btn ghost" data-trade="${l.id}">Proposer un échange</button>` : ''}<button class="btn ghost sm" data-report="listing:${l.id}">Signaler</button></div>`}</div>
+  ${l.auc ? `<div id="auc" class="panel auc" style="margin-top:12px"></div>` : ''}
+  <div id="ofr" style="margin-top:16px">${l.auc ? (mine ? '' : `<button class="btn ghost sm" data-report="listing:${l.id}">Signaler</button>`) : mine ? `<button class="btn ghost" data-rmlist="${l.id}">Retirer de la table</button>` : `<div class="acts">${l.price ? `<button class="btn" data-buy="${l.id}">Acheter ${eur(l.price)}</button>` : ''}${l.trade_ok ? `<button class="btn ghost" data-trade="${l.id}">Proposer un échange</button>` : ''}<button class="btn ghost sm" data-report="listing:${l.id}">Signaler</button></div>`}</div>
   <p class="small mut" style="margin-top:14px">🔒 Paiement et échange uniquement dans l'appli. Ne partage jamais tes coordonnées : sans transaction dans l'appli, pas de protection.</p></div></div>`);
+  if (l.auc) auctionBox(l, mine);
+}
+
+// ---------- enchères : +5 % minimum, 2 min de plus si on enchérit à la dernière minute ----------
+const left = t => { const s = (new Date(t) - Date.now()) / 1000; if (s <= 0) return 'terminée';
+  const d = s / 86400 | 0, h = s / 3600 % 24 | 0, m = s / 60 % 60 | 0; return d ? `${d} j ${h} h` : h ? `${h} h ${m} min` : `${m} min ${Math.floor(s % 60)} s`; };
+const eur2 = v => Number(v).toLocaleString('fr-FR', { style: 'currency', currency: 'EUR' });
+const bidMin = a => a.bids_count ? Math.ceil(a.current_bid * 1.05 * 2) / 2 : +a.start_price;
+let leads = new Set(); try { leads = new Set(JSON.parse(localStorage.getItem('sc_lead')) || []); } catch { }
+const saveLeads = () => { try { localStorage.setItem('sc_lead', JSON.stringify([...leads])); } catch { } };
+function auctionBox(l, mine) {
+  const a = l.auc, box = $('#auc'), rec = (a.current_bid || a.start_price) >= 50 ? 'home' : 'relay';
+  const draw = () => { if (!box.isConnected) return;
+    const lead = S.user && a.top_bidder === S.user.id, over = new Date(a.ends_at) <= Date.now();
+    box.innerHTML = `<div class="aucnow"><span class="small mut">${a.bids_count ? 'Enchère actuelle' : 'Prix de départ'}</span><b>${eur2(a.current_bid ?? a.start_price)}</b>
+      <span class="small">${a.bids_count} enchère${a.bids_count > 1 ? 's' : ''}${lead ? ' · <b class="dn">tu mènes !</b>' : ''}</span></div>
+      <p class="small" style="margin:6px 0">⏱ ${over ? 'Enchère terminée' : `Fin dans <b id="aucleft">${left(a.ends_at)}</b>`} <span class="mut">· le ${new Date(a.ends_at).toLocaleString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</span></p>
+      ${mine || over ? (mine ? `<p class="small mut">Ta carte est aux enchères. ${a.bids_count ? 'Elle ne peut plus être retirée.' : `<button class="btn ghost sm" data-rmlist="${l.id}">Retirer</button>`}</p>` : '') : `
+      <div class="row2"><label class="f">Ton enchère (min. ${eur2(bidMin(a))})<input type="number" id="bidv" min="${bidMin(a)}" step="0.5" inputmode="decimal" value="${bidMin(a)}"></label>
+      <label class="f">Livraison si tu gagnes<select id="bidship">${SHIP().map(([k, i, n, p]) => `<option value="${k}" ${k === rec ? 'selected' : ''}>${i} ${n}${p ? ' · ' + eur(p) : ''}</option>`).join('')}</select></label></div>
+      <button class="btn" id="bidgo" type="button">🔨 Enchérir</button><p class="err" id="biderr"></p>
+      <p class="small mut" style="margin:0">Ton enchère t'engage : si tu gagnes, tu paies la carte + protection acheteur (${eur(S.st.buyer_fixed ?? .5)} + ${Math.round((S.st.buyer_rate ?? .03) * 100)} %) + livraison, par le paiement sécurisé. Une enchère dans les 2 dernières minutes prolonge de 2 min.</p>`}
+      <details style="margin-top:8px"><summary class="small">Historique des enchères</summary><ol class="bidh small" id="bidh"><li class="mut">…</li></ol></details>`;
+    const go = $('#bidgo'); if (go) go.onclick = bid;
+    box.querySelector('details').ontoggle = e => { if (e.target.open) history(); };
+  };
+  const history = async () => { const { data } = await sb.from('bids').select('amount,created_at,bidder_id').eq('listing_id', l.id).order('amount', { ascending: false }).limit(30);
+    await pseudos((data || []).map(b => b.bidder_id)); if (!$('#bidh')) return;
+    $('#bidh').innerHTML = (data || []).map(b => `<li><b>${eur2(b.amount)}</b> · ${b.bidder_id === S.user?.id ? 'toi' : esc((S.pseudos[b.bidder_id]?.pseudo || '??').slice(0, 2)) + '***'} · <span class="mut">${new Date(b.created_at).toLocaleString('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</span></li>`).join('') || '<li class="mut">Aucune enchère pour l\'instant. Sois le premier !</li>'; };
+  async function bid() {
+    if (needAccount()) return; const v = +$('#bidv').value, btn = $('#bidgo');
+    if (!(v >= bidMin(a))) return $('#biderr').textContent = `Minimum ${eur2(bidMin(a))}.`;
+    btn.disabled = true; btn.textContent = 'Envoi…';
+    const { data, error } = await sb.rpc('place_bid', { p_listing: l.id, p_amount: v, p_ship: $('#bidship').value });
+    if (error) { $('#biderr').textContent = errMsg(error); btn.disabled = false; btn.textContent = '🔨 Enchérir'; return; }
+    Object.assign(a, data); leads.add(l.id); saveLeads(); beep(); toast('🔨 Enchère placée : tu es le meilleur enchérisseur !'); draw(); if ($('#bidh')) history();
+  }
+  draw();
+  const tick = setInterval(() => { const e = $('#aucleft'); if (!box.isConnected) return clearInterval(tick); if (e) e.textContent = left(a.ends_at); if (new Date(a.ends_at) <= Date.now() && e) draw(); }, 1000);
+  const ch = sb.channel('auc-' + l.id).on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'auctions', filter: `listing_id=eq.${l.id}` }, p => { Object.assign(a, p.new); draw(); }).subscribe();
+  dlg.addEventListener('close', () => { sb.removeChannel(ch); clearInterval(tick); }, { once: true });
 }
 async function tradeForm(l) {
   if (needAccount()) return;
-  const { data: mine } = await sb.from('listings').select('*, card:cards(*)').eq('user_id', S.user.id).eq('status', 'active');
+  const { data: all } = await sb.from('listings').select('*, card:cards(*), auction:auctions(listing_id)').eq('user_id', S.user.id).eq('status', 'active'), mine = (all || []).filter(m => ![].concat(m.auction || []).length);
   const target = l.price || l.card.price_eur || 0;
   $('#ofr').innerHTML = `<div class="form"><h3>Ton offre pour ${esc(nm(l.card))}</h3>
   ${mine?.length ? `<p class="small mut">Choisis parmi tes doubles posés sur la table :</p><div class="pick">${mine.map(m => `<label><input type="checkbox" value="${m.id}" data-v="${m.price || m.card.price_eur || 0}"><div>${img(m.card)}<small>${esc(nm(m.card))} · ${m.condition}</small></div></label>`).join('')}</div>` : `<p class="small mut">Tu n'as pas encore de double sur la table. <a href="#/classeur">Pose-en depuis ton classeur</a>, ou propose uniquement de l'argent.</p>`}
@@ -315,7 +359,9 @@ async function listForm(cardId) {
   const c = S.cards[cardId], code = Math.random().toString(36).slice(2, 7).toUpperCase(), need = (c.price_eur || 0) >= (S.st.photo_required_from || 50);
   modal(`<div class="split"><div>${img(c, true)}</div><form class="form" id="lf"><h2 style="margin:0">Poser sur la table</h2><p class="mut small" style="margin:0">${esc(nm(c))} · ${c.local_id} · cote ${eur(c.price_eur)}</p>
     <label class="f">État<select id="lc">${Object.entries(COND).map(([k, v]) => `<option value="${k}">${k} · ${v[0]} — ${v[1]}</option>`).join('')}</select></label>
-    <div class="row2"><label class="f">Prix de vente (€)<input type="number" id="lp" min="0.5" step="0.5" inputmode="decimal"></label><label class="ck" style="align-self:end"><input type="checkbox" id="lt" checked> J'accepte les échanges</label></div>
+    <div class="seg" id="lmode"><button type="button" data-lm="fix" aria-pressed="true">💶 Prix fixe</button><button type="button" data-lm="auc" aria-pressed="false">🔨 Enchère</button></div>
+    <div class="row2" id="lfix"><label class="f">Prix de vente (€)<input type="number" id="lp" min="0.5" step="0.5" inputmode="decimal"></label><label class="ck" style="align-self:end"><input type="checkbox" id="lt" checked> J'accepte les échanges</label></div>
+    <div class="row2" id="lauc" hidden><label class="f">Prix de départ (€)<input type="number" id="lsp" min="0.5" step="0.5" inputmode="decimal"></label><label class="f">Durée<select id="ldays"><option value="1">1 jour</option><option value="3" selected>3 jours</option><option value="7">7 jours</option></select></label></div>
     <p class="small mut" id="lhint" style="margin:0"></p>
     <div class="panel small">🔐 Écris ce code sur un papier et photographie-le à côté de ta carte : <b class="mono" style="font-size:18px">${code}</b><br><span class="mut">Il prouve que tu as vraiment la carte. ${need ? 'Photo obligatoire pour cette carte (cote ≥ ' + eur(S.st.photo_required_from || 50) + ').' : 'Recommandé.'}</span></div>
     <label class="f">Photo de TA carte avec le code<input type="file" id="lph" accept="image/*" capture="environment" ${need ? 'required' : ''}></label>
@@ -323,6 +369,11 @@ async function listForm(cardId) {
     <p class="err" id="lerr"></p><button class="btn">Poser mon double</button></form></div>`);
   const hint = () => { const k = COND[$('#lc').value][2], sug = c.price_eur ? Math.max(0.5, Math.round(c.price_eur * k * 2) / 2) : null; $('#lp').placeholder = sug ?? 'Prix'; $('#lhint').textContent = sug ? `Prix conseillé en ${$('#lc').value} : ${eur(sug)} (cote × ${k}). Laisse vide pour échange seul.` : 'Laisse vide pour échange seul.'; };
   $('#lc').onchange = hint; hint();
+  let auc = false;
+  $('#lmode').onclick = e => { const b = e.target.closest('[data-lm]'); if (!b) return; auc = b.dataset.lm === 'auc';
+    $('#lmode').querySelectorAll('button').forEach(x => x.setAttribute('aria-pressed', x === b)); $('#lfix').hidden = auc; $('#lauc').hidden = !auc;
+    if (auc) $('#lhint').textContent = 'Les membres enchérissent (+5 % minimum à chaque fois). À la fin, le meilleur enchérisseur paie via le paiement sécurisé, comme une vente. Sans enchère, l\'annonce est retirée.'; else hint();
+    $('#lsp').placeholder = c.price_eur ? Math.max(0.5, Math.round(c.price_eur * COND[$('#lc').value][2])) : '1'; };
   $('#ln').oninput = () => guardInput($('#ln'), $('#lerr'));
   $('#lf').onsubmit = async e => {
     e.preventDefault(); if (!guardInput($('#ln'), $('#lerr'))) return;
@@ -330,11 +381,14 @@ async function listForm(cardId) {
     try {
       let photo_path = null; const f = $('#lph').files[0];
       if (f) { const blob = await shrink(f); photo_path = `${S.user.id}/${crypto.randomUUID()}.jpg`; const up = await sb.storage.from('photos').upload(photo_path, blob, { contentType: 'image/jpeg' }); if (up.error) throw up.error; }
-      const price = $('#lp').value ? +$('#lp').value : null, trade_ok = $('#lt').checked;
+      const price = auc ? +$('#lsp').value || null : $('#lp').value ? +$('#lp').value : null, trade_ok = !auc && $('#lt').checked;
+      if (auc && !(price >= 0.5)) throw new Error('Indique un prix de départ (0,50 € minimum).');
       if (!price && !trade_ok) throw new Error('Indique un prix ou accepte les échanges.');
-      const { error } = await sb.from('listings').insert({ user_id: S.user.id, card_id: c.id, condition: $('#lc').value, price, trade_ok, note: $('#ln').value.trim() || null, photo_path, verify_code: code });
+      const { data: nl, error } = await sb.from('listings').insert({ user_id: S.user.id, card_id: c.id, condition: $('#lc').value, price, trade_ok, note: $('#ln').value.trim() || null, photo_path, verify_code: code }).select('id').single();
       if (error) throw error;
-      close(); toast('Double posé sur la table !');
+      if (auc) { const r = await sb.rpc('start_auction', { p_listing: nl.id, p_start: price, p_days: +$('#ldays').value });
+        if (r.error) { await sb.from('listings').update({ status: 'removed' }).eq('id', nl.id); throw r.error; } }
+      close(); toast(auc ? `🔨 Enchère lancée pour ${$('#ldays').value} jour${+$('#ldays').value > 1 ? 's' : ''} !` : 'Double posé sur la table !');
     } catch (err) { $('#lerr').textContent = errMsg(err); btn.disabled = false; btn.textContent = 'Poser mon double'; }
   };
 }
@@ -443,7 +497,7 @@ async function scanModal(intent = 'add') {
     <label class="btn" id="pgcap" style="cursor:pointer" hidden>📸 Photographier la page<input type="file" id="pgf" accept="image/*" capture="environment" hidden></label>
     <label class="btn ghost" id="scpick" style="cursor:pointer">🖼️ Choisir une photo<input type="file" id="scf" accept="image/*" hidden></label></div>
   <p class="small mut" id="scs" role="status"></p><div id="bst"></div><div id="scr"></div>
-  <details id="scman"><summary class="small">✍️ Saisir le numéro à la main</summary><div class="row2"><label class="f">Numéro (ex. 091/132)<span class="numpair"><input id="scn" placeholder="091" inputmode="numeric" maxlength="7" aria-label="Numéro de la carte"><b>/</b><input id="sct" placeholder="132" inputmode="numeric" maxlength="3" aria-label="Total de la série (optionnel)"></span></label><label class="f">Nom (optionnel)<input id="scw" placeholder="Dracaufeu"></label></div><button class="btn ghost" id="scgo" type="button">Chercher</button></details></div>`);
+  <details id="scman"><summary class="small">✍️ Saisir le numéro à la main</summary><div class="row2"><label class="f">Numéro (ex. 091/132)<span class="numpair"><input id="scn" placeholder="091" inputmode="numeric" maxlength="7" aria-label="Numéro de la carte"><b>/</b><input id="sct" placeholder="132" inputmode="numeric" maxlength="3" aria-label="Total de la série (optionnel)"></span></label><label class="f">Nom (optionnel)<input id="scw" placeholder="Dracaufeu"></label></div><button class="btn ghost" id="scgo" type="button">Chercher</button><button class="btn ghost sm" type="button" data-names>🔎 Plusieurs cartes par nom (dracau, pika…)</button></details></div>`);
   $('#scint').onclick = e => { const b = e.target.closest('[data-si]'); if (b) setIntent(b.dataset.si); };
   $('#scf').onchange = async e => { const f = e.target.files[0]; if (!f) return; scanState.intent === 'page' ? scanPage(f) : analyse(await fileToCard(f)); };
   $('#pgfmt').onclick = e => { const b = e.target.closest('[data-pf]'); if (!b) return; try { localStorage.setItem('sc_page', b.dataset.pf); } catch { } $('#pgfmt').querySelectorAll('button').forEach(x => x.setAttribute('aria-pressed', x === b)); };
@@ -513,12 +567,13 @@ async function tickBurst() {
   setTimeout(tickBurst, 600);
 }
 async function burstAdd(c, g) {
-  burst.last = g; burst.cleared = false; burst.added.unshift(c); beep(); camtip(`✅ ${nm(c)} ajoutée`);
+  const had = owned(c); burst.last = g; burst.cleared = false; burst.added.unshift({ ...c, had: had.length > 0 }); beep();
+  camtip(`✅ ${nm(c)} ajoutée${had.length ? ` (tu l'avais déjà : ${had.map(x => `×${x.q} ${x.lang === 'ja' ? 'JP' : x.lang.toUpperCase()}`).join(', ')})` : ''}`);
   await addMany({ [c.id]: 1 }); drawBurst();
 }
 function burstAsk(list, g) {
   camtip('🤔 Laquelle est-ce ?');
-  $('#scr').innerHTML = `<p class="small" style="margin:6px 0"><b>Pas sûr : touche la bonne carte</b> (ou passe)</p><div class="alts">${list.map((c, i) => `<button type="button" data-ba="${i}">${img(c)}<small>${flag(c.lang)} ${esc(nm(c))}<br>${esc(c.set_name)} · ${esc(c.local_id)}</small></button>`).join('')}</div><button type="button" class="btn sm ghost" data-ba="-1" style="margin-top:8px">Passer cette carte</button>`;
+  $('#scr').innerHTML = `<p class="small" style="margin:6px 0"><b>Pas sûr : touche la bonne carte</b> (ou passe)</p><div class="alts">${list.map((c, i) => `<button type="button" data-ba="${i}">${img(c)}${ownBadge(c)}<small>${flag(c.lang)} ${esc(nm(c))}<br>${esc(c.set_name)} · ${esc(c.local_id)}</small></button>`).join('')}</div><button type="button" class="btn sm ghost" data-ba="-1" style="margin-top:8px">Passer cette carte</button>`;
   $('#scr').onclick = async e => { const b = e.target.closest('[data-ba]'); if (!b) return; $('#scr').innerHTML = ''; $('#scr').onclick = null;
     if (+b.dataset.ba >= 0) await burstAdd(list[+b.dataset.ba], g); else { burst.last = g; burst.cleared = false; }
     burst.busy = false; setTimeout(tickBurst, 600); };
@@ -526,7 +581,7 @@ function burstAsk(list, g) {
 function drawBurst() {
   const a = burst.added;
   $('#bst').innerHTML = `<div class="bpanel panel"><b>⚡ ${a.length} carte${a.length > 1 ? 's' : ''} ajoutée${a.length > 1 ? 's' : ''}</b>${a.length ? ` · <span class="mut small">${eur(a.reduce((s, c) => s + (+c.price_eur || 0), 0))}</span>` : ''}
-    <div class="bstrip">${a.slice(0, 30).map((c, i) => `<span>${img(c)}<button type="button" data-bu="${i}" aria-label="Annuler ${esc(nm(c))}">×</button></span>`).join('')}</div></div>`;
+    <div class="bstrip">${a.slice(0, 30).map((c, i) => `<span${c.had ? ' class="had" title="Déjà dans ton classeur"' : ''}>${img(c)}<button type="button" data-bu="${i}" aria-label="Annuler ${esc(nm(c))}">×</button></span>`).join('')}</div></div>`;
   $('#bst').onclick = async e => { const b = e.target.closest('[data-bu]'); if (!b) return; const [c] = burst.added.splice(+b.dataset.bu, 1); await addMany({ [c.id]: -1 }); toast(`${nm(c)} retirée`); drawBurst(); };
 }
 
@@ -571,7 +626,7 @@ async function scanPage(file) {
   scanState.page = res;
   const draw = () => {
     const n = res.filter(r => r.on && r.pick).length;
-    $('#scr').innerHTML = `<div class="pagegrid" style="--cols:${cols}">${res.map((r, i) => `<button type="button" class="pcell ${r.st}${r.on ? ' on' : ''}" data-pc="${i}">${r.pick ? img(r.pick) : `<span>${{ wait: '…', blank: 'vide', none: '✖', run: '🔎' }[r.st] || '?'}</span>`}${r.st === 'unsure' ? '<i>?</i>' : r.on ? '<i>✓</i>' : ''}</button>`).join('')}</div>
+    $('#scr').innerHTML = `<div class="pagegrid" style="--cols:${cols}">${res.map((r, i) => `<button type="button" class="pcell ${r.st}${r.on ? ' on' : ''}" data-pc="${i}">${r.pick ? img(r.pick) + ownBadge(r.pick) : `<span>${{ wait: '…', blank: 'vide', none: '✖', run: '🔎' }[r.st] || '?'}</span>`}${r.st === 'unsure' ? '<i>?</i>' : r.on ? '<i>✓</i>' : ''}</button>`).join('')}</div>
       <div id="pcpick"></div><button type="button" class="btn" id="pcadd" ${n ? '' : 'disabled'}>➕ Ajouter ${n} carte${n > 1 ? 's' : ''} au classeur</button>`;
     $('#pcadd').onclick = async () => { const m = {}; res.forEach(r => { if (r.on && r.pick) m[r.pick.id] = (m[r.pick.id] || 0) + 1; }); await addMany(m); toast(`${n} carte${n > 1 ? 's' : ''} ajoutée${n > 1 ? 's' : ''} au classeur`); $('#scr').innerHTML = '<p class="okline">✅ Page ajoutée ! Photographie la suivante.</p>'; };
   };
@@ -616,14 +671,21 @@ async function runAskAI() {
   toast(ai?.read?.is_card === false ? 'L\'IA ne voit pas de carte sur la photo' : S.aiErr || 'L\'IA n\'a pas trouvé cette carte', true);
 }
 function showRanked({ list, sure, how }) {
-  remember(list); scanState.list = list; scanState.how = how;
+  remember(list); scanState.list = list; scanState.how = how; scanState.autoLang = false;
   if (sure) return showScan(list[0]);
   $('#scs').textContent = list.length > 1 ? 'Plusieurs cartes possibles : touche la bonne.' : '';
-  $('#scr').innerHTML = howLine(how) + `<div class="alts big">${list.map((c, i) => c.alt ? '' : `<button type="button" data-alt="${i}">${img(c)}<small>${flag(c.lang)} ${esc(nm(c))}<br>${esc(c.set_name)} · ${esc(c.local_id)}</small></button>`).join('')}</div>`;
+  $('#scr').innerHTML = howLine(how) + `<div class="alts big">${list.map((c, i) => c.alt ? '' : `<button type="button" data-alt="${i}">${img(c)}${ownBadge(c)}<small>${flag(c.lang)} ${esc(nm(c))}<br>${esc(c.set_name)} · ${esc(c.local_id)}</small></button>`).join('')}</div>`;
   $('#scr').insertAdjacentHTML('beforeend', askAI(how));
   $('#scr').onclick = e => { if (e.target.closest('#askai')) return runAskAI(); const b = e.target.closest('[data-alt]'); if (b) showScan(list[+b.dataset.alt]); };
 }
 const artKey = id => id.replace(/^[a-z]{2}:/, ''), langCache = new Map();
+// exemplaires déjà dans le classeur, toutes langues de la même carte : [{ lang, q }]
+const owned = c => c ? ALL_LANGS.map(l => ({ lang: l, q: S.coll[`${l}:${artKey(c.id)}`] || 0 })).filter(x => x.q) : [];
+const ownedLine = c => { const o = owned(c); return o.length ? `<p class="owned">📒 Tu l'as déjà : ${o.map(x => `<b>×${x.q}</b> ${flag(x.lang)}`).join(' · ')}</p>` : ''; };
+const ownBadge = c => { const q = S.coll[c?.id] || 0, o = owned(c); return q ? `<span class="own">×${q}</span>` : o.length ? `<span class="own alt">✓ ${o.map(x => x.lang === 'ja' ? 'JP' : x.lang.toUpperCase()).join(' ')}</span>` : ''; };
+// dernière langue choisie au scan : proposée en premier ensuite
+let scanLang = null; try { scanLang = localStorage.getItem('sc_lang'); } catch { }
+const setScanLang = l => { scanLang = l; try { localStorage.setItem('sc_lang', l); } catch { } };
 // toutes les langues d'une même carte (même illustration, même numéro) : pour corriger la langue proposée
 async function langVersions(c) {
   const k = artKey(c.id);
@@ -637,31 +699,110 @@ function showScan(c) {
   scanState.shown = c; scanState.qty = scanState.qty || 1;
   const add = scanState.intent === 'add', list = scanState.list || [], seenArt = new Set([artKey(c.id)]);
   const others = list.filter(x => !x.alt && !seenArt.has(artKey(x.id)) && seenArt.add(artKey(x.id)));
-  const bAdd = `<div class="qtyrow"><button type="button" class="btn sm ghost" data-q="-1" aria-label="Moins">−</button><b id="sq">${scanState.qty}</b><button type="button" class="btn sm ghost" data-q="1" aria-label="Plus">+</button><button type="button" class="btn${add ? '' : ' ghost'}" id="sadd">➕ Ajouter au classeur</button></div>`;
+  const bAdd = `<div class="qtyrow"><button type="button" class="btn sm ghost" data-q="-1" aria-label="Moins">−</button><b id="sq">${scanState.qty}</b><button type="button" class="btn sm ghost" data-q="1" aria-label="Plus">+</button><button type="button" class="btn${add ? '' : ' ghost'}" id="sadd">${S.coll[c.id] ? '➕ En ajouter un de plus' : '➕ Ajouter au classeur'}</button></div>`;
   const bAuth = `<button type="button" class="btn${add ? ' ghost' : ''}" id="sauth">🔍 ${add ? 'L\'authentifier aussi' : 'Lancer le contrôle avec cette photo'}</button>`;
   $('#scs').textContent = '';
   $('#scr').innerHTML = `<div class="scanres panel"><div class="sr-img">${img(c, true)}</div><div class="sr-txt">
     <p class="small" style="margin:0"><span class="pill p-NM">✓ Carte reconnue</span></p>
-    <h3>${flag(c.lang)} ${esc(nm(c))}</h3>${howLine(scanState.how)}<p class="small mut">${esc(c.set_name)} · n° ${esc(c.local_id)} · cote <b>${eur(c.price_eur)}</b>${S.coll[c.id] ? ` · déjà <b>×${S.coll[c.id]}</b> dans ton classeur` : ''}</p>
-    <p class="small langsw" id="langsw" style="margin:6px 0"></p>
+    <h3>${flag(c.lang)} ${esc(nm(c))}</h3><div class="langsw" id="langsw"></div>${ownedLine(c)}${howLine(scanState.how)}<p class="small mut">${esc(c.set_name)} · n° ${esc(c.local_id)} · cote <button type="button" class="cote" data-cote="${c.id}">${eur(c.price_eur)}${trend(c)} 📈</button></p>
     </div><div class="sr-acts"><p class="small" style="margin:0"><b>C'est bien elle ?</b></p>${add ? bAdd + bAuth : bAuth + bAdd}${askAI(scanState.how)}</div></div>
     ${others.length ? `<details class="small"><summary>Pas la bonne ? (${others.length} autres)</summary><div class="alts">${others.map(x => `<button type="button" data-tw="${x.id}">${img(x)}<small>${flag(x.lang)} ${esc(nm(x))}<br>${esc(x.set_name)} · ${esc(x.local_id)}</small></button>`).join('')}</div></details>` : ''}`;
   langVersions(c).then(vs => {
     if (scanState.shown !== c || !$('#langsw')) return;
     for (const v of vs) if (!list.some(x => x.id === v.id)) list.push(v);
     remember(vs); scanState.list = list;
-    if (vs.length > 1) $('#langsw').innerHTML = 'Langue : ' + vs.sort((a, b) => ALL_LANGS.indexOf(a.lang) - ALL_LANGS.indexOf(b.lang)).map(x => `<button type="button" class="chip${x.id === c.id ? ' on' : ''}" data-tw="${x.id}" aria-pressed="${x.id === c.id}">${flag(x.lang)}</button>`).join(' ');
+    // bonne langue d'office : celle lue par l'IA, sinon la dernière choisie, sinon celle du classeur
+    if (!scanState.autoLang) { scanState.autoLang = true; const h = scanState.how, want = (h?.t === 'ai' && h.read?.language) || scanLang || S.lang, v = vs.find(x => x.lang === want);
+      if (v && v.id !== c.id) return showScan(list.find(x => x.id === v.id) || v); }
+    if (vs.length > 1) $('#langsw').innerHTML = '<span class="small mut">Langue de ta carte :</span> ' + vs.sort((a, b) => ALL_LANGS.indexOf(a.lang) - ALL_LANGS.indexOf(b.lang)).map(x => `<button type="button" class="chip lg${x.id === c.id ? ' on' : ''}" data-tw="${x.id}" aria-pressed="${x.id === c.id}">${x.lang === 'ja' ? 'JP' : x.lang.toUpperCase()}${S.coll[x.id] ? ` <small>✓${S.coll[x.id]}</small>` : ''}</button>`).join('');
   });
   $('#scr').onclick = async e => {
     if (e.target.closest('#askai')) return runAskAI();
     const t = e.target.closest('[data-tw],[data-q],#sadd,#sauth'); if (!t) return;
-    if (t.dataset.tw) return showScan(list.find(x => x.id === t.dataset.tw));
+    if (t.dataset.tw) { const v = list.find(x => x.id === t.dataset.tw); if (t.closest('#langsw')) setScanLang(v.lang); return showScan(v); }
     if (t.dataset.q) { scanState.qty = Math.max(1, Math.min(20, scanState.qty + +t.dataset.q)); $('#sq').textContent = scanState.qty; return; }
-    if (t.id === 'sadd') { await setQty(c.id, (S.coll[c.id] || 0) + scanState.qty); Game.track('add'); checkUnlock(); if (S.bySet[c.set_id]) S.bySet[c.set_id] = null;
-      toast(`${nm(c)} ajoutée au classeur (×${S.coll[c.id]})`); scanState.qty = 1;
+    if (t.id === 'sadd') { const had = S.coll[c.id] || 0; await setQty(c.id, had + scanState.qty); Game.track('add'); checkUnlock(); if (S.bySet[c.set_id]) S.bySet[c.set_id] = null; setScanLang(c.lang);
+      toast(had ? `${nm(c)} : tu en as maintenant ×${S.coll[c.id]}` : `${nm(c)} ajoutée au classeur`); scanState.qty = 1;
       $('#scr').insertAdjacentHTML('afterbegin', `<p class="small okline">✅ Ajoutée ! Tu peux scanner la suivante.</p>`); setTimeout(() => showScan(c), 1500); return; }
     if (t.id === 'sauth') openAuth(c, authH(), { recto: scanState.photo });
   };
+}
+
+// ---------- recherche par nom, plusieurs à la suite : « dracau, pika, bibi » ----------
+const nsCache = new Map();
+const nsTile = c => `<div class="nst"><span class="ns-img">${img(c)}${ownBadge(c)}</span><small>${flag(c.lang)} ${esc(nm(c))}<br><span class="mut">${esc(c.set_name)} · ${esc(c.local_id)}</span></small>
+  <span class="nsq">${S.coll[c.id] ? `<button type="button" class="btn sm ghost" data-nsm="${c.id}" aria-label="Retirer un">−</button>` : ''}<button type="button" class="btn sm" data-nsp="${c.id}">+1</button></span></div>`;
+async function nameSearch() {
+  let lang = S.nsLang ?? S.lang, tm, seq = 0;
+  modal(`<div class="form names"><h2 style="margin:0">🔎 Ajouter par nom</h2>
+  <p class="small mut" style="margin:0">Tape le début des noms, séparés par des virgules : <b>dracau, pika, bibi</b>. Touche <b>+1</b> pour ajouter, l'image pour l'agrandir.</p>
+  <input id="nsin" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="search" placeholder="dracau, pika, bibi…" aria-label="Noms des cartes" value="${esc(S.nsq || '')}">
+  <div class="seg" id="nslang"><button type="button" data-nl="" aria-pressed="${!lang}">Toutes</button>${ALL_LANGS.map(l => `<button type="button" data-nl="${l}" aria-pressed="${lang === l}">${l === 'ja' ? 'JP' : l.toUpperCase()}</button>`).join('')}</div>
+  <div id="nsres" role="status"></div></div>`);
+  const inp = $('#nsin'), box = $('#nsres');
+  const run = async () => {
+    const me = ++seq, terms = [...new Set(inp.value.split(/[,;\n]+/).map(t => t.trim()).filter(t => t.length >= 2))].slice(0, 12);
+    S.nsq = inp.value; if (!terms.length) { box.innerHTML = ''; return; }
+    const res = await Promise.all(terms.map(t => { const k = t.toLowerCase() + '|' + lang;
+      if (!nsCache.has(k)) nsCache.set(k, sb.rpc('search_cards', { p_q: t, p_lang: lang || null }).then(r => (r.data || []).map(c => ({ ...c, set_name: setName(S.sets.find(x => x.id === c.set_id)) }))).catch(() => []));
+      return nsCache.get(k); }));
+    if (me !== seq || !box.isConnected) return; remember(res.flat());
+    box.innerHTML = terms.map((t, i) => `<section class="nsgrp"><h4>« ${esc(t)} » <span class="small mut">${res[i].length >= 40 ? '40+ cartes : précise le nom' : `${res[i].length} carte${res[i].length > 1 ? 's' : ''}`}</span></h4>
+      ${res[i].length ? `<div class="nsgrid">${res[i].map(nsTile).join('')}</div>` : '<p class="small mut">Aucune carte : vérifie l\'orthographe ou la langue.</p>'}</section>`).join('');
+  };
+  inp.oninput = () => { clearTimeout(tm); tm = setTimeout(run, 350); };
+  inp.onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); clearTimeout(tm); run(); } };
+  $('#nslang').onclick = e => { const b = e.target.closest('[data-nl]'); if (!b) return; lang = S.nsLang = b.dataset.nl;
+    $('#nslang').querySelectorAll('button').forEach(x => x.setAttribute('aria-pressed', x === b)); run(); };
+  box.onclick = async e => { const b = e.target.closest('[data-nsp],[data-nsm]'); if (!b) return;
+    const id = b.dataset.nsp || b.dataset.nsm, c = S.cards[id], had = owned(c); await addMany({ [id]: b.dataset.nsp ? 1 : -1 });
+    if (b.dataset.nsp) { beep(); toast(had.length ? `${nm(c)} : déjà ${had.map(x => `×${x.q} ${x.lang === 'ja' ? 'JP' : x.lang.toUpperCase()}`).join(', ')} → maintenant ×${S.coll[id]} en ${c.lang === 'ja' ? 'JP' : c.lang.toUpperCase()}` : `${nm(c)} ajoutée au classeur`); }
+    box.querySelectorAll('.nst').forEach(t => { const x = t.querySelector('[data-nsp]'); if (x && artKey(x.dataset.nsp) === artKey(id)) t.outerHTML = nsTile(S.cards[x.dataset.nsp]); }); };
+  if (inp.value) run(); inp.focus();
+}
+
+// ---------- fenêtres secondaires : carte en grand, courbe de cote ----------
+function sheet(html, cls = '') {
+  let z = $('#dlg2'); if (!z) { z = Object.assign(document.createElement('dialog'), { id: 'dlg2' }); z.onclick = e => { if (e.target === z || z.classList.contains('zoom') || e.target.closest('[data-x]')) z.close(); }; document.body.append(z); }
+  z.className = cls; z.innerHTML = `<button type="button" class="x" data-x aria-label="Fermer">×</button>${html}`; if (!z.open) z.showModal(); return z;
+}
+// toucher une carte (fiche du scan, annonce, recherche par nom) l'affiche en plein écran
+document.addEventListener('click', e => { const i = e.target.closest('.sr-img img, .split > div:first-child > img.cimg, .ns-img img'); if (!i) return;
+  e.preventDefault(); e.stopPropagation(); sheet(`<img src="${i.src.replace('/low.webp', '/high.webp')}" alt="${esc(i.alt)}">`, 'zoom'); }, true);
+document.addEventListener('click', e => { const b = e.target.closest('[data-cote]'); if (!b) return; e.preventDefault(); e.stopPropagation(); coteModal(S.cards[b.dataset.cote]); }, true);
+const histCache = new Map();
+const priceHist = id => { if (!histCache.has(id)) histCache.set(id, sb.from('price_history').select('d,price').eq('tcg_id', id).gte('d', new Date(Date.now() - 365 * 864e5).toISOString().slice(0, 10)).order('d').then(r => r.data || [])); return histCache.get(id); };
+// courbe : points [x, y] dans un cadre W×H (marges incluses)
+function curve(data, W, H, pad = 4) {
+  const v = data.map(r => +r.price), mn = Math.min(...v), mx = Math.max(...v), t0 = +new Date(data[0].d), t1 = +new Date(data.at(-1).d);
+  const pts = data.map(r => [pad + ((+new Date(r.d) - t0) / (t1 - t0 || 1)) * (W - 2 * pad), H - pad - ((+r.price - mn) / (mx - mn || 1)) * (H - 2 * pad)]);
+  return { pts, mn, mx, up: v.at(-1) >= v[0], line: pts.map(p => p.map(n => n.toFixed(1)).join(',')).join(' ') };
+}
+const fmtD = d => new Date(d).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' });
+async function coteModal(c) {
+  if (!c) return;
+  const z = sheet(`<div class="cotebox"><p class="small mut" style="margin:0">${flag(c.lang)} ${esc(setName(S.sets.find(x => x.id === c.set_id)) || c.set_name || '')} · n° ${esc(c.local_id)}</p>
+    <h3 style="margin:2px 0 4px">${esc(nm(c))}</h3><p class="cotebig">${eur(c.price_eur)}${trend(c)}</p><div id="cotech"><div class="skel" style="height:150px"></div></div></div>`, 'cotedlg');
+  const box = $('#cotech', z), data = c.tcg_id ? await priceHist(c.tcg_id) : [];
+  if (!box.isConnected) return;
+  if (data.length < 2) { box.innerHTML = `<p class="small mut">${c.lang === 'ja' ? 'Pas de cote pour les cartes japonaises.' : 'Historique en construction : la courbe apparaîtra après quelques jours de relevés.'}</p>`; return; }
+  const W = 320, H = 150, { pts, mn, mx, up, line } = curve(data, W, H, 6), last = +data.at(-1).price;
+  const ago = n => { const t = Date.now() - n * 864e5, r = [...data].reverse().find(x => +new Date(x.d) <= t); return r ? (last - r.price) / r.price : null; };
+  const pc = d => d == null ? '—' : `<span class="${d >= 0 ? 'pos' : 'neg'}">${d >= 0 ? '+' : ''}${Math.round(d * 100)} %</span>`;
+  box.innerHTML = `<div class="chart ${up ? 'up' : 'dn'}"><svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Évolution de la cote sur ${data.length} relevés, de ${eur(mn)} à ${eur(mx)}">
+      <line class="g" x1="0" x2="${W}" y1="${pts[0][1] < H / 2 ? H - 6 : 6}" y2="${pts[0][1] < H / 2 ? H - 6 : 6}"/>
+      <polygon class="area" points="${pts[0][0]},${H} ${line} ${pts.at(-1)[0]},${H}"/><polyline points="${line}"/>
+      <line class="cx" id="cx" y1="0" y2="${H}" hidden/><circle id="cdot" r="4" hidden/></svg>
+    <div class="tip" id="ctip" hidden></div>
+    <div class="axis small mut"><span>${fmtD(data[0].d)}</span><span>${fmtD(data.at(-1).d)}</span></div></div>
+    <dl class="kv cotekv"><dt>7 jours</dt><dd>${pc(ago(7))}</dd><dt>30 jours</dt><dd>${pc(ago(30))}</dd><dt>Plus bas</dt><dd>${eur(mn)}</dd><dt>Plus haut</dt><dd>${eur(mx)}</dd></dl>
+    <p class="small mut" style="margin:0">Cote Cardmarket (tendance), ${data.length} relevés. Touche la courbe pour lire une date.</p>`;
+  // curseur : glisser le doigt sur la courbe affiche la date et la cote
+  const svg = $('svg', box), tip = $('#ctip', box), cx = $('#cx', box), dot = $('#cdot', box);
+  const at = e => { const r = svg.getBoundingClientRect(), x = (e.clientX - r.left) / r.width * W; let i = 0; for (let k = 1; k < pts.length; k++) if (Math.abs(pts[k][0] - x) < Math.abs(pts[i][0] - x)) i = k;
+    const [px, py] = pts[i]; cx.setAttribute('x1', px); cx.setAttribute('x2', px); dot.setAttribute('cx', px); dot.setAttribute('cy', py); cx.hidden = dot.hidden = tip.hidden = false;
+    tip.innerHTML = `<b>${eur(data[i].price)}</b> ${fmtD(data[i].d)}`; tip.style.left = Math.min(Math.max(px / W * 100, 12), 88) + '%'; };
+  svg.onpointermove = svg.onpointerdown = at; svg.onpointerleave = () => { cx.hidden = dot.hidden = tip.hidden = true; };
 }
 
 // ---------- offres ----------
@@ -894,7 +1035,7 @@ function deleteAccount() {
 
 // ---------- événements ----------
 document.addEventListener('click', async e => {
-  const t = e.target.closest('[data-set],[data-f],[data-tog],[data-iq],[data-dq],[data-put],[data-l],[data-buy],[data-trade],[data-rmlist],[data-report],[data-act],[data-ot],[data-am],[data-ts],[data-card],[data-close],[data-delpost],[data-scan],[data-express],[data-connect],[data-auth],[data-export],[data-delacct],[data-prep],[data-label],[data-dl],[data-paylbl],[data-ordlbl],[data-pickrelay],[data-avk],[data-avh]');
+  const t = e.target.closest('[data-set],[data-f],[data-tog],[data-iq],[data-dq],[data-put],[data-l],[data-buy],[data-trade],[data-rmlist],[data-report],[data-act],[data-ot],[data-am],[data-ts],[data-card],[data-close],[data-delpost],[data-scan],[data-express],[data-names],[data-connect],[data-auth],[data-export],[data-delacct],[data-prep],[data-label],[data-dl],[data-paylbl],[data-ordlbl],[data-pickrelay],[data-avk],[data-avh]');
   if (!t) return;
   const d = t.dataset;
   if (d.set) { S.set = d.set; classeur(); }
@@ -927,6 +1068,7 @@ document.addEventListener('click', async e => {
   else if ('delacct' in d) deleteAccount();
   else if ('scan' in d) scanModal(d.scan || 'add');
   else if ('express' in d) expressModal();
+  else if ('names' in d) nameSearch();
   else if ('connect' in d) { const { data, error } = await sb.functions.invoke('payments/connect'); if (error || !data?.url) return toast(data?.error || 'Activation des ventes bientôt disponible.', true); location.href = data.url; }
   else if (d.delpost) { await sb.from('posts').delete().eq('id', d.delpost); forum(); }
 });
@@ -956,7 +1098,9 @@ dlg.addEventListener('close', () => { if (location.hash.startsWith('#/classeur')
 function realtime() {
   if (!S.user || realtime.on) return; realtime.on = true;
   sb.channel('me').on('postgres_changes', { event: '*', schema: 'public', table: 'offers' }, () => { if (location.hash.startsWith('#/offres')) offres(); else $('#offdot').hidden = false; })
-    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, p => { if ($('#m-' + p.new.offer_id)) loadChat(p.new.offer_id); else $('#offdot').hidden = false; }).subscribe();
+    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, p => { if ($('#m-' + p.new.offer_id)) loadChat(p.new.offer_id); else $('#offdot').hidden = false; })
+    .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'auctions' }, p => { const a = p.new; if (!leads.has(a.listing_id) || a.top_bidder === S.user.id) return;
+      leads.delete(a.listing_id); saveLeads(); if (!a.closed) toast(`🔨 Tu as été surenchéri (${eur(a.current_bid)}) : retourne sur la table pour relancer !`, true); }).subscribe();
 }
 
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => { });
@@ -1111,12 +1255,9 @@ function trend(c) {
 async function sparks() {
   for (const el of document.querySelectorAll('.spark[data-spark]:not([data-done])')) {
     el.dataset.done = 1; if (!el.dataset.spark) continue;
-    const since = new Date(Date.now() - 365 * 864e5).toISOString().slice(0, 10);
-    const { data } = await sb.from('price_history').select('d,price').eq('tcg_id', el.dataset.spark).gte('d', since).order('d');
-    if (!data || data.length < 2) { el.innerHTML = '<span class="small mut">Historique en construction : la courbe apparaîtra dans quelques jours.</span>'; continue; }
-    const v = data.map(r => +r.price), mn = Math.min(...v), mx = Math.max(...v), W = 220, H = 48, t0 = +new Date(data[0].d), t1 = +new Date(data.at(-1).d) || t0 + 1;
-    const pts = data.map(r => [((+new Date(r.d) - t0) / (t1 - t0 || 1)) * W, H - 4 - ((+r.price - mn) / (mx - mn || 1)) * (H - 8)]);
-    const up = v.at(-1) >= v[0];
-    el.innerHTML = `<svg viewBox="0 0 ${W} ${H}" class="${up ? 'up' : 'dn'}"><polyline points="${pts.map(p => p.map(n => n.toFixed(1)).join(',')).join(' ')}"/></svg><span class="small mut">min ${eur(mn)} · max ${eur(mx)} · ${data.length} relevés</span>`;
+    const data = await priceHist(el.dataset.spark);
+    if (data.length < 2) { el.innerHTML = '<span class="small mut">Historique en construction : la courbe apparaîtra dans quelques jours.</span>'; continue; }
+    const { mn, mx, up, line } = curve(data, 220, 48);
+    el.innerHTML = `<svg viewBox="0 0 220 48" class="${up ? 'up' : 'dn'}"><polyline points="${line}"/></svg><span class="small mut">min ${eur(mn)} · max ${eur(mx)} · ${data.length} relevés</span>`;
   }
 }

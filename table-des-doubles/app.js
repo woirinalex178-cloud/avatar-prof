@@ -12,7 +12,7 @@ import { initFx, refreshFx } from './fx.js';
 playIntro();
 
 const sb = createClient(SUPABASE_URL, SUPABASE_KEY);
-const S = { user: null, profile: null, sets: [], cards: {}, bySet: {}, set: null, lang: 'fr', coll: {}, fee: 0.0001, filter: 'all', pseudos: {}, prog: {} };
+const S = { user: null, profile: null, sets: [], cards: {}, bySet: {}, set: null, lang: 'fr', coll: {}, fee: 0.0001, filter: 'all', pseudos: {}, prog: {}, wish: new Set() };
 const LANGS = { fr: 'Français', en: 'Anglais (US/UK)', ja: 'Japonais', de: 'Allemand', it: 'Italien', es: 'Espagnol', pt: 'Portugais' };
 const flag = l => `<span class="lang">${l === 'ja' ? 'JP' : l.toUpperCase()}</span>`;
 const COND = { NM: ['Near Mint', 'Comme neuve, aucun défaut visible', 1], EX: ['Excellent', 'Micro-défauts (léger blanchiment)', .85], GD: ['Bon', 'Usure visible, coins/bords marqués', .65], PL: ['Joué', 'Pliure, rayure ou usure forte', .4] };
@@ -116,8 +116,14 @@ async function loadSession() {
     }
   }
   $('#navme').textContent = S.profile ? S.profile.pseudo : 'Compte';
-  await loadCollection();
+  await Promise.all([loadCollection(), loadWish()]);
+  if (S.profile) sb.rpc('touch_me');
 }
+// compte suspendu par la modération : 'infinity' = définitif
+const suspended = () => { const u = S.profile?.suspended_until; if (!u) return null;
+  if (String(u).startsWith('infinity')) return 'définitivement';
+  const d = new Date(u); return d > new Date() ? 'jusqu\'au ' + d.toLocaleDateString('fr-FR') : null; };
+const suspBanner = () => { const w = suspended(); return w ? `<div class="banner bad">🚫 Ton compte est suspendu ${w} : tu ne peux plus publier d'annonce, de message ni d'offre.${S.profile.suspend_reason ? ' Motif : ' + esc(S.profile.suspend_reason) : ''} <a href="#/regles">Charte & sécurité</a></div>` : ''; };
 
 // ---------- gamification ----------
 function progress(setId) {
@@ -145,7 +151,8 @@ async function trophees() {
   const { st, ev } = await gameState(), dl = Game.daily();
   view.innerHTML = `<div class="felt"><div class="dash"><div class="ring" style="--p:${Math.round(ev.got.length / ev.total * 100)}"><span>${ev.got.length}<small>/ ${ev.total}</small></span></div>
     <div><h1 style="font-size:24px">${esc(ev.title)}</h1><p class="mut" style="margin:4px 0">Niveau ${ev.lvl} · ${ev.xp} XP · 🔥 ${st.streak} jour(s) de suite</p><div class="xp"><i style="width:${ev.pct}%"></i></div>
-    <p class="small" style="margin:10px 0 0">🎯 Défi du jour : ajoute ${dl.n} cartes à ton classeur — ${dl.done ? '<b class="dn">réussi ✔</b>' : `${dl.cur}/${dl.n}`}</p></div></div></div>
+    <p class="small" style="margin:10px 0 0">🎯 Défi du jour : ajoute ${dl.n} cartes à ton classeur — ${dl.done ? '<b class="dn">réussi ✔</b>' : `${dl.cur}/${dl.n}`}</p>
+    <p class="small" style="margin:4px 0 0">${Game.weeklyLine(esc)}</p></div></div></div>
   ${Game.renderTrophies(ev, st, esc)}`;
 }
 
@@ -155,7 +162,7 @@ function legal() {
   view.innerHTML = renderLegal(esc, sub);
   if (sub) document.getElementById('lg-' + sub)?.scrollIntoView();
 }
-const routes = { '': home, trophees, legal, classeur, table, offres, forum, compte, regles, guide, membre };
+const routes = { '': home, trophees, legal, classeur, table, offres, forum, compte, regles, guide, membre, souhaits, moderation };
 function guide() {
   const k = location.hash.split('/')[2]; view.innerHTML = renderGuide();
   const el = k && document.getElementById('g-' + k); if (!el) return;
@@ -216,6 +223,7 @@ async function classeur() {
   const p = progress(S.set), { st, ev: t } = await gameState(), dl = Game.daily();
   const list = p.cs.filter(c => { const q = S.coll[c.id] || 0; return S.filter === 'all' || (S.filter === 'own' && q) || (S.filter === 'miss' && !q) || (S.filter === 'dbl' && q > 1); });
   view.innerHTML = `
+  ${suspBanner()}
   ${S.profile ? '' : `<div class="banner"><span>Mode invité : ton classeur est enregistré sur cet appareil. Crée ton compte pour le sauvegarder et échanger.</span><a class="btn sm" href="#/compte">Créer mon compte</a></div>`}
   <div class="felt">
     <div class="dash">
@@ -226,15 +234,17 @@ async function classeur() {
         <div class="kpis" style="margin-top:12px"><div><b>${eur(p.value)}</b><span>valeur de ce set</span></div><div><b>${p.owned}</b><span>cartes différentes</span></div><div><b>${p.doubles}</b><span>doubles</span></div><div><b>Niv. ${t.lvl}</b><span>${esc(t.title)} · ${t.xp} XP</span></div><div><b>🔥 ${st.streak}</b><span>jour(s) de suite</span></div></div>
         <div class="xp"><i style="width:${t.pct}%"></i></div>
         <p class="small" style="margin:8px 0 0">🎯 Défi du jour : ajoute ${dl.n} cartes — ${dl.done ? '<b class="dn">réussi ✔</b>' : `${dl.cur}/${dl.n}`}</p>
+        <p class="small" style="margin:4px 0 0">${Game.weeklyLine(esc)}</p>
         <div class="badges">${t.got.slice(-5).reverse().map(b => `<span class="bdg on">${b.ic} ${esc(b.name)}</span>`).join('')}<a class="bdg" href="#/trophees">🏆 ${t.got.length}/${t.total} trophées →</a></div>
       </div>
     </div>
   </div>
   <div class="bar" style="margin-top:18px"><div class="seg" id="flt">${[['all', 'Toutes'], ['own', 'Possédées'], ['miss', 'Manquantes'], ['dbl', 'Doubles']].map(([k, n]) => `<button data-f="${k}" aria-pressed="${S.filter === k}">${n}</button>`).join('')}</div>
-  <button class="btn sm" data-scan>📷 Scanner</button><button class="btn sm" data-scan="burst">⚡ Rafale</button><button class="btn sm ghost" data-names>🔎 Par nom</button><button class="btn sm ghost" data-express>⌨️ Saisie express</button></div>
+  <button class="btn sm" data-scan>📷 Scanner</button><button class="btn sm" data-scan="burst">⚡ Rafale</button><button class="btn sm ghost" data-names>🔎 Par nom</button><button class="btn sm ghost" data-express>⌨️ Saisie express</button><button class="btn sm ghost" data-csv>⬆️ Importer / exporter</button><a class="btn sm ghost" href="#/souhaits">⭐ Mes souhaits${S.wish.size ? ' (' + S.wish.size + ')' : ''}</a></div>
   <div class="grid">${list.map(c => { const q = S.coll[c.id] || 0; return `<div class="tile ${q ? '' : 'miss'}" data-id="${c.id}">
     <button class="tile" data-tog="${c.id}" aria-label="${esc(nm(c))} : ${q} exemplaire(s)" style="padding:0">${img(c)}</button>
     ${q ? `<span class="qty ${q > 1 ? 'dbl' : ''}">×${q}</span>` : ''}
+    ${wishStar(c.id)}
     <div class="meta"><span class="nm">${c.local_id} · ${esc(nm(c))}</span><button type="button" class="v cote" data-cote="${c.id}" aria-label="Courbe de la cote">${eur(c.price_eur)}${trend(c)}</button></div>${jp(c)}
     <div class="stepper"><button data-dq="${c.id}" aria-label="Retirer un">−</button>${q > 1 ? `<button class="put" data-put="${c.id}">Poser</button>` : ''}<button data-iq="${c.id}" aria-label="Ajouter un">+</button></div>
   </div>`; }).join('') || '<div class="empty">Rien ici pour l\'instant.</div>'}</div>`;
@@ -252,7 +262,7 @@ async function table() {
   view.innerHTML = `<div class="felt"><div class="bar">
     <div class="seg" id="tset"><button data-ts="" aria-pressed="${!S.tset}">Toutes langues</button>${Object.keys(LANGS).map(k => `<button data-ts="${k}" aria-pressed="${S.tset === k}">${k === 'ja' ? 'JP' : k.toUpperCase()}</button>`).join('')}</div>
     <input class="grow" id="tq" placeholder="Chercher une carte…" aria-label="Chercher" value="${esc(S.tq || '')}">
-    <select id="tsort" aria-label="Trier" style="width:auto"><option value="new">Plus récentes</option><option value="cheap">Prix ↑</option><option value="deal">Meilleure affaire</option><option value="miss">Il me manque</option><option value="auc">🔨 Enchères</option></select>
+    <select id="tsort" aria-label="Trier" style="width:auto"><option value="new">Plus récentes</option><option value="cheap">Prix ↑</option><option value="deal">Meilleure affaire</option><option value="miss">Il me manque</option><option value="auc">🔨 Enchères</option><option value="wish">⭐ Ma liste de souhaits</option></select>
   </div><div class="grid" id="lgrid">${'<div class="skel"></div>'.repeat(6)}</div></div>`;
   $('#tsort').value = S.tsort || 'new';
   S.listings = await fetchListings();
@@ -265,6 +275,7 @@ function drawListings() {
   if (so === 'deal') ls.sort((a, b) => ((a.price ?? 1e9) / (a.card.price_eur || 1e9)) - ((b.price ?? 1e9) / (b.card.price_eur || 1e9)));
   if (so === 'miss') ls = ls.filter(l => !S.coll[l.card_id]);
   if (so === 'auc') ls = ls.filter(l => l.auc).sort((a, b) => new Date(a.auc.ends_at) - new Date(b.auc.ends_at));
+  if (so === 'wish') ls = ls.filter(l => S.wish.has(l.card_id));
   $('#lgrid').innerHTML = ls.map(l => {
     const d = !l.auc && l.price && l.card.price_eur ? l.price / l.card.price_eur - 1 : null, mine = l.user_id === S.user?.id;
     return `<button class="tile lcard" data-l="${l.id}">${l.photo_path ? `<img class="cimg" loading="lazy" src="${photoUrl(l.photo_path)}" alt="Photo vendeur ${esc(nm(l.card))}">` : img(l.card)}
@@ -286,6 +297,7 @@ function listingModal(l) {
   ${l.auth_score != null ? `<div class="panel small" style="margin-top:10px">${authBadge(l)} <b>Contrôle photo d'authenticité : ${l.auth_score}/100</b> — ${esc(l.auth_report?.meta?.verdict || '')} (fiabilité ${esc(l.auth_report?.meta?.confidence || '?')}). <span class="mut">Indicatif, tu pourras refaire le contrôle à la réception.</span></div>` : ''}
   ${l.photo_path && l.verify_code ? `<p class="small mut">Code de vérification attendu sur la photo : <b class="mono">${esc(l.verify_code)}</b>. S'il n'y est pas, signale l'annonce.</p>` : ''}
   ${l.auc ? `<div id="auc" class="panel auc" style="margin-top:12px"></div>` : ''}
+  ${mine ? '' : `<p class="small" style="margin-top:10px">${wishStar(c.id)} ${S.wish.has(c.id) ? 'Dans ta liste de souhaits' : 'Ajouter cette carte à ma liste de souhaits'}</p>`}
   <div id="ofr" style="margin-top:16px">${l.auc ? (mine ? '' : `<button class="btn ghost sm" data-report="listing:${l.id}">Signaler</button>`) : mine ? `<button class="btn ghost" data-rmlist="${l.id}">Retirer de la table</button>` : `<div class="acts">${l.price ? `<button class="btn" data-buy="${l.id}">Acheter ${eur(l.price)}</button>` : ''}${l.trade_ok ? `<button class="btn ghost" data-trade="${l.id}">Proposer un échange</button>` : ''}<button class="btn ghost sm" data-report="listing:${l.id}">Signaler</button></div>`}</div>
   <p class="small mut" style="margin-top:14px">🔒 Paiement et échange uniquement dans l'appli. Ne partage jamais tes coordonnées : sans transaction dans l'appli, pas de protection.</p></div></div>`);
   if (l.auc) auctionBox(l, mine);
@@ -388,6 +400,7 @@ async function listForm(cardId) {
       if (error) throw error;
       if (auc) { const r = await sb.rpc('start_auction', { p_listing: nl.id, p_start: price, p_days: +$('#ldays').value });
         if (r.error) { await sb.from('listings').update({ status: 'removed' }).eq('id', nl.id); throw r.error; } }
+      Game.track('list'); checkUnlock();
       close(); toast(auc ? `🔨 Enchère lancée pour ${$('#ldays').value} jour${+$('#ldays').value > 1 ? 's' : ''} !` : 'Double posé sur la table !');
     } catch (err) { $('#lerr').textContent = errMsg(err); btn.disabled = false; btn.textContent = 'Poser mon double'; }
   };
@@ -705,7 +718,8 @@ function showScan(c) {
   $('#scr').innerHTML = `<div class="scanres panel"><div class="sr-img">${img(c, true)}</div><div class="sr-txt">
     <p class="small" style="margin:0"><span class="pill p-NM">✓ Carte reconnue</span></p>
     <h3>${flag(c.lang)} ${esc(nm(c))}</h3><div class="langsw" id="langsw"></div>${ownedLine(c)}${howLine(scanState.how)}<p class="small mut">${esc(c.set_name)} · n° ${esc(c.local_id)} · cote <button type="button" class="cote" data-cote="${c.id}">${eur(c.price_eur)}${trend(c)} 📈</button></p>
-    </div><div class="sr-acts"><p class="small" style="margin:0"><b>C'est bien elle ?</b></p>${add ? bAdd + bAuth : bAuth + bAdd}${askAI(scanState.how)}</div></div>
+    </div><div class="sr-acts"><p class="small" style="margin:0"><b>C'est bien elle ?</b></p>${add ? bAdd + bAuth : bAuth + bAdd}${askAI(scanState.how)}
+    <p class="small" style="margin:6px 0 0">${wishStar(c.id)} ${S.wish.has(c.id) ? 'Dans ta liste de souhaits' : 'La chercher : ajouter à mes souhaits'}</p></div></div>
     ${others.length ? `<details class="small"><summary>Pas la bonne ? (${others.length} autres)</summary><div class="alts">${others.map(x => `<button type="button" data-tw="${x.id}">${img(x)}<small>${flag(x.lang)} ${esc(nm(x))}<br>${esc(x.set_name)} · ${esc(x.local_id)}</small></button>`).join('')}</div></details>` : ''}`;
   langVersions(c).then(vs => {
     if (scanState.shown !== c || !$('#langsw')) return;
@@ -837,8 +851,15 @@ function offerCard(o, X) {
   const needB = o.offered_listing_ids.length > 0, A = [];
   const b = (a, t, cls = '') => A.push(`<button class="btn sm ${cls}" data-act="${a}" data-o="${o.id}">${t}</button>`);
   if (o.status === 'pending') seller ? (b('accept', 'Accepter'), b('decline', 'Refuser', 'ghost')) : b('cancel', 'Annuler', 'ghost');
-  if (o.status === 'accepted' && !seller) { b('pay', `Payer ${eur(o.cash + o.fee)}${S.st.payments_live ? '' : ' (mode test)'}`); b('cancel', 'Annuler', 'ghost'); }
-  if (o.status === 'accepted' && seller) A.push('<span class="small mut">En attente du paiement de l\'acheteur.</span>');
+  const tradeOnly = +o.cash === 0 && +o.trade_fee > 0;
+  if (o.status === 'accepted' && !tradeOnly && !seller) { b('pay', `Payer ${eur(+o.cash + +o.fee)}${S.st.payments_live ? '' : ' (mode test)'}`); b('cancel', 'Annuler', 'ghost'); }
+  if (o.status === 'accepted' && !tradeOnly && seller) A.push('<span class="small mut">En attente du paiement de l\'acheteur.</span>');
+  if (o.status === 'accepted' && tradeOnly) { // échange sans argent : 0,99 € de frais chacun
+    const paidMe = seller ? o.trade_paid_seller : o.trade_paid_buyer, paidThem = seller ? o.trade_paid_buyer : o.trade_paid_seller;
+    if (!paidMe) b('tradepay', `Payer mes frais d'échange ${eur(o.trade_fee)}${S.st.payments_live ? '' : ' (mode test)'}`);
+    else A.push(`<span class="small mut">✔ Tes frais d'échange sont payés.${paidThem ? '' : ' En attente de ceux de ' + esc(other) + '.'}</span>`);
+    if (!seller) b('cancel', 'Annuler', 'ghost');
+  }
   if (o.status === 'paid') {
     if (seller && !o.seller_shipped) b('ship', 'J\'ai expédié (n° de suivi)', 'ghost');
     if (!seller && needB && !o.buyer_shipped) b('ship', 'J\'ai expédié mes cartes (n° de suivi)', 'ghost');
@@ -861,7 +882,7 @@ function offerCard(o, X) {
 async function loadChat(id) {
   const { data } = await sb.from('messages').select('*').eq('offer_id', id).order('created_at');
   const box = $('#m-' + id); if (!box) return;
-  box.innerHTML = (data || []).map(m => `<div class="msg ${m.sender_id === S.user.id ? 'me' : ''}">${esc(m.body)}</div>`).join('') || '<span class="small mut">Pose tes questions ici (état, envoi…).</span>';
+  box.innerHTML = (data || []).map(m => `<div class="msg ${m.sender_id === S.user.id ? 'me' : ''}">${esc(m.body)}${m.sender_id === S.user.id ? '' : `<button type="button" class="rpt" data-report="message:${m.id}" title="Signaler ce message" aria-label="Signaler ce message">⚠</button>`}</div>`).join('') || '<span class="small mut">Pose tes questions ici (état, envoi…).</span>';
   box.scrollTop = box.scrollHeight;
 }
 async function act(id, a) {
@@ -870,6 +891,16 @@ async function act(id, a) {
     modal(`<form class="form" id="shipf"><h2 style="margin:0">Numéro de suivi</h2><p class="small mut">Envoi obligatoirement suivi (Lettre suivie, Colissimo, Mondial Relay). Carte sous sleeve + toploader. <a href="#/guide" target="_blank">Guide d'emballage</a></p><input id="trk" required pattern="[A-Za-z0-9]{8,30}" placeholder="Ex : 6A12345678901"><button class="btn">Valider l'expédition</button></form>`);
     tracking = await new Promise(r => { $('#shipf').onsubmit = e => { e.preventDefault(); r($('#trk').value.trim()); }; dlg.addEventListener('close', () => r(null), { once: true }); });
     close(); if (!tracking) return;
+  }
+  if (a === 'tradepay' && S.st.payments_live) {
+    const { data, error } = await sb.functions.invoke('payments/trade', { body: { offer_id: id } });
+    if (error || !data?.url) return toast(data?.error || 'Paiement indisponible, réessaie.', true);
+    location.href = data.url; return;
+  }
+  if (a === 'tradepay') {
+    modal(`<div class="form"><h2 style="margin:0">Frais d'échange</h2><p>Chaque membre paie ${eur(S.st.trade_fee ?? 0.99)} pour un échange carte contre carte : c'est ce qui finance la protection, la messagerie et la médiation. (3 échanges offerts à l'inscription, +1 par ami parrainé.)</p><p class="small mut">Mode test : aucun argent réel n'est débité.</p><button class="btn" id="okpay">Simuler le paiement</button></div>`);
+    const ok = await new Promise(r => { $('#okpay').onclick = () => r(true); dlg.addEventListener('close', () => r(false), { once: true }); });
+    close(); if (!ok) return;
   }
   if (a === 'pay' && S.st.payments_live) {
     const { data, error } = await sb.functions.invoke('payments/checkout', { body: { offer_id: id } });
@@ -883,7 +914,7 @@ async function act(id, a) {
   }
   const { error } = await sb.rpc('offer_action', { p_offer: id, p_action: a, p_tracking: tracking });
   if (error) return toast(errMsg(error), true);
-  toast({ accept: 'Offre acceptée', decline: 'Offre refusée', cancel: 'Offre annulée', pay: 'Paiement bloqué en séquestre', ship: 'Expédition enregistrée', receive: 'Réception confirmée', dispute: 'Litige ouvert' }[a]);
+  toast({ accept: 'Offre acceptée', decline: 'Offre refusée', cancel: 'Offre annulée', pay: 'Paiement bloqué en séquestre', tradepay: 'Frais d\'échange payés', ship: 'Expédition enregistrée', receive: 'Réception confirmée', dispute: 'Litige ouvert' }[a]);
   await loadSession(); offres();
 }
 
@@ -905,7 +936,7 @@ async function compte() {
   if (S.profile) {
     const t = S.ev || { lvl: 1 }, { data: ls } = await sb.from('listings').select('*, card:cards(*)').eq('user_id', S.user.id).in('status', ['active', 'reserved']).order('created_at', { ascending: false });
     remember((ls || []).map(l => l.card));
-    view.innerHTML = `<div class="panel" style="display:flex;gap:16px;align-items:center;flex-wrap:wrap">${av(S.profile.pseudo, S.profile)}<div style="flex:1"><h2 style="margin:0">${esc(S.profile.pseudo)}</h2><p class="mut small" style="margin:2px 0"><a href="#/trophees">Niveau ${t.lvl}${t.title ? ' · ' + esc(t.title) : ''}</a> · ${S.profile.trades_done} échange(s) · ${esc(S.profile.region || '')}</p></div><button class="btn ghost" id="logout">Se déconnecter</button></div>
+    view.innerHTML = `${suspBanner()}<div class="panel" style="display:flex;gap:16px;align-items:center;flex-wrap:wrap">${av(S.profile.pseudo, S.profile)}<div style="flex:1"><h2 style="margin:0">${esc(S.profile.pseudo)}</h2><p class="mut small" style="margin:2px 0"><a href="#/trophees">Niveau ${t.lvl}${t.title ? ' · ' + esc(t.title) : ''}</a> · ${S.profile.trades_done} échange(s) · ${esc(S.profile.region || '')}</p></div><button class="btn ghost" id="logout">Se déconnecter</button></div>
     <div class="panel" style="margin-top:12px"><h3>🎨 Personnaliser mon profil</h3><p class="small mut">Choisis ta créature et sa couleur. <a href="#/membre/${S.user.id}">Voir mon profil public</a></p>
       <div id="avpick"></div>
       <form class="form" id="pf" style="margin-top:10px">
@@ -928,7 +959,10 @@ async function compte() {
       <p class="small">Code : <b>${S.profile.ref_code}</b> · ${S.profile.filleuls || 0} filleul(s) actif(s) · ${S.profile.free_trades} échange(s) offert(s)</p></div>
     <div class="panel" style="margin-top:12px"><h3>Installer l'appli</h3>${S.install ? '<button class="btn sm" id="install">Installer sur cet appareil</button>' : '<p class="small mut">iPhone : bouton Partager puis « Sur l\'écran d\'accueil ». Android : menu ⋮ puis « Installer l\'application ».</p>'}</div>
     <div class="panel" style="margin-top:12px"><h3>Mes données</h3><p class="small mut">Tes droits RGPD : récupère toutes tes données ou supprime ton compte. <a href="#/legal/confidentialite">En savoir plus</a></p>
-      <div class="acts"><button class="btn sm ghost" data-export>📥 Télécharger mes données</button><button class="btn sm ghost" data-delacct style="color:#ff8a80">Supprimer mon compte</button></div></div>
+      <div class="acts"><button class="btn sm ghost" data-export>📥 Télécharger mes données</button><button class="btn sm ghost" data-csv>⬆️ Importer / exporter mon classeur (CSV)</button><button class="btn sm ghost" data-delacct style="color:#ff8a80">Supprimer mon compte</button></div>
+      <p class="small mut">Conservation : messages et forum 3 ans, contrôles d'authenticité 2 ans, compte anonymisé après 3 ans sans visite.</p></div>
+    <div class="panel" style="margin-top:12px"><h3>⭐ Ma liste de souhaits</h3><p class="small mut">Les cartes que tu cherches : la table peut les filtrer et les autres membres peuvent te les proposer.</p><a class="btn sm" href="#/souhaits">Voir ma liste${S.wish.size ? ` (${S.wish.size})` : ''}</a></div>
+    ${S.profile.is_admin ? `<div class="panel" style="margin-top:12px"><h3>🛡️ Modération</h3><p class="small mut">Signalements, litiges et purge des données.</p><a class="btn sm" href="#/moderation">Ouvrir la modération</a></div>` : ''}
     <h2>Mes doubles sur la table</h2><div class="grid">${(ls || []).map(l => `<div class="tile">${l.photo_path ? `<img class="cimg" src="${photoUrl(l.photo_path)}" alt="">` : img(l.card)}<div class="meta"><span class="nm">${esc(nm(l.card))}</span><span class="v">${l.price ? eur(l.price) : 'Échange'}</span></div><div class="seller small"><span class="pill p-${l.condition}">${l.condition}</span>${authBadge(l) || `<button class="btn ghost sm" data-auth="${l.card_id}" data-lid="${l.id}">🔍 Authentifier</button>`}${l.status === 'reserved' ? '<span class="pill p-tr">réservée</span>' : `<button class="btn ghost sm" data-rmlist="${l.id}">Retirer</button>`}</div></div>`).join('') || '<div class="empty" style="grid-column:1/-1">Aucun double posé. <a href="#/classeur">Va dans ton classeur</a> et touche « Poser » sur une carte en double.</div>'}</div>`;
     $('#refshare').onclick = async () => { const url = $('#reflink').value, text = 'Rejoins-moi sur Sharing Cards, l\'espace des collectionneurs Pokémon :';
       if (navigator.share) { try { await navigator.share({ title: 'Sharing Cards', text, url }); } catch {} } else { await navigator.clipboard?.writeText(url); toast('Lien copié !'); } };
@@ -1033,9 +1067,227 @@ function deleteAccount() {
   };
 }
 
+// ---------- liste de souhaits ----------
+async function loadWish() {
+  if (!S.profile) { S.wish = new Set(); return; }
+  const { data } = await sb.from('wishlist').select('card_id');
+  S.wish = new Set((data || []).map(r => r.card_id));
+}
+const wishStar = id => `<button type="button" class="wish${S.wish.has(id) ? ' on' : ''}" data-wish="${id}" title="Liste de souhaits" aria-label="${S.wish.has(id) ? 'Retirer de' : 'Ajouter à'} ma liste de souhaits">${S.wish.has(id) ? '★' : '☆'}</button>`;
+async function toggleWish(id) {
+  if (needAccount()) return;
+  if (S.wish.has(id)) {
+    const { error } = await sb.from('wishlist').delete().eq('user_id', S.user.id).eq('card_id', id);
+    if (error) return toast(errMsg(error), true);
+    S.wish.delete(id); toast('Retirée de ta liste de souhaits');
+  } else {
+    const { error } = await sb.from('wishlist').insert({ user_id: S.user.id, card_id: id });
+    if (error) return toast(errMsg(error), true);
+    S.wish.add(id); Game.track('wish'); checkUnlock(); toast('⭐ Ajoutée à ta liste de souhaits');
+  }
+  route();
+}
+async function souhaits() {
+  if (!S.profile) { view.innerHTML = `<div class="empty"><h2>⭐ Ma liste de souhaits</h2><p>Connecte-toi pour noter les cartes que tu cherches.</p><a class="btn" href="#/compte">Se connecter</a></div>`; return; }
+  const ids = [...S.wish];
+  const [{ data: cs }, { data: ls }] = await Promise.all([
+    ids.length ? sb.from('cards').select('*').in('id', ids) : Promise.resolve({ data: [] }),
+    ids.length ? sb.from('listings').select('*, card:cards(*, set:sets(name,name_fr,code,serie_name)), auction:auctions(*)').eq('status', 'active').in('card_id', ids) : Promise.resolve({ data: [] })
+  ]);
+  remember(cs); await pseudos((ls || []).map(l => l.user_id));
+  for (const l of ls || []) l.auc = [].concat(l.auction || [])[0] || null;
+  S.listings = [...(S.listings || []).filter(x => !(ls || []).some(y => y.id === x.id)), ...(ls || [])];
+  const byCard = {}; for (const l of ls || []) (byCard[l.card_id] ||= []).push(l);
+  view.innerHTML = `<h2>⭐ Ma liste de souhaits <span class="mut small">${ids.length} carte(s)</span></h2>
+  <p class="mut small">Touche l'étoile ☆ d'une carte (classeur, scan, annonce) pour l'ajouter. Les annonces disponibles apparaissent ici, et le tri « ⭐ Ma liste » de la table ne montre que ces cartes.</p>
+  ${ids.length ? `<div class="grid">${(cs || []).map(c => { const l = byCard[c.id], px = (l || []).map(x => x.price).filter(x => x != null);
+    return `<div class="tile">${img(c)}${wishStar(c.id)}
+    <div class="meta"><span class="nm">${c.local_id} · ${esc(nm(c))}</span><span class="v">${eur(c.price_eur)}</span></div>
+    <div class="seller"><span>${flag(c.lang)} ${esc(setName(S.sets.find(s => s.id === c.set_id)))}</span></div>
+    ${l ? `<button class="btn sm" data-l="${l[0].id}">${l.length} annonce(s)${px.length ? ' · dès ' + eur(Math.min(...px)) : ''}</button>` : '<span class="small mut">Aucune annonce pour l\'instant</span>'}</div>`; }).join('')}</div>`
+  : '<div class="empty">Ta liste est vide : touche ☆ sur une carte qui te manque.</div>'}`;
+}
+
+// ---------- import / export CSV du classeur ----------
+function parseCSV(text) {
+  const head = text.split(/\r?\n/)[0] || '';
+  const sep = (head.match(/;/g) || []).length > (head.match(/,/g) || []).length ? ';' : (head.match(/\t/g) || []).length ? '\t' : ',';
+  const rows = []; let f = '', row = [], q = false;
+  for (let i = 0; i < text.length; i++) { const ch = text[i];
+    if (q) { if (ch === '"') { if (text[i + 1] === '"') { f += '"'; i++; } else q = false; } else f += ch; }
+    else if (ch === '"') q = true;
+    else if (ch === sep) { row.push(f); f = ''; }
+    else if (ch === '\n') { row.push(f); if (row.some(x => x.trim())) rows.push(row); f = ''; row = []; }
+    else if (ch !== '\r') f += ch; }
+  row.push(f); if (row.some(x => x.trim())) rows.push(row);
+  return rows;
+}
+const CSVCOL = { set: /^(set|sets?.?name|extension|edition|édition|serie|série|expansion)$/i, num: /^(num|n°|no|number|numero|numéro|card.?number|collector.?number|local.?id)$/i,
+  name: /^(nom|name|carte|card|card.?name|nom.?de.?la.?carte)$/i, qty: /^(qty|quantity|quantite|quantité|nb|count|exemplaires|amount)$/i, lang: /^(lang|langue|language)$/i };
+function csvRows(text) {
+  const rows = parseCSV(text); if (!rows.length) return { err: 'Fichier vide.' };
+  const head = rows[0].map(h => h.trim().replace(/^\uFEFF/, '')), map = {};
+  for (const [k, re] of Object.entries(CSVCOL)) { const i = head.findIndex(h => re.test(h)); if (i >= 0) map[k] = i; }
+  if (map.num == null && map.name == null) return { err: 'Il manque une colonne « numero » ou « nom » dans la première ligne du fichier.' };
+  const out = rows.slice(1).map(r => ({ set: map.set != null ? r[map.set] : '', num: map.num != null ? r[map.num] : '', name: map.name != null ? r[map.name] : '', lang: map.lang != null ? r[map.lang] : '', qty: map.qty != null ? parseInt(r[map.qty], 10) || 1 : 1 }))
+    .filter(r => (r.num || '').trim() || (r.name || '').trim());
+  return out.length ? { rows: out.slice(0, 2000) } : { err: 'Aucune ligne de carte trouvée.' };
+}
+function csvModal() {
+  modal(`<div class="form"><h2 style="margin:0">⬆️ Importer / exporter mon classeur</h2>
+  <p class="small mut">Fichier <b>CSV</b> (ou texte collé) avec une première ligne de titres. Colonnes reconnues : <b>extension</b>, <b>numero</b>, <b>nom</b>, <b>quantite</b>, <b>langue</b>. Exemple :</p>
+  <pre class="small mono" style="white-space:pre-wrap;margin:0">extension;numero;nom;quantite;langue
+Évolutions Prismatiques;005;Phyllali;2;fr
+151;025;Pikachu;1;fr</pre>
+  <label class="f" style="margin-top:10px">Choisir un fichier<input type="file" id="csvf" accept=".csv,.txt,text/csv,text/plain"></label>
+  <label class="f">…ou coller le contenu<textarea id="csvt" rows="5" placeholder="extension;numero;nom;quantite"></textarea></label>
+  <label class="f">Langue par défaut (si la colonne manque)<select id="csvl">${Object.entries(LANGS).map(([k, v]) => `<option value="${k}" ${k === S.lang ? 'selected' : ''}>${v}</option>`).join('')}</select></label>
+  <label class="ck"><input type="checkbox" id="csvadd"> Ajouter aux quantités déjà présentes (sinon remplace)</label>
+  <p class="err" id="csve"></p>
+  <div class="acts"><button class="btn" id="csvgo">Analyser le fichier</button><button class="btn ghost" id="csvdl">📥 Exporter mon classeur</button></div>
+  <div id="csvres"></div></div>`);
+  $('#csvdl').onclick = () => csvExport();
+  $('#csvf').onchange = async e => { const f = e.target.files[0]; if (f) $('#csvt').value = await f.text(); };
+  $('#csvgo').onclick = async () => {
+    $('#csve').textContent = ''; const txt = $('#csvt').value.trim();
+    if (!txt) return $('#csve').textContent = 'Choisis un fichier ou colle le contenu.';
+    const r = csvRows(txt); if (r.err) return $('#csve').textContent = r.err;
+    $('#csvres').innerHTML = '<p class="small mut">Reconnaissance des cartes en cours…</p>';
+    const res = [];
+    for (let i = 0; i < r.rows.length; i += 200) {
+      const { data, error } = await sb.rpc('csv_match', { p_rows: r.rows.slice(i, i + 200), p_lang: $('#csvl').value });
+      if (error) return $('#csve').textContent = errMsg(error);
+      res.push(...(data || []));
+    }
+    const ok = res.filter(x => x.card_id), ko = res.filter(x => !x.card_id);
+    S.csv = { ok, add: $('#csvadd').checked };
+    $('#csvres').innerHTML = `<div class="panel" style="margin-top:12px"><p><b>${ok.length}</b> carte(s) reconnue(s)${ko.length ? `, <b>${ko.length}</b> non trouvée(s)` : ''}.</p>
+      ${ok.length ? `<ul class="small" style="max-height:160px;overflow:auto">${ok.slice(0, 60).map(x => `<li>×${x.qty} ${esc(x.label)}</li>`).join('')}${ok.length > 60 ? `<li class="mut">… et ${ok.length - 60} autres</li>` : ''}</ul>` : ''}
+      ${ko.length ? `<details class="small"><summary>Lignes non reconnues</summary><ul>${ko.slice(0, 40).map(x => `<li>${esc(x.raw || '—')}</li>`).join('')}</ul><p class="mut">Astuce : ajoute la colonne « extension » ou vérifie le numéro (ex. 005 ou 5).</p></details>` : ''}
+      ${ok.length ? '<button class="btn" id="csvok">Importer dans mon classeur</button>' : ''}</div>`;
+    if ($('#csvok')) $('#csvok').onclick = csvApply;
+  };
+}
+async function csvApply() {
+  const { ok, add } = S.csv || {}; if (!ok?.length) return;
+  $('#csvok').disabled = true; $('#csvok').textContent = 'Import en cours…';
+  let n = 0;
+  if (S.profile) {
+    const rows = ok.map(x => ({ user_id: S.user.id, card_id: x.card_id, qty: Math.min(99, add ? (S.coll[x.card_id] || 0) + x.qty : x.qty) }));
+    for (let i = 0; i < rows.length; i += 500) {
+      const { error } = await sb.from('collection').upsert(rows.slice(i, i + 500));
+      if (error) { toast(errMsg(error), true); break; }
+      n += rows.slice(i, i + 500).length;
+    }
+    await loadCollection();
+  } else { for (const x of ok) { await setQty(x.card_id, add ? (S.coll[x.card_id] || 0) + x.qty : x.qty); n++; } }
+  Game.track('add', n); checkUnlock(); close(); toast(`${n} carte(s) importée(s) dans ton classeur`);
+  if (location.hash.startsWith('#/classeur')) classeur();
+}
+async function csvExport() {
+  const ids = Object.keys(S.coll).filter(k => S.coll[k] > 0);
+  if (!ids.length) return toast('Ton classeur est vide.', true);
+  const miss = ids.filter(k => !S.info[k]);
+  for (let i = 0; i < miss.length; i += 1000) { const { data } = await sb.rpc('coll_info', { p_ids: miss.slice(i, i + 1000) }); for (const r of data || []) S.info[r.id] = r; }
+  const q = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
+  const lines = ['extension;numero;nom;quantite;langue;cote_eur'];
+  for (const id of ids) { const c = S.info[id]; if (!c) continue;
+    lines.push([setName(S.sets.find(s => s.id === c.set_id)) || c.set_id, c.local_id, c.name_fr || c.name, S.coll[id], c.lang, c.price_eur ?? ''].map(q).join(';')); }
+  const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(new Blob(['\uFEFF' + lines.join('\n')], { type: 'text/csv;charset=utf-8' })), download: 'mon-classeur-sharing-cards.csv' });
+  a.click(); URL.revokeObjectURL(a.href); toast('Classeur exporté en CSV');
+}
+
+// ---------- signalement ----------
+const REASONS = ['Fausse carte / contrefaçon', 'Coordonnées ou vente hors appli', 'Revendeur professionnel', 'Propos insultants ou interdits', 'Annonce trompeuse (état, photo)', 'Autre'];
+function reportModal(target) {
+  const [type, id] = target.split(':');
+  modal(`<form class="form" id="rpf"><h2 style="margin:0">Signaler</h2>
+  <p class="small mut">Envoyé à la modération. Le membre visé ne sait pas qui l'a signalé.</p>
+  <label class="f">Motif<select id="rpr">${REASONS.map(r => `<option>${r}</option>`).join('')}</select></label>
+  <label class="f">Précisions (optionnel)<textarea id="rpn" maxlength="300"></textarea></label>
+  <p class="err" id="rpe"></p><button class="btn">Envoyer le signalement</button></form>`);
+  $('#rpf').onsubmit = async e => { e.preventDefault();
+    const note = $('#rpn').value.trim(), reason = $('#rpr').value + (note ? ' — ' + note : '');
+    const { error } = await sb.from('reports').insert({ target_type: type, target_id: id, reason });
+    if (error) return $('#rpe').textContent = errMsg(error);
+    close(); toast('Merci, signalement envoyé à la modération');
+  };
+}
+
+// ---------- modération (réservée aux comptes admin) ----------
+const askNote = (title) => new Promise(r => {
+  modal(`<form class="form" id="nf"><h2 style="margin:0">${esc(title)}</h2>
+  <label class="f">Note interne / motif (optionnel)<textarea id="nt" maxlength="300"></textarea></label><button class="btn">Valider</button></form>`);
+  $('#nf').onsubmit = e => { e.preventDefault(); const v = $('#nt').value.trim(); close(); r(v || null); };
+  dlg.addEventListener('close', () => r(undefined), { once: true });
+});
+async function moderation() {
+  if (!S.profile?.is_admin) { view.innerHTML = '<div class="empty">Page réservée à la modération.</div>'; return; }
+  const tab = S.mtab || 'rep', { data: ov, error } = await sb.rpc('admin_overview');
+  if (error) { view.innerHTML = `<div class="empty">${esc(errMsg(error))}</div>`; return; }
+  view.innerHTML = `<h2>🛡️ Modération</h2>
+  <div class="kpis">${[['membres', 'membres'], ['annonces', 'annonces actives'], ['offres_en_cours', 'offres en cours'], ['signalements_ouverts', 'signalements'], ['litiges', 'litiges'], ['suspendus', 'suspendus']].map(([k, n]) => `<div><b>${ov[k] ?? 0}</b><span>${n}</span></div>`).join('')}</div>
+  <div class="seg" style="margin:14px 0">${[['rep', 'Signalements'], ['dis', 'Litiges & remboursements'], ['rgpd', 'RGPD & données']].map(([k, n]) => `<button data-mt="${k}" aria-pressed="${tab === k}">${n}</button>`).join('')}</div>
+  <div id="mbody"><div class="skel"><div class="sk sk-card"></div></div></div>`;
+  if (tab === 'rep') return modReports();
+  if (tab === 'dis') return modDisputes();
+  modRgpd(ov);
+}
+async function modReports() {
+  const st = S.mstatus || 'open', { data, error } = await sb.rpc('admin_reports', { p_status: st });
+  if (error) return $('#mbody').innerHTML = `<div class="empty">${esc(errMsg(error))}</div>`;
+  $('#mbody').innerHTML = `<div class="seg" style="margin-bottom:12px">${[['open', 'À traiter'], ['handled', 'Traités'], ['dismissed', 'Ignorés'], ['all', 'Tous']].map(([k, n]) => `<button data-mst="${k}" aria-pressed="${st === k}">${n}</button>`).join('')}</div>
+  ${(data || []).map(r => `<div class="panel mod">
+    <p class="small mut" style="margin:0">#${r.id} · ${new Date(r.created_at).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' })} · ${esc(r.type)} · signalé par ${esc(r.reporter || '?')}${r.status !== 'open' ? ` · <span class="pill p-tr">${esc(r.status)}</span>` : ''}</p>
+    <p style="margin:6px 0"><b>Motif :</b> ${esc(r.reason || '—')}</p>
+    <p class="panel small" style="white-space:pre-wrap;margin:6px 0">${esc(r.content || '(contenu déjà supprimé)')}</p>
+    ${r.photo ? `<img class="cimg" style="max-width:160px" src="${photoUrl(r.photo)}" alt="Photo de l'annonce signalée">` : ''}
+    <p class="small">Membre visé : ${r.author_id ? `<a href="#/membre/${r.author_id}">${esc(r.author || '?')}</a>` : '—'} · ${r.reports_total || 0} signalement(s) au total${r.suspended_until ? ' · <b>déjà suspendu</b>' : ''}</p>
+    <div class="acts">${r.status === 'open' ? `<button class="btn sm" data-ract="${r.id}:remove">Retirer le contenu</button><button class="btn sm ghost" data-ract="${r.id}:suspend">Suspendre 7 j</button><button class="btn sm ghost" data-ract="${r.id}:ban">Bannir</button><button class="btn sm ghost" data-ract="${r.id}:dismiss">Ignorer</button>` : ''}${r.suspended_until ? `<button class="btn sm ghost" data-ract="${r.id}:unsuspend">Lever la suspension</button>` : ''}</div>
+    ${r.note ? `<p class="small mut">Note : ${esc(r.note)}</p>` : ''}</div>`).join('') || '<div class="empty">Rien à traiter 🎉</div>'}`;
+}
+async function modDisputes() {
+  const { data, error } = await sb.rpc('admin_disputes');
+  if (error) return $('#mbody').innerHTML = `<div class="empty">${esc(errMsg(error))}</div>`;
+  $('#mbody').innerHTML = (data || []).map(o => `<div class="panel mod">
+    <p class="small mut" style="margin:0">${esc(o.id.slice(0, 8))} · ${new Date(o.updated_at).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' })} · <span class="pill p-PL">${esc(o.status)}</span>${o.refund_requested ? ` · remboursement ${o.refunded_at ? 'effectué' : 'en attente'}` : ''}</p>
+    <h3 style="margin:6px 0">${esc(o.card || '?')} <span class="pill p-${esc(o.condition || 'NM')}">${esc(o.condition || '')}</span></h3>
+    <p class="small">Acheteur <a href="#/membre/${o.buyer_id}">${esc(o.buyer || '?')}</a> · Vendeur <a href="#/membre/${o.seller_id}">${esc(o.seller || '?')}</a> · ${o.trade ? 'échange' : 'vente'} ${eur(o.cash)}${o.fee ? ` (+ ${eur(o.fee)} de frais)` : ''}${o.has_payment ? '' : ' · <b>pas de paiement Stripe</b> (mode test)'}</p>
+    <p class="small mut">Suivi vendeur ${esc(o.seller_tracking || '—')} · suivi acheteur ${esc(o.buyer_tracking || '—')} · reçu par l'acheteur : ${o.buyer_received ? 'oui' : 'non'}${o.auth_score != null ? ` · contrôle de l'annonce ${o.auth_score}/100` : ''}</p>
+    ${(o.checks || []).map(c => `<p class="small">🔍 contrôle à la réception : ${c.score}/100 — ${esc(c.verdict || '')}</p>`).join('')}
+    ${o.photo ? `<img class="cimg" style="max-width:160px" src="${photoUrl(o.photo)}" alt="Photo de l'annonce">` : ''}
+    <details class="small" style="margin:8px 0"><summary>Messages (${(o.messages || []).length})</summary>${(o.messages || []).map(m => `<p style="margin:4px 0"><b>${esc(m.who || '?')}</b> : ${esc(m.body)}</p>`).join('') || '<p class="mut">aucun</p>'}</details>
+    <div class="acts"><button class="btn sm" data-oact="${o.id}:release">Verser au vendeur</button><button class="btn sm ghost" data-oact="${o.id}:refund">Rembourser l'acheteur</button><button class="btn sm ghost" data-oact="${o.id}:reopen">Rouvrir (sans décision)</button><button class="btn sm ghost" data-oact="${o.id}:note">Note</button></div>
+    ${o.admin_note ? `<p class="small mut">Note : ${esc(o.admin_note)}</p>` : ''}</div>`).join('') || '<div class="empty">Aucun litige en cours 🎉</div>';
+}
+function modRgpd(ov) {
+  const p = ov?.a_purger || {}, last = ov?.derniere_purge;
+  $('#mbody').innerHTML = `<div class="panel"><h3 style="margin-top:0">Purge automatique (RGPD)</h3>
+  <p class="small mut">Chaque nuit à 4 h 23, l'appli efface : messages et posts de plus de 3 ans, contrôles d'authenticité de plus de 2 ans, signalements traités de plus d'un an ; et anonymise les comptes sans visite depuis 3 ans (sauf transaction en cours). Les transactions terminées sont conservées sans nom (obligation comptable).</p>
+  <div class="kpis"><div><b>${p.comptes_inactifs ?? 0}</b><span>comptes inactifs à anonymiser</span></div><div><b>${p.messages ?? 0}</b><span>messages de +3 ans</span></div><div><b>${p.posts ?? 0}</b><span>posts de +3 ans</span></div><div><b>${ov?.remboursements_a_faire ?? 0}</b><span>remboursements en attente</span></div></div>
+  <p class="small">Dernière purge : ${last ? new Date(last.at).toLocaleString('fr-FR') + ' · ' + esc(JSON.stringify(last.result)) : 'jamais'}</p>
+  <button class="btn sm" data-purge>Lancer la purge maintenant</button></div>`;
+}
+async function modAct(v) {
+  const [id, action] = v.split(':');
+  const titles = { remove: 'Retirer ce contenu', suspend: 'Suspendre le membre 7 jours', ban: 'Bannir définitivement ce membre', dismiss: 'Ignorer ce signalement', unsuspend: 'Lever la suspension' };
+  const note = await askNote(titles[action] || 'Action de modération');
+  if (note === undefined) return;
+  const { error } = await sb.rpc('admin_act', { p_report: +id, p_action: action, p_note: note });
+  toast(error ? errMsg(error) : 'Action enregistrée', !!error); if (!error) moderation();
+}
+async function modOffer(v) {
+  const i = v.indexOf(':'), id = v.slice(0, i), action = v.slice(i + 1);
+  const titles = { release: 'Verser l\'argent au vendeur', refund: 'Rembourser l\'acheteur', reopen: 'Rouvrir la transaction', note: 'Note interne' };
+  const note = await askNote(titles[action] || 'Décision');
+  if (note === undefined) return;
+  const { error } = await sb.rpc('admin_offer_resolve', { p_offer: id, p_action: action, p_note: note });
+  toast(error ? errMsg(error) : 'Décision enregistrée', !!error); if (!error) moderation();
+}
+
 // ---------- événements ----------
 document.addEventListener('click', async e => {
-  const t = e.target.closest('[data-set],[data-f],[data-tog],[data-iq],[data-dq],[data-put],[data-l],[data-buy],[data-trade],[data-rmlist],[data-report],[data-act],[data-ot],[data-am],[data-ts],[data-card],[data-close],[data-delpost],[data-scan],[data-express],[data-names],[data-connect],[data-auth],[data-export],[data-delacct],[data-prep],[data-label],[data-dl],[data-paylbl],[data-ordlbl],[data-pickrelay],[data-avk],[data-avh]');
+  const t = e.target.closest('[data-set],[data-f],[data-tog],[data-iq],[data-dq],[data-put],[data-l],[data-buy],[data-trade],[data-rmlist],[data-report],[data-act],[data-ot],[data-am],[data-ts],[data-card],[data-close],[data-delpost],[data-scan],[data-express],[data-names],[data-connect],[data-auth],[data-export],[data-delacct],[data-prep],[data-label],[data-dl],[data-paylbl],[data-ordlbl],[data-pickrelay],[data-avk],[data-avh],[data-wish],[data-csv],[data-mt],[data-mst],[data-ract],[data-oact],[data-purge]');
   if (!t) return;
   const d = t.dataset;
   if (d.set) { S.set = d.set; classeur(); }
@@ -1048,7 +1300,14 @@ document.addEventListener('click', async e => {
   else if (d.buy) { const l = S.listings.find(x => x.id === d.buy); if (!needAccount()) buyForm(l); }
   else if (d.trade) tradeForm(S.listings.find(x => x.id === d.trade));
   else if (d.rmlist) { const { error } = await sb.from('listings').update({ status: 'removed' }).eq('id', d.rmlist); if (error) toast(errMsg(error), true); else { toast('Annonce retirée'); close(); route(); } }
-  else if (d.report) { if (needAccount()) return; const [type, id] = d.report.split(':'); const { error } = await sb.from('reports').insert({ target_type: type, target_id: id }); toast(error ? errMsg(error) : 'Merci, signalement envoyé à la modération'); }
+  else if (d.report) { if (needAccount()) return; reportModal(d.report); }
+  else if (d.wish) toggleWish(d.wish);
+  else if ('csv' in d) csvModal();
+  else if (d.mt) { S.mtab = d.mt; moderation(); }
+  else if (d.mst) { S.mstatus = d.mst; modReports(); }
+  else if (d.ract) modAct(d.ract);
+  else if (d.oact) modOffer(d.oact);
+  else if ('purge' in d) { const { data, error } = await sb.rpc('admin_purge'); toast(error ? errMsg(error) : 'Purge faite : ' + JSON.stringify(data), !!error); if (!error) moderation(); }
   else if (d.act) act(d.o, d.act);
   else if (d.prep) prepShip(d.prep);
   else if (d.dl) dlLabel(d.dl);
@@ -1128,10 +1387,11 @@ function drawAvPick() {
 }
 async function membre() {
   const id = location.hash.split('/')[2]; if (!id) return home();
-  const [{ data: p }, { data: col }, { data: ls }] = await Promise.all([
+  const [{ data: p }, { data: col }, { data: ls }, { data: wl }] = await Promise.all([
     sb.from('public_profiles').select('*').eq('id', id).maybeSingle(),
     sb.rpc('public_collection', { p_user: id }),
-    sb.from('listings').select('*, card:cards(*)').eq('user_id', id).eq('status', 'active').order('created_at', { ascending: false }).limit(24)
+    sb.from('listings').select('*, card:cards(*)').eq('user_id', id).eq('status', 'active').order('created_at', { ascending: false }).limit(24),
+    sb.rpc('public_wishlist', { p_user: id })
   ]);
   if (!p) { view.innerHTML = '<div class="empty">Membre introuvable.</div>'; return; }
   S.pseudos[id] = p; remember((ls || []).map(l => l.card));
@@ -1145,6 +1405,7 @@ async function membre() {
       ${mine ? '<a class="btn sm ghost" href="#/compte">Modifier mon profil</a>' : ''}</div></section>
   <h2>Collection</h2>${!col || col.private ? '<div class="panel small mut">🔒 Collection privée.</div>' : `<div class="panel"><div class="stats" style="margin:0"><div><b>${col.cards}</b><span class="mut small">cartes différentes</span></div><div><b>${col.qty}</b><span class="mut small">cartes au total</span></div></div>
     ${col.sets.length ? `<div class="setbars">${col.sets.map(x => `<div><span class="small">${flag(x.lang)} ${esc(x.name)}</span><div class="bar2"><i style="width:${Math.min(100, x.pct || 0)}%"></i></div><span class="small mono">${x.own}/${x.total}</span></div>`).join('')}</div>` : ''}</div>`}
+  ${wl && !wl.private && wl.cards?.length ? `<h2>⭐ Ses cartes recherchées</h2><div class="grid">${wl.cards.map(c => `<div class="tile">${c.image ? `<img class="cimg" loading="lazy" src="${c.image}/low.webp" alt="${esc(c.name)}">` : ''}<div class="meta"><span class="nm">${esc(c.local_id)} · ${esc(c.name)}</span><span class="v">${eur(c.price)}</span></div><div class="seller"><span>${flag(c.lang)} ${esc(c.set || '')}</span>${S.coll[c.card_id] > 1 ? '<span class="pill p-tr">tu l\'as en double</span>' : ''}</div></div>`).join('')}</div>` : ''}
   <h2>Trophées</h2>${!p.show_badges ? '<div class="panel small mut">🔒 Trophées privés.</div>' : bdg.length ? `<div class="bdgs">${bdg.map(b => `<span class="bdg t${b.tier}" title="${esc(b.desc || '')}">${b.ic} ${esc(b.name)}</span>`).join('')}</div>` : '<div class="panel small mut">Pas encore de trophée.</div>'}
   <h2>Ses doubles sur la table</h2><div class="grid">${(ls || []).map(l => `<button class="tile" data-l="${l.id}">${img(l.card)}<div class="meta"><span class="nm">${esc(nm(l.card))}</span><span class="v">${l.price ? eur(l.price) : '⇄'}</span></div></button>`).join('') || '<p class="mut">Aucun double posé pour le moment.</p>'}</div>`;
   S.listings = [...(S.listings || []).filter(x => !ls?.some(y => y.id === x.id)), ...(ls || [])];

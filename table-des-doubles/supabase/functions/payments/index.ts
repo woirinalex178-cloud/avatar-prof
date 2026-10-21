@@ -4,9 +4,11 @@ import { createClient } from 'npm:@supabase/supabase-js@2';
 // Paiements sécurisés (Stripe Connect, fonds bloqués par Stripe jusqu'à réception)
 // /checkout : l'acheteur paie (carte + frais protection + port éventuel) -> argent sur le compte plateforme Stripe
 // /label    : un membre paie l'étiquette de son envoi (échanges)
+// /trade    : chacun des deux membres paie ses frais d'échange (échange sans argent)
 // /connect  : le vendeur ouvre son compte vendeur (identité vérifiée par Stripe, 18+)
 // /webhook  : Stripe confirme paiement (destination « Votre compte ») / compte vendeur (destination « Comptes connectés »)
 // /release  : (pg_cron toutes les 15 min) verse la part vendeur quand la transaction est terminée
+// /refunds  : (pg_cron toutes les 15 min) rembourse l'acheteur quand la modération tranche en sa faveur
 const SITE = 'https://table-des-doubles.vercel.app';
 const key = Deno.env.get('STRIPE_SECRET_KEY');
 const stripe = key ? new Stripe(key, { apiVersion: '2024-06-20' }) : null;
@@ -77,6 +79,22 @@ Deno.serve(async (req) => {
       await db.from('shipments').update({ stripe_session_id: s.id }).eq('id', sh.id);
       return json({ url: s.url });
     }
+    if (path === 'trade') {
+      const u = await me(req); const { offer_id } = await req.json();
+      const { data: o } = await db.from('offers').select('*').eq('id', offer_id).single();
+      if (!o || o.status !== 'accepted' || o.cash > 0 || !(o.trade_fee > 0)) return json({ error: 'Rien à payer sur cette offre.' }, 400);
+      const role = o.buyer_id === u.id ? 'buyer' : o.seller_id === u.id ? 'seller' : null;
+      if (!role) return json({ error: 'Accès refusé.' }, 403);
+      if (role === 'buyer' ? o.trade_paid_buyer : o.trade_paid_seller) return json({ paid: true });
+      const s = await stripe.checkout.sessions.create({
+        mode: 'payment', locale: 'fr', customer_email: u.email,
+        line_items: [{ quantity: 1, price_data: { currency: 'eur', unit_amount: Math.round(o.trade_fee * 100), product_data: { name: 'Frais d\'échange Sharing Cards' } } }],
+        metadata: { trade_offer: o.id, role },
+        success_url: `${SITE}/#/offres`, cancel_url: `${SITE}/#/offres`
+      });
+      await db.from('offers').update(role === 'buyer' ? { trade_session_buyer: s.id } : { trade_session_seller: s.id }).eq('id', o.id);
+      return json({ url: s.url });
+    }
     if (path === 'connect') {
       const u = await me(req);
       const { data: p } = await db.from('profiles').select('stripe_account_id').eq('id', u.id).single();
@@ -93,6 +111,7 @@ Deno.serve(async (req) => {
       if (ev.type === 'checkout.session.completed') {
         const s = ev.data.object as Stripe.Checkout.Session;
         if (s.metadata?.shipment_id) await db.from('shipments').update({ paid: true }).eq('id', s.metadata.shipment_id).eq('stripe_session_id', s.id);
+        else if (s.metadata?.trade_offer) await db.rpc('trade_fee_paid', { p_offer: s.metadata.trade_offer, p_role: s.metadata.role, p_session: s.id });
         else await db.from('offers').update({ status: 'paid', paid_amount: (s.amount_total ?? 0) / 100, stripe_payment_intent: String(s.payment_intent), updated_at: new Date().toISOString() })
           .eq('id', s.metadata!.offer_id).eq('status', 'accepted');
       }
@@ -114,6 +133,17 @@ Deno.serve(async (req) => {
         await db.from('offers').update({ released: true }).eq('id', o.id); n++;
       }
       return json({ released: n });
+    }
+    if (path === 'refunds') {
+      if (!(await cronOk(req))) return json({ error: 'interdit' }, 403);
+      const { data: os } = await db.from('offers').select('id,stripe_payment_intent').eq('refund_requested', true).is('refunded_at', null).not('stripe_payment_intent', 'is', null).limit(50);
+      let n = 0;
+      for (const o of os ?? []) {
+        try { await stripe.refunds.create({ payment_intent: o.stripe_payment_intent, reason: 'requested_by_customer' }); }
+        catch (e) { console.error('remboursement', o.id, (e as Error).message); continue; }
+        await db.from('offers').update({ refunded_at: new Date().toISOString() }).eq('id', o.id); n++;
+      }
+      return json({ refunded: n });
     }
     return json({ error: 'route inconnue' }, 404);
   } catch (e) { return json({ error: String((e as Error).message ?? e) }, 400); }

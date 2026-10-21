@@ -10,7 +10,9 @@
 - [ ] **CM2C** : n° d'adhérent à afficher ? (en attente)
 - [ ] **Ouverture** : Stripe en mode réel (SIRET, IBAN) → puis `BOXTAL_LIVE=1` + carte enregistrée chez Boxtal (étape 5 ter)
 - [ ] **Boxtal, envoi sans imprimante** : demander au support (aide.boxtal.com ou chat) : « Puis-je obtenir via l'API v3 une étiquette **QR code / sans impression** pour Mondial Relay et Chronopost Shop2Shop ? Quel `shippingOfferCode` ou quel type de document ? » → transmets-moi la réponse, je l'affiche dans l'appli.
+- [ ] **Coller un fichier SQL (2 min)** : Supabase → SQL Editor → New query → copie tout le contenu de `table-des-doubles/supabase/sql/2026-10-21-moderation-rgpd-echanges.sql` → Run. Ça active la purge RGPD automatique et le remboursement automatique des litiges. (Je ne peux pas le lancer moi-même : mes outils refusent les instructions qui suppriment des données sans ton accord.)
 - ✅ Inscriptions, Stripe test, Boxtal, textes légaux, médiateur
+- ✅ Page modération (ton compte est admin : **Compte → Ouvrir la modération**), liste de souhaits, import/export CSV du classeur, défi de la semaine, frais d'échange payables
 
 
 Environ 1 h 30 pour les étapes 1 à 3. Tout est gratuit.

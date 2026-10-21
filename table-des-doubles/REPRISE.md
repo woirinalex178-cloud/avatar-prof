@@ -47,13 +47,24 @@
 - 18+, aucune coordonnée, tout passe par l'appli, séquestre, auto-libération 7 j.
 - Positionnement : **réservé aux collectionneurs passionnés** (règles anti-revendeurs en base).
 
+## Modération, RGPD, frais d'échange, souhaits, CSV, défi hebdo (ajout 21/10)
+- **Admin** : `profiles.is_admin` (coché pour alex_et_celeste), `suspended_until` / `suspend_reason`, `last_seen` (RPC `touch_me()` à chaque session). Trigger `block_suspended` sur listings/offers/posts/messages/reviews.
+- **Page `#/moderation`** (visible seulement si `is_admin`, lien dans Compte) : 3 onglets.
+  - Signalements : `admin_reports(status)` + `admin_act(report, action, note, days)` — actions `remove` / `suspend` (7 j) / `ban` / `dismiss` / `unsuspend`. `reports` a maintenant `status`, `target_user` (rempli par le trigger `reports_before_insert`), `handled_by/at`, `note`. Signalement possible sur annonce, post, **message** et profil, avec motif (`reportModal`).
+  - Litiges : `admin_disputes()` (messages, contrôles d'authenticité, suivis) + `admin_offer_resolve(offer, 'release'|'refund'|'reopen'|'note')`. Remboursement : `offers.refund_requested/refunded_at` → route `payments/refunds` (cron 15 min) qui appelle `stripe.refunds.create`.
+  - RGPD : compteurs + bouton « Lancer la purge » (`admin_purge()` → `rgpd_purge()`), cron quotidien 4 h 23. Purge : messages/posts > 3 ans, contrôles > 2 ans, signalements traités > 1 an, comptes sans visite depuis 3 ans anonymisés (sauf transaction en cours), journal `rgpd_log`.
+- **Frais d'échange payés** : `offers.trade_paid_buyer/seller` (+ `trade_session_*`). `offers_before_insert` ne met plus `trade_fee` à 0 quand un `free_trades` est consommé : il marque la part de l'acheteur comme payée. `offer_action('accept')` consomme un `free_trades` du vendeur sinon laisse l'offre en `accepted`, action `tradepay` (mode test) ou route `payments/trade` (Stripe) → webhook → `trade_fee_paid(offer, role)` → `paid` quand les deux ont payé.
+- **Liste de souhaits** : table `wishlist` (RLS propriétaire), étoile ☆ sur les cartes (classeur, scan, annonce), page `#/souhaits` avec les annonces correspondantes, tri « ⭐ Ma liste » sur la table, `public_wishlist(user)` sur le profil public (respecte show_collection).
+- **Import / export CSV** du classeur : bouton dans le classeur et dans Compte. Colonnes `extension;numero;nom;quantite;langue`, rapprochement en base par `csv_match(rows, lang)` (code d'extension, nom FR/EN, numéro sans zéros), aperçu avant import, export UTF-8 avec la cote.
+- **Défi de la semaine** (`game.js`) : 5 défis en rotation (cartes ajoutées, scans, doubles posés, souhaits, contrôles), compteur local par semaine ISO, trophée `x_week` (3 semaines réussies). Affiché dans le classeur et les trophées.
+- **SQL de référence** : `supabase/sql/2026-10-21-moderation-rgpd-echanges.sql`. ⚠️ Le bloc RGPD (fonctions avec `delete`) + les 2 lignes `cron.schedule` doivent être collés une fois dans Supabase → SQL Editor : l'outil MCP refuse les instructions destructrices sans confirmation humaine.
+
 ## Prochaines tâches techniques
 1. Régler les seuils d'authenticité (attendre les scores de l'utilisateur, étape 4 d'A-FAIRE).
 2. Remplir `LEGAL` en haut de `legal.js` (nom, SIRET, adresse, e-mail, médiateur).
-3. RGPD : purge auto comptes inactifs 3 ans et messages 3 ans (pg_cron).
-4. Après la bêta : passer `settings.trade_fee` à 0.99 **et** coder le paiement Stripe de ces frais pour les échanges sans argent (aujourd'hui seul `fee` est encaissé). Export DAC7.
-5. Page modération (signalements, litiges).
-6. Plan d'action de `CONCURRENCE.md` : import CSV, parrainage, liste de souhaits, défi hebdo.
+4. Après la bêta : passer `settings.trade_fee` à 0.99 (le paiement Stripe de ces frais est codé). Export DAC7.
+5. Coller le bloc RGPD du fichier `supabase/sql/2026-10-21-moderation-rgpd-echanges.sql` (purge + crons).
+6. Reste de `CONCURRENCE.md` : alertes e-mail sur la liste de souhaits (attend un domaine + Resend).
 7. Plus tard : nom de domaine + Resend, renommer le projet Vercel.
 
 ## Pièges connus

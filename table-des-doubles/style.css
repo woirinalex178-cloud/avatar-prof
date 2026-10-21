@@ -484,3 +484,17 @@ dialog::backdrop{background:#000a;backdrop-filter:blur(6px)}
 .bidh{margin:6px 0 0;padding-left:20px;display:grid;gap:2px}
 .chart .tip,.chart .tip b{color:var(--txt)}
 .scanres .sr-acts .qtyrow #sadd{white-space:normal;line-height:1.2}
+
+/* ---------- liste de souhaits, signalement, modération ---------- */
+.wish{position:absolute;top:6px;left:6px;z-index:2;width:30px;height:30px;border-radius:99px;border:1px solid #e0b85c55;background:#0b1f18cc;color:#e0b85c;font-size:15px;line-height:1;display:grid;place-items:center;cursor:pointer}
+.wish:hover{border-color:var(--gold)}
+.wish.on{background:var(--gold);color:#0c2820;border-color:#fff}
+.tile{position:relative}
+p .wish{position:static;display:inline-grid;vertical-align:middle;margin-right:4px}
+.rpt{background:none;border:0;color:#ffffff66;cursor:pointer;font-size:12px;margin-left:6px;padding:0}
+.rpt:hover{color:#ff8a80}
+.banner.bad{background:#d6453d1f;border-color:#d6453d88;color:#ffd9d6}
+.mod{margin-bottom:14px}
+.mod .panel{background:#0006}
+.mod img.cimg{border-radius:8px;margin:6px 0}
+.mod details summary{cursor:pointer}

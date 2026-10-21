@@ -76,9 +76,10 @@ const SECTIONS = [
 <li>Obligations comptables et fiscales, dont la déclaration DAC7 des vendeurs (obligation légale).</li></ul>
 <p>Aucune publicité, aucune revente de données, aucun profilage commercial.</p>
 <h4>Durées de conservation</h4><ul>
-<li>Compte : jusqu'à sa suppression. Un compte inactif pendant 3 ans est supprimé après avertissement.</li>
+<li>Compte : jusqu'à sa suppression. Un compte sans connexion pendant 3 ans est anonymisé automatiquement (purge quotidienne) : pseudo remplacé, collection, annonces, liste de souhaits, messages du forum et adresse effacés.</li>
 <li>Transactions et pièces comptables : 10 ans (Code de commerce), sous forme anonymisée après suppression du compte.</li>
-<li>Messages liés à une transaction : 3 ans après la transaction (preuve en cas de litige).</li>
+<li>Messages liés à une transaction : 3 ans après la transaction (preuve en cas de litige), puis effacés automatiquement.</li>
+<li>Contrôles d'authenticité (photos analysées et scores) : 2 ans. Signalements traités : 1 an.</li>
 <li>Données DAC7 : 10 ans.</li></ul>
 <h4>Sous-traitants</h4><ul>
 <li>Supabase (base de données et fichiers, serveurs à Paris).</li>

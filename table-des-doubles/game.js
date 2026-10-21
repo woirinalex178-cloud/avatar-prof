@@ -6,10 +6,28 @@ const save = g => { try { localStorage.setItem(LS, JSON.stringify(g)); } catch {
 export const G = load();
 G.seen ||= []; G.days ||= []; G.count ||= {}; G.flags ||= {};
 const today = () => new Date().toISOString().slice(0, 10);
+// semaine ISO (2026-43) : sert au défi hebdomadaire
+function isoWeek(d = new Date()) {
+  const t = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate())), n = t.getUTCDay() || 7;
+  t.setUTCDate(t.getUTCDate() + 4 - n);
+  const y0 = new Date(Date.UTC(t.getUTCFullYear(), 0, 1));
+  return `${t.getUTCFullYear()}-${String(Math.ceil(((t - y0) / 864e5 + 1) / 7)).padStart(2, '0')}`;
+}
+// un défi par semaine, en rotation : la clé est l'événement compté par track()
+const WEEKLY = [
+  { k: 'add', n: 25, ic: '🃏', t: 'ajoute 25 cartes à ton classeur' },
+  { k: 'scan', n: 10, ic: '📷', t: 'scanne 10 cartes' },
+  { k: 'list', n: 3, ic: '⇄', t: 'pose 3 doubles sur la table' },
+  { k: 'wish', n: 5, ic: '⭐', t: 'ajoute 5 cartes à ta liste de souhaits' },
+  { k: 'auth', n: 2, ic: '🔍', t: "fais 2 contrôles d'authenticité" }
+];
+const weekQuest = w => WEEKLY[parseInt(w.slice(-2), 10) % WEEKLY.length];
+function weekBox() { const w = isoWeek(); if (G.week?.w !== w) G.week = { w, c: 0 }; return G.week; }
 
 // ---------- événements comptés (scan, authentification, clics secrets…) ----------
 export function track(ev, n = 1) {
   G.count[ev] = (G.count[ev] || 0) + n;
+  const wk = weekBox(); if (ev === weekQuest(wk.w).k) wk.c += n;
   if (ev === 'add') { const h = new Date().getHours(); if (h < 5) G.flags.night = 1; if (h >= 5 && h < 7) G.flags.early = 1; G.daily ||= {}; if (G.daily.d !== today()) G.daily = { d: today(), add: 0 }; G.daily.add++; }
   save(G);
 }
@@ -121,7 +139,8 @@ export const BADGES = {
     T('x_night', '🦉', 'Oiseau de nuit', 'Ajoute une carte entre minuit et 5 h.', 2, s => !!s.f.night, null, 'Certains collectionnent quand tout le monde dort.'),
     T('x_early', '🐓', 'Lève-tôt', 'Ajoute une carte entre 5 h et 7 h.', 2, s => !!s.f.early, null, 'Le premier réveillé a le meilleur booster.'),
     T('x_logo', '🎲', 'Curieux', 'Touche le logo 7 fois de suite.', 1, s => !!s.f.logo, null, 'Le logo cache quelque chose…'),
-    T('x_trio', '🍀', 'Chanceux', 'Réussis le défi du jour 3 fois.', 2, s => (s.c.daily || 0) >= 3, null, 'Reviens chaque jour relever le défi.')
+    T('x_trio', '🍀', 'Chanceux', 'Réussis le défi du jour 3 fois.', 2, s => (s.c.daily || 0) >= 3, null, 'Reviens chaque jour relever le défi.'),
+    T('x_week', '🎖️', 'Régulier', 'Réussis le défi de la semaine 3 fois.', 3, s => (s.c.weekly || 0) >= 3, s => P(s.c.weekly || 0, 3), 'Chaque semaine apporte sa mission.')
   ]
 };
 const LIST = Object.values(BADGES).flat();
@@ -148,6 +167,15 @@ export function daily() {
   if (done && !G.daily.ok) { G.daily.ok = 1; track('daily'); }
   return { n, cur: Math.min(G.daily.add, n), done };
 }
+
+// ---------- défi de la semaine ----------
+export function weekly() {
+  const wk = weekBox(), q = weekQuest(wk.w), done = wk.c >= q.n;
+  if (done && !wk.ok) { wk.ok = 1; track('weekly'); }
+  save(G);
+  return { ...q, cur: Math.min(wk.c, q.n), done };
+}
+export const weeklyLine = esc => { const w = weekly(); return `🗓️ Défi de la semaine : ${w.ic} ${esc(w.t)} — ${w.done ? '<b class="dn">réussi ✔</b>' : `${w.cur}/${w.n}`}`; };
 
 // ---------- rendu ----------
 const TIER = ['', 'Bronze', 'Argent', 'Or', 'Légendaire'];

@@ -4,7 +4,7 @@
 
 ## Adresses
 - Site : https://table-des-doubles.vercel.app (URL inchangée malgré le nouveau nom)
-- Code : GitHub `woirinalex178-cloud/avatar-prof`, branche `claude/pokemon-cards-marketplace-wiwxqw`, dossier `table-des-doubles/`
+- Code : GitHub `woirinalex178-cloud/avatar-prof`, branche `claude/relaxed-galileo-u5yzct`, dossier `table-des-doubles/`
 - Tâches utilisateur : `A-FAIRE.md` · Concurrence : `CONCURRENCE.md`
 
 ## Infra

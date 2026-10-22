@@ -7,6 +7,11 @@
 
   var DEFAULTS = {
     theme: 'dark',
+    ytKey: '',                // clé API YouTube Data v3 (gratuite), locale
+    region: 'FR',
+    links: [],                // vidéos YouTube ajoutées à la main (ids)
+    linkMeta: {},             // id -> métadonnées oEmbed
+    subChannels: {},          // id de chaîne -> { name, avatar }
     sidebarCollapsed: false,
     autoplay: true,
     subs: [],                 // ids de chaînes
@@ -63,6 +68,13 @@
     onChange: function (fn) { listeners.push(fn); },
 
     set: function (key, value) { state[key] = value; save(); },
+
+    rememberChannel: function (id, name, avatar) {
+      if (!id) { return; }
+      var known = state.subChannels[id] || {};
+      state.subChannels[id] = { name: name || known.name || '', avatar: avatar || known.avatar || '' };
+      save();
+    },
 
     isSubscribed: function (channelId) { return state.subs.indexOf(channelId) !== -1; },
 

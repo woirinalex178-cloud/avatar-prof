@@ -6,7 +6,7 @@
   'use strict';
 
   function mode() {
-    if (Ytb.hasKey()) { return 'yt'; }
+    if (Ytb.hasKey() || (global.Auth && Auth.isSignedIn())) { return 'yt'; }
     if ((Store.state.links || []).length) { return 'links'; }
     return 'demo';
   }
@@ -86,8 +86,9 @@
       if (filter && filter !== 'all') {
         return Ytb.byCategory(filter, Store.state.region);
       }
+      var signedIn = global.Auth && Auth.isSignedIn();
       var subs = Store.state.subs.filter(function (id) { return /^UC/.test(id); });
-      if (!subs.length) { return Ytb.trending(Store.state.region); }
+      if (!signedIn && !subs.length) { return Ytb.trending(Store.state.region); }
       return Catalog.subsFeed().then(function (feed) {
         return Ytb.trending(Store.state.region).then(function (top) {
           var seen = {};
@@ -189,7 +190,54 @@
       return Promise.resolve(v ? DB.commentsFor(v) : []);
     },
 
+    /* chaînes suivies : celles du compte Google si connecté, sinon les locales */
+    subscriptions: function () {
+      if (global.Auth && Auth.isSignedIn()) {
+        return Ytb.mySubscriptions().then(function (list) {
+          list.forEach(function (c2) { Store.rememberChannel(c2.id, c2.name, c2.avatar); });
+          return list;
+        });
+      }
+      return Promise.resolve(Store.state.subs.map(function (id) {
+        var info = Store.state.subChannels[id] || {};
+        return { id: id, name: info.name || (DB.channel(id) || {}).name || id, avatar: info.avatar || '' };
+      }));
+    },
+
+    liked: function () {
+      if (global.Auth && Auth.isSignedIn()) {
+        return Ytb.myLiked().catch(function () { return Catalog.byIds(Store.state.liked); });
+      }
+      return Catalog.byIds(Store.state.liked);
+    },
+
+    playlists: function () {
+      var local = Store.state.playlists.map(function (p) {
+        return { id: p.id, name: p.name, count: p.videoIds.length, createdAt: p.createdAt, remote: false };
+      });
+      if (global.Auth && Auth.isSignedIn()) {
+        return Ytb.myPlaylists().then(function (remote) { return remote.concat(local); })
+          .catch(function () { return local; });
+      }
+      return Promise.resolve(local);
+    },
+
+    playlistVideos: function (id) {
+      var local = Store.playlist(id);
+      if (local) { return Catalog.byIds(local.videoIds); }
+      return Ytb.playlistVideos(id);
+    },
+
     subsFeed: function () {
+      if (global.Auth && Auth.isSignedIn()) {
+        return Catalog.subscriptions().then(function (list) {
+          return Ytb.channels(list.slice(0, 25).map(function (c2) { return c2.id; }));
+        }).then(function (channels) {
+          return Promise.all(channels.map(function (c2) {
+            return Ytb.channelVideos(c2.uploads, 5).catch(function () { return []; });
+          }));
+        }).then(function (lists) { return sortByDate([].concat.apply([], lists)); });
+      }
       var subs = Store.state.subs;
       if (!subs.length) { return Promise.resolve([]); }
       if (mode() !== 'yt') {

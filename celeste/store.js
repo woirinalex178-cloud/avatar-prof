@@ -9,9 +9,12 @@
     theme: 'dark',
     ytKey: '',                // clé API YouTube Data v3 (gratuite), locale
     region: 'FR',
+    googleClientId: '',       // ID client OAuth (web), pour la connexion Google
+    brandName: 'Céleste',     // nom affiché, modifiable
     links: [],                // vidéos YouTube ajoutées à la main (ids)
     linkMeta: {},             // id -> métadonnées oEmbed
     subChannels: {},          // id de chaîne -> { name, avatar }
+    accountSubs: [],          // abonnements du compte Google connecté
     sidebarCollapsed: false,
     autoplay: true,
     subs: [],                 // ids de chaînes

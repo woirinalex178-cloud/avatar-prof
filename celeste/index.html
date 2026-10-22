@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Vidflow — plateforme vidéo</title>
-<meta name="description" content="Vidflow : plateforme de vidéos à la demande (sans format court).">
+<title>Céleste — vidéos, sans format court</title>
+<meta name="description" content="Céleste : interface de lecture YouTube sans format court, pensée pour les enfants.">
 <link rel="icon" href="icon.svg">
 <link rel="manifest" href="manifest.json">
 <link rel="stylesheet" href="style.css">
@@ -17,9 +17,9 @@
     <button class="icon-btn" id="btn-menu" aria-label="Menu" title="Menu">
       <svg viewBox="0 0 24 24"><path d="M3 6h18M3 12h18M3 18h18"/></svg>
     </button>
-    <a class="brand" href="#/" aria-label="Vidflow, accueil">
-      <img src="icon.svg" alt="" width="28" height="28">
-      <span>Vidflow</span>
+    <a class="brand" href="#/" aria-label="Accueil">
+      <img src="icon.svg" alt="" width="30" height="30">
+      <span id="brand-name">Céleste</span>
     </a>
   </div>
 
@@ -31,6 +31,10 @@
     </div>
     <button class="search-btn" type="submit" aria-label="Lancer la recherche" title="Rechercher">
       <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M16.5 16.5 21 21"/></svg>
+    </button>
+    <button class="icon-btn voice" type="button" id="btn-voice" aria-label="Recherche vocale" title="Recherche vocale">
+      <svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/>
+        <path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
     </button>
   </form>
 
@@ -44,7 +48,7 @@
       <span class="badge" id="notif-count" hidden>0</span>
     </button>
     <button class="avatar-btn" id="btn-account" aria-label="Compte">
-      <span class="avatar" id="me-avatar">M</span>
+      <span class="avatar guest" id="me-avatar">?</span>
     </button>
   </div>
 </header>
@@ -79,6 +83,7 @@
 <script src="data.js"></script>
 <script src="store.js"></script>
 <script src="yt.js"></script>
+<script src="auth.js"></script>
 <script src="catalog.js"></script>
 <script src="player.js"></script>
 <script src="app.js"></script>

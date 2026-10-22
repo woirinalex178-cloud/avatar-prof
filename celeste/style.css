@@ -80,13 +80,17 @@ svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width:
 .avatar {
   display: grid; place-items: center; width: 32px; height: 32px; border-radius: 50%;
   background: var(--accent); color: #fff; font-weight: 600; font-size: 14px;
+  object-fit: cover; overflow: hidden; flex: 0 0 auto;
 }
+.avatar.guest { background: transparent; border: 1px solid var(--line); color: var(--text-dim); }
 
-.search { flex: 1; display: flex; justify-content: center; gap: 8px; max-width: 640px;
-          margin: 0 auto; }
+.search { flex: 1; display: flex; justify-content: center; align-items: center; gap: 8px;
+          max-width: 680px; margin: 0 auto; }
+.search .voice { flex: 0 0 40px; background: var(--chip); }
+.search .voice.listening { background: var(--accent); color: #fff; }
 .search-field { position: relative; flex: 1; }
 .search-field input {
-  width: 100%; height: 40px; padding: 0 16px; border-radius: 20px 0 0 20px;
+  width: 100%; height: 40px; padding: 0 16px; border-radius: 20px 0 0 20px; font-weight: 400;
   border: 1px solid var(--line); background: var(--bg-elev); color: var(--text); font-size: 15px;
 }
 .search-field input:focus { outline: none; border-color: var(--accent); }
@@ -149,17 +153,18 @@ body.rail .main { margin-left: var(--rail-w); }
 }
 .chips::-webkit-scrollbar { display: none; }
 .chip {
-  flex: 0 0 auto; padding: 8px 14px; border: 1px solid var(--line); border-radius: 18px;
-  background: var(--chip); cursor: pointer; font-size: 14px; white-space: nowrap;
+  flex: 0 0 auto; height: 32px; padding: 0 12px; border: 0; border-radius: 8px;
+  background: var(--chip); cursor: pointer; font-size: 14px; font-weight: 500; white-space: nowrap;
 }
 .chip:hover { background: var(--bg-hover); }
 .chip[aria-pressed="true"] { background: var(--chip-on); color: var(--chip-on-text); border-color: transparent; }
 
 /* ---------- Grille de vidéos ---------- */
 .grid {
-  display: grid; gap: 28px 16px;
-  grid-template-columns: repeat(auto-fill, minmax(290px, 1fr));
+  display: grid; gap: 40px 16px;
+  grid-template-columns: repeat(auto-fill, minmax(310px, 1fr));
 }
+@media (min-width: 1700px) { .grid { grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); } }
 .card { display: flex; flex-direction: column; gap: 10px; position: relative; }
 .thumb {
   position: relative; display: block; aspect-ratio: 16 / 9; border-radius: var(--radius);
@@ -185,17 +190,22 @@ body.rail .main { margin-left: var(--rail-w); }
 .card-body { display: flex; gap: 12px; }
 .card-body .avatar { flex: 0 0 36px; width: 36px; height: 36px; }
 .card-title {
-  margin: 0 0 4px; font-size: 15px; font-weight: 600; line-height: 1.3;
+  margin: 0 0 4px; font-size: 16px; font-weight: 500; line-height: 1.375; letter-spacing: 0;
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
 }
-.card-meta { margin: 0; color: var(--text-dim); font-size: 13px; }
+.card-meta { margin: 0; color: var(--text-dim); font-size: 13px; line-height: 1.5; }
+.card .thumb { transition: transform .18s var(--ease), border-radius .18s var(--ease); }
+.card:hover .thumb { transform: scale(1.012); }
 .card-meta a:hover { color: var(--text); }
 .card-menu { position: absolute; top: 0; right: 0; opacity: 0; }
 .card:hover .card-menu, .card-menu:focus-visible { opacity: 1; }
 .verified { display: inline-block; vertical-align: -1px; width: 14px; height: 14px; }
 
 /* ---------- Page vidéo ---------- */
-.watch { display: grid; grid-template-columns: minmax(0, 1fr) 402px; gap: 24px; align-items: start; }
+.main { --watch-max: 1754px; }
+.watch { display: grid; grid-template-columns: minmax(0, 1fr) 402px; gap: 24px; align-items: start;
+         max-width: var(--watch-max); margin: 0 auto; }
+.watch h1 { font-weight: 700; letter-spacing: -.2px; }
 .player-wrap { position: relative; background: #000; border-radius: var(--radius); overflow: hidden;
                aspect-ratio: 16 / 9; }
 .player-el { width: 100%; height: 100%; background: #000; display: block; }
@@ -222,8 +232,10 @@ body.rail .main { margin-left: var(--rail-w); }
 .actions-right { display: flex; gap: 8px; flex-wrap: wrap; }
 .description {
   margin: 16px 0; padding: 12px; border-radius: var(--radius); background: var(--bg-elev);
-  font-size: 14px; cursor: pointer;
+  font-size: 14px; cursor: pointer; transition: background .15s var(--ease);
 }
+.description:hover { background: var(--bg-hover); }
+.description.open { cursor: default; }
 .description .stats { font-weight: 600; margin-bottom: 8px; }
 .description pre {
   margin: 0; font: inherit; white-space: pre-wrap;
@@ -397,3 +409,12 @@ body.rail .main { margin-left: var(--rail-w); }
 }
 .description select { flex: 0 0 90px; }
 .description form .modal-actions { margin: 0; flex: 0 0 auto; }
+
+
+/* ---------- Pastilles d'en-tête ---------- */
+.brand { gap: 8px; }
+.brand img { border-radius: 8px; }
+.nav-item .av { object-fit: cover; }
+.up-next-head h2 { font-weight: 600; }
+.page-head h1 { font-weight: 700; letter-spacing: -.3px; }
+@media (max-width: 680px) { .search .voice { display: none; } }

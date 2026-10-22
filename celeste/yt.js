@@ -10,9 +10,9 @@
   var cache = {};
   try { cache = JSON.parse(localStorage.getItem(CACHE_KEY)) || {}; } catch (e) { cache = {}; }
 
-  function cacheGet(k) {
+  function cacheGet(k, ttl) {
     var hit = cache[k];
-    if (!hit || Date.now() - hit.t > TTL) { return null; }
+    if (!hit || Date.now() - hit.t > (ttl || TTL)) { return null; }
     return hit.v;
   }
 
@@ -27,6 +27,10 @@
   }
 
   function key() { return (Store.state.ytKey || '').trim(); }
+
+  function token() {
+    return (global.Auth && Auth.isSignedIn && Auth.isSignedIn()) ? Auth.token() : '';
+  }
 
   /* "PT1H2M3S" -> 3723 */
   function isoSeconds(iso) {
@@ -57,15 +61,23 @@
       .map(function (k) { return k + '=' + encodeURIComponent(params[k]); }).join('&');
   }
 
-  function api(path, params) {
-    if (!key()) { return Promise.reject(new Error('no-key')); }
+  function api(path, params, opts) {
+    opts = opts || {};
+    var bearer = token();
+    if (!key() && !bearer) {
+      var noKey = new Error('no-key');
+      noKey.reason = 'no-key';
+      return Promise.reject(noKey);
+    }
     params = params || {};
-    params.key = key();
+    if (key()) { params.key = key(); }
     var url = API + path + '?' + qs(params);
-    var ck = 'api:' + path + ':' + qs(Object.assign({}, params, { key: '' }));
-    var hit = cacheGet(ck);
+    var ck = 'api:' + path + ':' + qs(Object.assign({}, params, { key: '' })) +
+      (opts.mine ? ':me' : '');
+    var hit = cacheGet(ck, opts.mine ? 5 * 60 * 1000 : 0);
     if (hit) { return Promise.resolve(hit); }
-    return fetch(url).then(function (r) {
+    return fetch(url, bearer ? { headers: { Authorization: 'Bearer ' + bearer } } : undefined)
+      .then(function (r) {
       return r.json().then(function (json) {
         if (!r.ok) {
           var reason = ((json.error || {}).errors || [{}])[0].reason || 'error';
@@ -304,6 +316,53 @@
       var q = video.title.split(/\s+/).slice(0, 6).join(' ');
       return Yt.search(q).then(function (list) {
         return list.filter(function (v) { return v.id !== video.id; });
+      });
+    },
+
+    myChannel: function () {
+      return api('channels', { part: 'snippet,statistics,contentDetails', mine: 'true' }, { mine: true })
+        .then(function (j) { return (j.items || []).map(mapChannel)[0] || null; });
+    },
+
+    mySubscriptions: function () {
+      var all = [];
+      function page(token) {
+        return api('subscriptions', {
+          part: 'snippet', mine: 'true', maxResults: 50, order: 'alphabetical',
+          pageToken: token || ''
+        }, { mine: true }).then(function (j) {
+          (j.items || []).forEach(function (it) {
+            all.push({
+              id: it.snippet.resourceId.channelId,
+              name: it.snippet.title,
+              avatar: ((it.snippet.thumbnails || {}).default || {}).url || ''
+            });
+          });
+          if (j.nextPageToken && all.length < 200) { return page(j.nextPageToken); }
+          return all;
+        });
+      }
+      return page('');
+    },
+
+    myLiked: function (max) {
+      return api('videos', {
+        part: 'snippet,contentDetails,statistics', myRating: 'like', maxResults: max || 50
+      }, { mine: true }).then(function (j) { return noShorts((j.items || []).map(mapVideo)); });
+    },
+
+    myPlaylists: function () {
+      return api('playlists', { part: 'snippet,contentDetails', mine: 'true', maxResults: 50 },
+        { mine: true }).then(function (j) {
+        return (j.items || []).map(function (p) {
+          return {
+            id: p.id,
+            name: p.snippet.title,
+            count: (p.contentDetails || {}).itemCount || 0,
+            thumb: (((p.snippet.thumbnails || {}).medium) || {}).url || '',
+            remote: true
+          };
+        });
       });
     },
 

@@ -16,6 +16,14 @@
 
   var current = { path: '', videoId: null, queue: [], listId: null, filter: 'all', tab: 'videos', token: 0 };
 
+  function brand() { return Store.state.brandName || 'Céleste'; }
+
+  function applyBrand() {
+    var label = $('#brand-name');
+    if (label) { label.textContent = brand(); }
+    document.title = brand() + ' — vidéos, sans format court';
+  }
+
   /* ---------------- formatage ---------------- */
 
   function esc(s) {
@@ -239,24 +247,69 @@
       navItem('#/playlists', ICONS.playlist, 'Playlists', st.playlists.length || '') +
       '</div>';
 
-    if (st.subs.length) {
-      html += '<div class="nav-group"><h3>Abonnements</h3>' + st.subs.map(function (id) {
-        var info = subNames[id] || {};
-        var name = info.name || (DB.channel(id) || {}).name || id;
-        return '<a class="nav-item" href="#/channel/' + esc(id) + '">' +
-          (info.avatar
-            ? '<img class="av" src="' + esc(info.avatar) + '" alt="">'
-            : '<span class="av" style="background:hsl(' + ((DB.channel(id) || {}).hue || 258) +
-              ' 55% 45%)">' + esc(initial(name)) + '</span>') +
-          '<span>' + esc(name) + '</span></a>';
-      }).join('') + '</div>';
+    var known = (Auth.isSignedIn() ? (Store.state.accountSubs || []) : st.subs.map(function (id) {
+      var info = subNames[id] || {};
+      return { id: id, name: info.name || (DB.channel(id) || {}).name || id, avatar: info.avatar || '' };
+    }));
+    if (known.length) {
+      html += '<div class="nav-group"><h3>Abonnements</h3>' + known.slice(0, 12).map(function (c) {
+        return '<a class="nav-item" href="#/channel/' + esc(c.id) + '">' +
+          (c.avatar
+            ? '<img class="av" src="' + esc(c.avatar) + '" alt="" data-name="' + esc(c.name) + '">'
+            : '<span class="av" style="background:hsl(' + ((DB.channel(c.id) || {}).hue || 258) +
+              ' 55% 45%)">' + esc(initial(c.name)) + '</span>') +
+          '<span>' + esc(c.name) + '</span></a>';
+      }).join('') +
+      (known.length > 12 ? '<a class="nav-item" href="#/subs"><svg viewBox="0 0 24 24">' +
+        '<path d="M6 9l6 6 6-6"/></svg><span>Tout afficher</span></a>' : '') + '</div>';
     }
 
     html += '<div class="nav-group">' + navItem('#/settings', ICONS.settings, 'Paramètres') + '</div>' +
-      '<p class="sidebar-footer">Vidflow — lecture via le lecteur YouTube officiel.<br>' +
-      'Vos données (abonnements, historique) restent dans ce navigateur.</p>';
+      '<p class="sidebar-footer">' + esc(brand()) + ' — lecture via le lecteur YouTube officiel,' +
+      ' sans format court.<br>Les données restent dans ce navigateur.</p>';
 
     sidebar.innerHTML = html;
+  }
+
+  function renderAccount() {
+    var btn = $('#btn-account');
+    var p = Auth.profile();
+    btn.innerHTML = Auth.isSignedIn() && p
+      ? (p.avatar ? '<img class="avatar" src="' + esc(p.avatar) + '" alt="" data-name="' +
+          esc(p.name) + '">' : '<span class="avatar">' + esc(initial(p.name)) + '</span>')
+      : '<span class="avatar guest" aria-hidden="true">?</span>';
+    btn.setAttribute('aria-label', Auth.isSignedIn() && p ? 'Compte ' + p.name : 'Se connecter');
+  }
+
+  function syncAccount() {
+    if (!Auth.isSignedIn()) { return Promise.resolve(); }
+    return Catalog.subscriptions().then(function (list) {
+      Store.set('accountSubs', list);
+      renderSidebar();
+    }).catch(function () { /* hors ligne : on garde ce qu'on a */ });
+  }
+
+  function signIn() {
+    if (!Auth.isConfigured()) {
+      toast('Ajoute d’abord l’ID client Google dans Paramètres');
+      location.hash = '#/settings';
+      return;
+    }
+    Auth.signIn().then(function () {
+      toast('Connecté à YouTube');
+      renderAccount();
+      return syncAccount();
+    }).then(function () { render(); })
+      .catch(function (err) {
+        var msgs = {
+          'client-id-manquant': 'ID client Google manquant (Paramètres).',
+          'gis-bloque': 'Script Google bloqué par le navigateur.',
+          'popup-fermee': 'Connexion annulée.',
+          popup_closed: 'Connexion annulée.',
+          popup_failed_to_open: 'La fenêtre de connexion a été bloquée : autorise les pop-ups.'
+        };
+        toast(msgs[err.message] || ('Connexion impossible : ' + err.message));
+      });
   }
 
   /* ---------------- rendu asynchrone ---------------- */
@@ -307,9 +360,10 @@
 
   function viewSubs(token) {
     main.innerHTML = '<div class="page-head"><h1>Abonnements</h1></div>' + skeletonHtml(6);
-    if (!Store.state.subs.length) {
+    if (!Store.state.subs.length && !Auth.isSignedIn()) {
       paint(token, '<div class="page-head"><h1>Abonnements</h1></div>' +
-        emptyHtml('Abonne-toi à une chaîne : ses dernières vidéos apparaîtront ici.'));
+        emptyHtml('Abonne-toi à une chaîne, ou connecte-toi à ton compte Google, ' +
+          'pour retrouver ici les dernières vidéos de tes chaînes.'));
       return;
     }
     Catalog.subsFeed().then(function (list) {
@@ -509,6 +563,31 @@
   }
 
   function viewPlaylists(token) {
+    main.innerHTML = '<div class="page-head"><h1>Playlists</h1>' +
+      '<button class="pill solid" data-action="new-playlist">+ Nouvelle playlist</button></div>' +
+      skeletonHtml(4);
+    Catalog.playlists().then(function (list) {
+      var cards = list.map(function (pl) {
+        return '<article class="card"><a class="thumb" href="#/playlist/' + esc(pl.id) + '">' +
+          (pl.thumb ? '<img src="' + esc(pl.thumb) + '" alt="" data-name="' + esc(pl.name) + '">'
+            : '<div class="poster" style="background:linear-gradient(135deg,#3a3a4e,#1d1d28)">' +
+              '<span class="who">' + esc(pl.name) + '</span></div>') +
+          '<span class="time">' + pl.count + ' vidéo' + (pl.count > 1 ? 's' : '') + '</span></a>' +
+          '<div class="card-body"><div><h3 class="card-title"><a href="#/playlist/' + esc(pl.id) +
+          '">' + esc(pl.name) + '</a></h3><p class="card-meta">' +
+          (pl.remote ? 'Playlist YouTube' : 'Playlist locale') + '</p></div></div>' +
+          (pl.remote ? '' : '<button class="icon-btn card-menu" data-action="del-playlist" data-id="' +
+            esc(pl.id) + '" aria-label="Supprimer la playlist"><svg viewBox="0 0 24 24">' +
+            '<path d="M5 7h14M9 7V5h6v2M7 7l1 13h8l1-13"/></svg></button>') + '</article>';
+      }).join('');
+      paint(token, '<div class="page-head"><h1>Playlists</h1>' +
+        '<button class="pill solid" data-action="new-playlist">+ Nouvelle playlist</button></div>' +
+        (list.length ? '<div class="grid">' + cards + '</div>'
+          : emptyHtml('Aucune playlist. Utilise « Enregistrer » sur une vidéo.')));
+    }).catch(function (err) { fail(token, err); });
+  }
+
+  function viewPlaylistsLegacy(token) {
     var pls = Store.state.playlists;
     var cards = pls.map(function (pl) {
       return '<article class="card"><a class="thumb" href="#/playlist/' + pl.id + '">' +
@@ -534,6 +613,30 @@
     var st = Store.state;
     var modeLabel = { yt: 'YouTube (API officielle)', links: 'Liens ajoutés à la main', demo: 'Démo locale' };
     paint(token, '<div class="page-head"><h1>Paramètres</h1></div><div class="rows">' +
+
+      '<div class="description open"><div class="stats">Compte Google — ' +
+      (Auth.isSignedIn() ? 'connecté' : 'déconnecté') + '</div>' +
+      '<p>Connecte-toi pour retrouver <strong>tes abonnements, tes playlists et tes vidéos ' +
+      'aimées</strong>. Accès en lecture seule, jeton gardé le temps de la session.</p>' +
+      (Auth.isSignedIn() && Auth.profile()
+        ? '<p class="card-meta">Connecté en tant que ' + esc(Auth.profile().name) + '</p>' +
+          '<div class="modal-actions"><button class="pill" data-action="signout">Se déconnecter</button></div>'
+        : '<form data-action="save-account">' +
+          '<input type="text" name="clientId" placeholder="ID client OAuth (…apps.googleusercontent.com)" ' +
+          'value="' + esc(st.googleClientId) + '" autocomplete="off" spellcheck="false">' +
+          '<div class="modal-actions"><button class="pill solid" type="submit">Enregistrer</button>' +
+          '<button class="pill accent" type="button" data-action="signin">Se connecter avec Google</button>' +
+          '</div></form>' +
+          '<p class="card-meta">Console Google Cloud → Identifiants → ID client OAuth → ' +
+          'type « Application Web » → ajoute l’adresse du site dans « Origines JavaScript autorisées ». ' +
+          'La connexion ne fonctionne pas depuis un fichier local (file://) : héberge la page.</p>') +
+      '</div>' +
+
+      '<div class="description open"><div class="stats">Nom affiché</div>' +
+      '<form data-action="save-brand"><input type="text" name="brandName" maxlength="28" value="' +
+      esc(brand()) + '"><div class="modal-actions">' +
+      '<button class="pill solid" type="submit">Renommer</button></div></form>' +
+      '<p class="card-meta">Le nom affiché dans l’en-tête et l’onglet du navigateur.</p></div>' +
 
       '<div class="description open"><div class="stats">Source des vidéos — ' +
       esc(modeLabel[Catalog.mode()]) + '</div>' +
@@ -645,18 +748,16 @@
           { remove: 'rm-later', empty: 'Liste vide. Utilise « Enregistrer » sur une vidéo.' });
         break;
       case 'liked':
-        viewListPage(token, "Vidéos que j'aime", Catalog.byIds(Store.state.liked),
-          { remove: 'rm-liked', empty: 'Aucune vidéo likée.' });
+        viewListPage(token, "Vidéos que j'aime", Catalog.liked(),
+          { remove: Auth.isSignedIn() ? '' : 'rm-liked',
+            empty: 'Aucune vidéo likée.' });
         break;
       case 'playlists': viewPlaylists(token); break;
       case 'playlist': {
         var pl = Store.playlist(seg[1]);
-        if (!pl) { main.innerHTML = emptyHtml('Playlist introuvable.'); break; }
-        viewListPage(token, pl.name, Catalog.byIds(pl.videoIds), {
-          remove: 'rm-playlist-video', list: pl.id, empty: 'Playlist vide.',
-          actions: pl.videoIds.length
-            ? '<a class="pill accent" href="#/watch?v=' + pl.videoIds[0] + '&list=' + pl.id + '">Tout lire</a>'
-            : ''
+        var plName = pl ? pl.name : (r.params.name || 'Playlist');
+        viewListPage(token, plName, Catalog.playlistVideos(seg[1]), {
+          remove: pl ? 'rm-playlist-video' : '', list: pl ? pl.id : '', empty: 'Playlist vide.'
         });
         break;
       }
@@ -828,6 +929,14 @@
           render();
         }
         return;
+      case 'signin': signIn(); return;
+      case 'signout':
+        Auth.signOut();
+        Store.set('accountSubs', []);
+        renderAccount();
+        toast('Déconnecté');
+        render();
+        return;
       case 'clear-key':
         Store.set('ytKey', '');
         Ytb.clearCache();
@@ -863,6 +972,19 @@
       if (!input.value.trim()) { return; }
       Store.addComment(form.dataset.id, input.value.trim());
       input.value = '';
+      render();
+    }
+    if (form.dataset.action === 'save-account') {
+      e.preventDefault();
+      Store.set('googleClientId', form.clientId.value.trim());
+      toast('ID client enregistré');
+      render();
+    }
+    if (form.dataset.action === 'save-brand') {
+      e.preventDefault();
+      Store.set('brandName', form.brandName.value.trim() || 'Céleste');
+      applyBrand();
+      toast('Renommé');
       render();
     }
     if (form.dataset.action === 'save-key') {
@@ -940,6 +1062,26 @@
     if (!e.target.closest('.search')) { closeSuggestions(); }
   });
 
+  /* recherche vocale (API navigateur, gratuite ; pratique pour les enfants) */
+  var btnVoice = $('#btn-voice');
+  var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR) { btnVoice.hidden = true; } else {
+    btnVoice.addEventListener('click', function () {
+      var rec = new SR();
+      rec.lang = 'fr-FR';
+      rec.interimResults = false;
+      btnVoice.classList.add('listening');
+      rec.onresult = function (e) {
+        var said = e.results[0][0].transcript;
+        searchInput.value = said;
+        go(said);
+      };
+      rec.onerror = function () { toast('Micro indisponible'); };
+      rec.onend = function () { btnVoice.classList.remove('listening'); };
+      rec.start();
+    });
+  }
+
   /* sidebar + thème + mini-lecteur */
   function isNarrow() { return window.matchMedia('(max-width: 900px)').matches; }
 
@@ -987,9 +1129,17 @@
 
   $('#btn-account').addEventListener('click', function () {
     var st = Store.state;
-    openModal('<h2>Mon compte</h2><p class="card-meta">Profil local « Moi » — mode ' +
-      esc(Catalog.mode()) + '</p><p>' + st.subs.length + ' abonnements • ' + st.liked.length +
-      ' j’aime • ' + st.history.length + ' vidéos vues</p><div class="modal-actions">' +
+    var p = Auth.profile();
+    openModal('<h2>' + (Auth.isSignedIn() && p ? esc(p.name) : 'Mon compte') + '</h2>' +
+      '<p class="card-meta">' + (Auth.isSignedIn()
+        ? 'Connecté à YouTube — ' + (st.accountSubs || []).length + ' abonnements'
+        : 'Hors connexion — données locales uniquement') + '</p>' +
+      '<p>' + st.liked.length + ' j’aime • ' + st.history.length + ' vidéos vues • ' +
+      st.playlists.length + ' playlists locales</p>' +
+      '<div class="modal-actions">' +
+      (Auth.isSignedIn()
+        ? '<button class="pill" data-action="signout">Se déconnecter</button>'
+        : '<button class="pill accent" data-action="signin">Se connecter avec Google</button>') +
       '<a class="pill" href="#/settings" data-action="close-modal">Paramètres</a>' +
       '<button class="pill solid" data-action="close-modal">Fermer</button></div>');
   });
@@ -1054,6 +1204,10 @@
 
   document.documentElement.dataset.theme = Store.state.theme;
   if (Store.state.sidebarCollapsed) { document.body.classList.add('rail'); }
+  applyBrand();
+  renderAccount();
+  Auth.onChange(renderAccount);
   window.addEventListener('hashchange', render);
   render();
+  if (Auth.isSignedIn()) { Auth.loadProfile().then(renderAccount).then(syncAccount); }
 })();

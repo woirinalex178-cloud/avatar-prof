@@ -1,6 +1,6 @@
 {
-  "name": "Vidflow",
-  "short_name": "Vidflow",
+  "name": "Céleste",
+  "short_name": "Céleste",
   "start_url": "./index.html",
   "display": "standalone",
   "background_color": "#0f0f0f",

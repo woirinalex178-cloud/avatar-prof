@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="fr" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Vidflow — plateforme vidéo</title>
+<meta name="description" content="Vidflow : plateforme de vidéos à la demande (sans format court).">
+<link rel="icon" href="icon.svg">
+<link rel="manifest" href="manifest.json">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<a class="skip" href="#main">Aller au contenu</a>
+
+<header class="topbar">
+  <div class="topbar-left">
+    <button class="icon-btn" id="btn-menu" aria-label="Menu" title="Menu">
+      <svg viewBox="0 0 24 24"><path d="M3 6h18M3 12h18M3 18h18"/></svg>
+    </button>
+    <a class="brand" href="#/" aria-label="Vidflow, accueil">
+      <img src="icon.svg" alt="" width="28" height="28">
+      <span>Vidflow</span>
+    </a>
+  </div>
+
+  <form class="search" id="search-form" role="search" autocomplete="off">
+    <div class="search-field">
+      <input id="search-input" type="search" placeholder="Rechercher" aria-label="Rechercher"
+             role="combobox" aria-expanded="false" aria-controls="suggestions">
+      <ul class="suggestions" id="suggestions" role="listbox" hidden></ul>
+    </div>
+    <button class="search-btn" type="submit" aria-label="Lancer la recherche" title="Rechercher">
+      <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M16.5 16.5 21 21"/></svg>
+    </button>
+  </form>
+
+  <div class="topbar-right">
+    <button class="icon-btn" id="btn-theme" aria-label="Changer de thème" title="Thème clair/sombre">
+      <svg viewBox="0 0 24 24" class="i-sun"><circle cx="12" cy="12" r="4.5"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M5 5l1.5 1.5M17.5 17.5 19 19M19 5l-1.5 1.5M6.5 17.5 5 19"/></svg>
+      <svg viewBox="0 0 24 24" class="i-moon"><path d="M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5z"/></svg>
+    </button>
+    <button class="icon-btn" id="btn-notif" aria-label="Notifications" title="Notifications">
+      <svg viewBox="0 0 24 24"><path d="M6 9a6 6 0 1 1 12 0c0 4 1.5 5.5 1.5 5.5h-15S6 13 6 9z"/><path d="M10 18a2 2 0 0 0 4 0"/></svg>
+      <span class="badge" id="notif-count" hidden>0</span>
+    </button>
+    <button class="avatar-btn" id="btn-account" aria-label="Compte">
+      <span class="avatar" id="me-avatar">M</span>
+    </button>
+  </div>
+</header>
+
+<nav class="sidebar" id="sidebar" aria-label="Navigation principale"></nav>
+<div class="scrim" id="scrim" hidden></div>
+
+<main id="main" class="main" tabindex="-1"></main>
+
+<div class="miniplayer" id="miniplayer" hidden>
+  <div class="mini-video" id="mini-slot"></div>
+  <div class="mini-meta">
+    <p class="mini-title" id="mini-title"></p>
+    <p class="mini-channel" id="mini-channel"></p>
+  </div>
+  <button class="icon-btn" id="mini-expand" aria-label="Agrandir" title="Revenir à la vidéo">
+    <svg viewBox="0 0 24 24"><path d="M4 14v6h6M20 10V4h-6M10 20 4 14M14 4l6 6"/></svg>
+  </button>
+  <button class="icon-btn" id="mini-close" aria-label="Fermer le mini-lecteur" title="Fermer">
+    <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg>
+  </button>
+</div>
+
+<div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+
+<dialog class="modal" id="modal">
+  <div class="modal-body" id="modal-body"></div>
+</dialog>
+
+<video id="player" class="player-el" playsinline controls preload="metadata"></video>
+
+<script src="data.js"></script>
+<script src="store.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

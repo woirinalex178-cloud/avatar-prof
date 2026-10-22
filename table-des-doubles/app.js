@@ -79,9 +79,10 @@ async function loadProgress() {
 const GUEST = 'tdd_guest';
 const guestColl = () => { try { return JSON.parse(localStorage.getItem(GUEST)) || {}; } catch { return {}; } };
 async function loadCollection() {
-  if (!S.profile) { S.coll = guestColl(); return; }
-  const { data } = await sb.from('collection').select('card_id,qty');
+  if (!S.profile) { S.coll = guestColl(); S.since = {}; return; }
+  const { data } = await sb.from('collection').select('card_id,qty,since');
   S.coll = Object.fromEntries((data || []).map(r => [r.card_id, r.qty]));
+  S.since = Object.fromEntries((data || []).map(r => [r.card_id, r.since]));
   await loadProgress();
 }
 async function setQty(id, q) {
@@ -117,7 +118,11 @@ async function loadSession() {
   }
   $('#navme').textContent = S.profile ? S.profile.pseudo : 'Compte';
   await Promise.all([loadCollection(), loadWish()]);
-  if (S.profile) sb.rpc('touch_me');
+  if (S.profile) {
+    const [{ data: v }, { data: st }] = await Promise.all([sb.rpc('my_visit'), sb.rpc('my_stats')]);
+    if (v) { S.profile.streak = v.streak; S.profile.streak_best = v.best; }
+    Game.setStats(st || {});
+  } else Game.setStats(null);
 }
 // compte suspendu par la modération : 'infinity' = définitif
 const suspended = () => { const u = S.profile?.suspended_until; if (!u) return null;
@@ -138,7 +143,7 @@ S.info = {};
 async function gameState() {
   const ids = Object.keys(S.coll).filter(k => S.coll[k] > 0), miss = ids.filter(k => !S.info[k]);
   for (let i = 0; i < miss.length; i += 1000) { const { data } = await sb.rpc('coll_info', { p_ids: miss.slice(i, i + 1000) }); for (const r of data || []) S.info[r.id] = r; }
-  const st = Game.stats(ids.map(k => S.info[k]).filter(Boolean), S.coll, S.profile);
+  const st = Game.stats(ids.map(k => S.info[k]).filter(Boolean), S.coll, S.profile, S.since);
   S.ev = Game.evaluate(st); return { st, ev: S.ev };
 }
 async function checkUnlock() {
@@ -152,7 +157,8 @@ async function trophees() {
   view.innerHTML = `<div class="felt"><div class="dash"><div class="ring" style="--p:${Math.round(ev.got.length / ev.total * 100)}"><span>${ev.got.length}<small>/ ${ev.total}</small></span></div>
     <div><h1 style="font-size:24px">${esc(ev.title)}</h1><p class="mut" style="margin:4px 0">Niveau ${ev.lvl} · ${ev.xp} XP · 🔥 ${st.streak} jour(s) de suite</p><div class="xp"><i style="width:${ev.pct}%"></i></div>
     <p class="small" style="margin:10px 0 0">🎯 Défi du jour : ajoute ${dl.n} cartes à ton classeur — ${dl.done ? '<b class="dn">réussi ✔</b>' : `${dl.cur}/${dl.n}`}</p>
-    <p class="small" style="margin:4px 0 0">${Game.weeklyLine(esc)}</p></div></div></div>
+    <p class="small" style="margin:4px 0 0">${Game.weeklyLine(esc)}</p>
+    ${st.pending ? `<p class="small mut" style="margin:4px 0 0">⏳ ${st.pending} carte(s) ajoutée(s) récemment : elles compteront après ${Game.STABLE_DAYS} jours dans ton classeur.</p>` : ''}</div></div></div>
   ${Game.renderTrophies(ev, st, esc)}`;
 }
 
@@ -162,7 +168,7 @@ function legal() {
   view.innerHTML = renderLegal(esc, sub);
   if (sub) document.getElementById('lg-' + sub)?.scrollIntoView();
 }
-const routes = { '': home, trophees, legal, classeur, table, offres, forum, compte, regles, guide, membre, souhaits, moderation };
+const routes = { '': home, trophees, legal, classeur, table, offres, forum, blog, compte, regles, guide, membre, souhaits, moderation };
 function guide() {
   const k = location.hash.split('/')[2]; view.innerHTML = renderGuide();
   const el = k && document.getElementById('g-' + k); if (!el) return;
@@ -235,6 +241,7 @@ async function classeur() {
         <div class="xp"><i style="width:${t.pct}%"></i></div>
         <p class="small" style="margin:8px 0 0">🎯 Défi du jour : ajoute ${dl.n} cartes — ${dl.done ? '<b class="dn">réussi ✔</b>' : `${dl.cur}/${dl.n}`}</p>
         <p class="small" style="margin:4px 0 0">${Game.weeklyLine(esc)}</p>
+        ${st.pending ? `<p class="small mut" style="margin:4px 0 0">⏳ ${st.pending} carte(s) comptent pour les trophées dans moins de ${Game.STABLE_DAYS} jours (anti-aller-retour).</p>` : ''}
         <div class="badges">${t.got.slice(-5).reverse().map(b => `<span class="bdg on">${b.ic} ${esc(b.name)}</span>`).join('')}<a class="bdg" href="#/trophees">🏆 ${t.got.length}/${t.total} trophées →</a></div>
       </div>
     </div>
@@ -918,17 +925,104 @@ async function act(id, a) {
   await loadSession(); offres();
 }
 
-// ---------- forum ----------
+// ---------- forum : 5 sections ----------
+const SECTIONS = [
+  ['libre', '💬 Expression libre', 'Ce qui te passe par la tête, entre collectionneurs.'],
+  ['recherche', '🔎 Recherche de cartes', 'Dis ce que tu cherches : quelqu\'un l\'a peut-être en double.'],
+  ['idees', '💡 Améliorations / propositions', 'Propose une idée pour le site et vote pour celles des autres.'],
+  ['presentation', '👋 Présentez-vous', 'Ton pseudo, ta région, ce que tu collectionnes.'],
+  ['blog', '📰 Autour des articles', 'Les discussions nées des articles du blog.']
+];
+const secName = k => (SECTIONS.find(x => x[0] === k) || SECTIONS[0])[1];
+const maskNote = '<p class="small mut">Les coordonnées (téléphone, e-mail, lien, nom de famille) sont automatiquement masquées en <b class="mono">######</b> : écris librement, le site te protège.</p>';
 async function forum() {
-  const { data } = await sb.from('posts').select('*').order('created_at', { ascending: false }).limit(80);
+  const sec = S.fsec || 'libre', idees = sec === 'idees';
+  let q = sb.from('posts').select('*, blog:blog(slug,title)').eq('section', sec).limit(80);
+  q = idees ? q.order('votes', { ascending: false }).order('created_at', { ascending: false }) : q.order('created_at', { ascending: false });
+  const [{ data }, { data: mv }] = await Promise.all([q, S.profile ? sb.from('post_votes').select('post_id') : Promise.resolve({ data: [] })]);
+  S.myvotes = new Set((mv || []).map(v => v.post_id));
   await pseudos((data || []).map(p => p.user_id));
-  view.innerHTML = `<h2>Le forum de la table</h2><div class="panel">
-  ${S.profile ? `<form class="form" id="pf"><textarea id="pb" maxlength="600" placeholder="Une question sur une cote, une carte recherchée, un conseil d'état ?"></textarea><div class="bar" style="margin:0"><select id="ps" style="width:auto"><option value="">Général</option>${S.sets.filter(s => s.lang === S.lang).slice(0, 80).map(s => `<option value="${s.id}">${esc(s.name)}</option>`).join('')}</select><button class="btn">Publier</button></div><p class="err" id="perr"></p></form>` : `<p class="mut">Lecture libre. <a href="#/compte">Connecte-toi</a> pour participer.</p>`}
-  ${(data || []).map(p => { const u = S.pseudos[p.user_id]; return `<div class="post">${av(u?.pseudo, u)}<div><b>${who(p.user_id, u)}</b> <span class="small mut">${new Date(p.created_at).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' })}${p.set_id ? ' · ' + esc(setName(S.sets.find(s => s.id === p.set_id))) : ''}</span><div style="white-space:pre-wrap">${esc(p.body)}</div>${p.user_id === S.user?.id ? `<button class="btn ghost sm" data-delpost="${p.id}">Supprimer</button>` : `<button class="btn ghost sm" data-report="post:${p.id}" style="margin-top:4px">Signaler</button>`}</div></div>`; }).join('') || '<div class="empty">Sois le premier à lancer une discussion.</div>'}</div>`;
+  const [, titre, sous] = SECTIONS.find(x => x[0] === sec) || SECTIONS[0];
+  view.innerHTML = `<h2>Le forum de la table</h2>
+  <div class="seg wrapseg" style="margin-bottom:14px">${SECTIONS.map(([k, n]) => `<button data-fs="${k}" aria-pressed="${sec === k}">${n}</button>`).join('')}</div>
+  <div class="panel"><h3 style="margin-top:0">${titre}</h3><p class="small mut">${sous}</p>
+  ${S.profile ? `<form class="form" id="pf">${idees ? '<label class="f">Titre de ta proposition<input id="pt" maxlength="90" required></label>' : ''}
+    <textarea id="pb" maxlength="1200" placeholder="${idees ? 'Décris ton idée : à quoi ça sert, pour qui ?' : sec === 'presentation' ? 'Présente-toi : depuis quand tu collectionnes, ce que tu cherches…' : sec === 'recherche' ? 'Les cartes que tu cherches (extension, numéro, état voulu)…' : 'Une question sur une cote, une carte, un conseil d\'état ?'}"></textarea>
+    <div class="bar" style="margin:0">${sec === 'libre' || sec === 'recherche' ? `<select id="ps" style="width:auto"><option value="">Général</option>${S.sets.filter(x => x.lang === S.lang).slice(0, 80).map(x => `<option value="${x.id}">${esc(x.name)}</option>`).join('')}</select>` : ''}<button class="btn">Publier</button></div>
+    ${maskNote}<p class="err" id="perr"></p></form>` : `<p class="mut">Lecture libre. <a href="#/compte">Connecte-toi</a> pour participer.</p>`}
+  ${(data || []).map(p => { const u = S.pseudos[p.user_id], mine = p.user_id === S.user?.id, voted = S.myvotes.has(p.id);
+    return `<div class="post">${av(u?.pseudo, u)}<div style="flex:1">
+      <b>${who(p.user_id, u)}</b> <span class="small mut">${new Date(p.created_at).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' })}${p.set_id ? ' · ' + esc(setName(S.sets.find(x => x.id === p.set_id))) : ''}${p.blog ? ` · <a href="#/blog/${esc(p.blog.slug)}">${esc(p.blog.title)}</a>` : ''}</span>
+      ${p.title ? `<h4 style="margin:4px 0">${esc(p.title)}</h4>` : ''}
+      <div style="white-space:pre-wrap">${esc(p.body)}</div>
+      <div class="acts" style="margin-top:6px">${idees ? `<button class="btn ghost sm${voted ? ' on' : ''}" data-vote="${p.id}">👍 ${p.votes}${voted ? ' · voté' : ''}</button>` : ''}
+      ${mine ? `<button class="btn ghost sm" data-delpost="${p.id}">Supprimer</button>` : `<button class="btn ghost sm" data-report="post:${p.id}">Signaler</button>`}</div>
+    </div></div>`; }).join('') || '<div class="empty">Sois le premier à écrire ici.</div>'}</div>`;
   const f = $('#pf'); if (!f) return;
-  $('#pb').oninput = () => guardInput($('#pb'), $('#perr'));
-  f.onsubmit = async e => { e.preventDefault(); if (!guardInput($('#pb'), $('#perr'))) return; const body = $('#pb').value.trim(); if (body.length < 2) return;
-    const { error } = await sb.from('posts').insert({ body, set_id: $('#ps').value || null }); if (error) return $('#perr').textContent = errMsg(error); forum(); };
+  f.onsubmit = async e => { e.preventDefault();
+    const body = $('#pb').value.trim(); if (body.length < 2) return;
+    const row = { body, section: sec, set_id: $('#ps')?.value || null, title: $('#pt')?.value.trim() || null };
+    const { error } = await sb.from('posts').insert(row);
+    if (error) return $('#perr').textContent = errMsg(error);
+    forum(); };
+}
+async function votePost(id) {
+  if (needAccount()) return;
+  if (S.myvotes?.has(id)) await sb.from('post_votes').delete().eq('post_id', id).eq('user_id', S.user.id);
+  else { const { error } = await sb.from('post_votes').insert({ post_id: id, user_id: S.user.id }); if (error) return toast(errMsg(error), true); }
+  forum();
+}
+
+// ---------- blog : un article par semaine, écrit à partir des vraies cotes ----------
+const md = t => {
+  const lines = esc(t).split(/\r?\n/), out = []; let ul = false;
+  const inline = x => x.replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>').replace(/\*([^*]+)\*/g, '<i>$1</i>').replace(/`([^`]+)`/g, '<code>$1</code>');
+  for (const l of lines) {
+    const t2 = l.trim();
+    if (/^- /.test(t2)) { if (!ul) { out.push('<ul>'); ul = true; } out.push(`<li>${inline(t2.slice(2))}</li>`); continue; }
+    if (ul) { out.push('</ul>'); ul = false; }
+    if (/^### /.test(t2)) out.push(`<h4>${inline(t2.slice(4))}</h4>`);
+    else if (/^## /.test(t2)) out.push(`<h3>${inline(t2.slice(3))}</h3>`);
+    else if (/^# /.test(t2)) out.push(`<h2>${inline(t2.slice(2))}</h2>`);
+    else if (t2) out.push(`<p>${inline(t2)}</p>`);
+  }
+  if (ul) out.push('</ul>');
+  return out.join('');
+};
+const blogDate = d => d ? new Date(d).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' }) : '';
+async function blog() {
+  const slug = location.hash.split('/')[2];
+  if (slug) return article(slug);
+  const { data } = await sb.from('blog').select('id,slug,title,excerpt,tag,published_at,status').eq('status', 'published').order('published_at', { ascending: false }).limit(30);
+  view.innerHTML = `<h2>📰 Le blog de Sharing Cards</h2>
+  <p class="mut small">Un article par semaine, écrit à partir des cotes et des extensions du site. Les commentaires ouvrent une discussion dans le <a href="#/forum">forum</a>.</p>
+  ${(data || []).length ? `<div class="bloglist">${data.map(a => `<a class="panel blogcard" href="#/blog/${esc(a.slug)}">
+    <span class="pill p-tr">${esc(a.tag || 'Article')}</span>
+    <h3>${esc(a.title)}</h3><p class="small mut">${blogDate(a.published_at)}</p><p>${esc(a.excerpt || '')}</p></a>`).join('')}</div>`
+  : '<div class="empty">Le premier article arrive lundi. 📅</div>'}`;
+}
+async function article(slug) {
+  const { data: a } = await sb.from('blog').select('*').eq('slug', slug).maybeSingle();
+  if (!a) { view.innerHTML = '<div class="empty">Article introuvable. <a href="#/blog">Retour au blog</a></div>'; return; }
+  const { data: cs } = await sb.from('posts').select('*').eq('blog_id', a.id).order('created_at');
+  await pseudos((cs || []).map(c => c.user_id));
+  view.innerHTML = `<article class="panel post-art">
+    <p class="small mut"><a href="#/blog">← Le blog</a> · ${esc(a.tag || '')} · ${blogDate(a.published_at)}${a.status !== 'published' ? ' · <b>brouillon</b>' : ''}</p>
+    <h1>${esc(a.title)}</h1>${a.excerpt ? `<p class="lead">${esc(a.excerpt)}</p>` : ''}
+    <div class="artbody">${md(a.body)}</div>
+    <p class="small mut">Cotes Cardmarket via TCGdex, relevées la nuit précédant la publication. Les prix bougent : vérifie toujours la fiche de la carte.</p></article>
+  <h2>Commentaires <span class="mut small">${(cs || []).length}</span></h2>
+  <div class="panel">
+  ${S.profile ? `<form class="form" id="cf"><textarea id="cb" maxlength="1200" placeholder="Ton avis sur l'article…"></textarea><div class="bar" style="margin:0"><button class="btn">Commenter</button></div>${maskNote}<p class="err" id="cerr"></p></form>` : `<p class="mut"><a href="#/compte">Connecte-toi</a> pour commenter.</p>`}
+  ${(cs || []).map(c => { const u = S.pseudos[c.user_id], mine = c.user_id === S.user?.id;
+    return `<div class="post">${av(u?.pseudo, u)}<div style="flex:1"><b>${who(c.user_id, u)}</b> <span class="small mut">${new Date(c.created_at).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' })}</span>
+    <div style="white-space:pre-wrap">${esc(c.body)}</div>
+    <div class="acts" style="margin-top:6px">${mine ? `<button class="btn ghost sm" data-delpost="${c.id}">Supprimer</button>` : `<button class="btn ghost sm" data-report="post:${c.id}">Signaler</button>`}</div></div></div>`; }).join('') || '<p class="mut small">Pas encore de commentaire.</p>'}</div>`;
+  const f = $('#cf'); if (!f) return;
+  f.onsubmit = async e => { e.preventDefault(); const body = $('#cb').value.trim(); if (body.length < 2) return;
+    const { error } = await sb.from('posts').insert({ body, section: 'blog', blog_id: a.id });
+    if (error) return $('#cerr').textContent = errMsg(error);
+    article(slug); };
 }
 
 // ---------- compte ----------
@@ -1030,13 +1124,14 @@ function regles() {
    <li><b>Collectionneurs uniquement.</b> On ne pose que ses doubles : la carte doit être au moins en ×2 dans ton classeur. Maximum 3 annonces par carte et 30 annonces actives. Les professionnels et revendeurs de stock ne sont pas admis.</li>
    <li><b>18 ans et plus.</b> Les comptes et les transactions sont réservés aux majeurs. Les versements aux vendeurs exigeront une vérification d'identité par notre prestataire de paiement.</li>
    <li><b>Tout passe par l'appli.</b> Offres, messages, paiement et suivi. Une transaction conclue ailleurs n'est pas protégée et entraîne la suspension du compte.</li>
-   <li><b>Aucune coordonnée.</b> Téléphone, e-mail, réseaux sociaux, liens, IBAN, rendez-vous en main propre : bloqués automatiquement dans les annonces, messages et forum.</li>
+   <li><b>Aucune coordonnée.</b> Dans les annonces et la messagerie privée, téléphone, e-mail, réseaux sociaux, liens, IBAN et rendez-vous en main propre sont <b>bloqués</b>. Dans le forum et les commentaires du blog, ils sont <b>masqués</b> automatiquement (<span class="mono">######</span>) : ton message reste lisible, tes coordonnées ne partent pas. Les noms de famille (deux mots avec majuscule) sont également masqués ; un prénom seul passe.</li>
    <li><b>Paiement en séquestre.</b> L'argent de l'acheteur est bloqué jusqu'à ce qu'il confirme la réception de la carte, comme le « Trustee Service » de Cardmarket.</li>
    <li><b>Envoi suivi obligatoire.</b> Numéro de suivi requis pour marquer une carte expédiée. Protection : sleeve + toploader + enveloppe rigide.</li>
    <li><b>État honnête.</b> NM = comme neuve, EX = micro-défauts, GD = usure visible, PL = abîmée. Photo de ta propre carte recommandée.</li>
    <li><b>Litige.</b> Carte non reçue ou non conforme : ouvre un litige depuis l'offre. L'argent reste bloqué pendant l'examen.</li>
    <li><b>Contrôle d'authenticité.</b> Chaque carte peut passer un contrôle photo (couleurs comparées à l'officielle, texte, dos, test de la lampe). Le score est affiché sur l'annonce, et l'acheteur peut refaire le contrôle à la réception avant de confirmer. Il est indicatif et ne remplace pas une expertise.</li>
    <li><b>Contrefaçons interdites.</b> Toute fausse carte signalée entraîne l'exclusion définitive.</li>
+   <li><b>Trophées mérités.</b> Les compteurs (cartes, scans, défis) sont tenus par la base, pas par ton téléphone. Une carte compte pour les trophées après 7 jours dans ton classeur, et un trophée s'éteint si la condition n'est plus vraie.</li>
   </ol>
   <h3>Frais</h3><p class="mut">Vendeur : 0 %. Acheteur : protection acheteur de ${eur(S.st.buyer_fixed ?? 0.5)} + ${((S.st.buyer_rate ?? 0.03) * 100).toLocaleString('fr-FR')} % du prix, qui finance le paiement sécurisé et la médiation. Échanges carte contre carte : gratuits pendant la bêta, puis 0,99 € par personne. 3 échanges offerts à l'inscription, +1 par ami parrainé (après sa première transaction réussie). Tant qu'un des deux membres a moins de 3 transactions réussies, une transaction est plafonnée à ${eur(S.st.new_account_cap ?? 100)}.</p>
   <p class="mut small">Le détail juridique est dans les <a href="#/legal/cgu">CGU</a> et les <a href="#/legal/cgv">conditions de vente</a>.</p>
@@ -1227,10 +1322,11 @@ async function moderation() {
   if (error) { view.innerHTML = `<div class="empty">${esc(errMsg(error))}</div>`; return; }
   view.innerHTML = `<h2>🛡️ Modération</h2>
   <div class="kpis">${[['membres', 'membres'], ['annonces', 'annonces actives'], ['offres_en_cours', 'offres en cours'], ['signalements_ouverts', 'signalements'], ['litiges', 'litiges'], ['suspendus', 'suspendus']].map(([k, n]) => `<div><b>${ov[k] ?? 0}</b><span>${n}</span></div>`).join('')}</div>
-  <div class="seg" style="margin:14px 0">${[['rep', 'Signalements'], ['dis', 'Litiges & remboursements'], ['rgpd', 'RGPD & données']].map(([k, n]) => `<button data-mt="${k}" aria-pressed="${tab === k}">${n}</button>`).join('')}</div>
+  <div class="seg wrapseg" style="margin:14px 0">${[['rep', 'Signalements'], ['dis', 'Litiges & remboursements'], ['blog', 'Blog'], ['rgpd', 'RGPD & données']].map(([k, n]) => `<button data-mt="${k}" aria-pressed="${tab === k}">${n}</button>`).join('')}</div>
   <div id="mbody"><div class="skel"><div class="sk sk-card"></div></div></div>`;
   if (tab === 'rep') return modReports();
   if (tab === 'dis') return modDisputes();
+  if (tab === 'blog') return modBlog();
   modRgpd(ov);
 }
 async function modReports() {
@@ -1243,7 +1339,7 @@ async function modReports() {
     <p class="panel small" style="white-space:pre-wrap;margin:6px 0">${esc(r.content || '(contenu déjà supprimé)')}</p>
     ${r.photo ? `<img class="cimg" style="max-width:160px" src="${photoUrl(r.photo)}" alt="Photo de l'annonce signalée">` : ''}
     <p class="small">Membre visé : ${r.author_id ? `<a href="#/membre/${r.author_id}">${esc(r.author || '?')}</a>` : '—'} · ${r.reports_total || 0} signalement(s) au total${r.suspended_until ? ' · <b>déjà suspendu</b>' : ''}</p>
-    <div class="acts">${r.status === 'open' ? `<button class="btn sm" data-ract="${r.id}:remove">Retirer le contenu</button><button class="btn sm ghost" data-ract="${r.id}:suspend">Suspendre 7 j</button><button class="btn sm ghost" data-ract="${r.id}:ban">Bannir</button><button class="btn sm ghost" data-ract="${r.id}:dismiss">Ignorer</button>` : ''}${r.suspended_until ? `<button class="btn sm ghost" data-ract="${r.id}:unsuspend">Lever la suspension</button>` : ''}</div>
+    <div class="acts">${r.status === 'open' ? `<button class="btn sm" data-ract="${r.id}:remove">Retirer le contenu</button><button class="btn sm ghost" data-ract="${r.id}:suspend">Suspendre 7 j</button><button class="btn sm ghost" data-ract="${r.id}:ban">Bannir</button><button class="btn sm ghost" data-ract="${r.id}:dismiss">Ignorer</button>` : ''}${r.suspended_until ? `<button class="btn sm ghost" data-ract="${r.id}:unsuspend">Lever la suspension</button>` : ''}${r.author_id ? `<button class="btn sm ghost" data-rstat="${r.author_id}">Remettre ses trophées à zéro</button>` : ''}</div>
     ${r.note ? `<p class="small mut">Note : ${esc(r.note)}</p>` : ''}</div>`).join('') || '<div class="empty">Rien à traiter 🎉</div>'}`;
 }
 async function modDisputes() {
@@ -1268,6 +1364,33 @@ function modRgpd(ov) {
   <p class="small">Dernière purge : ${last ? new Date(last.at).toLocaleString('fr-FR') + ' · ' + esc(JSON.stringify(last.result)) : 'jamais'}</p>
   <button class="btn sm" data-purge>Lancer la purge maintenant</button></div>`;
 }
+async function modBlog() {
+  const { data, error } = await sb.rpc('admin_blog', { p_action: 'list' });
+  if (error) return $('#mbody').innerHTML = `<div class="empty">${esc(errMsg(error))}</div>`;
+  $('#mbody').innerHTML = `<div class="panel"><h3 style="margin-top:0">Articles</h3>
+  <p class="small mut">Un article est généré automatiquement chaque lundi à partir des cotes et des extensions, et reste en <b>brouillon</b> jusqu'à ce que tu le publies. Les commentaires d'un article arrivent dans la section « Autour des articles » du forum.</p>
+  <button class="btn sm" data-bgen>✍️ Générer un article maintenant</button></div>
+  ${(data || []).map(a => `<div class="panel mod"><p class="small mut" style="margin:0">${esc(a.tag || '')} · créé le ${new Date(a.created_at).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' })} · <span class="pill p-${a.status === 'published' ? 'NM' : 'GD'}">${esc(a.status)}</span> · ${a.comments} commentaire(s)</p>
+    <h3 style="margin:6px 0">${esc(a.title)}</h3><p class="small">${esc(a.excerpt || '')}</p>
+    <details class="small"><summary>Lire / modifier</summary><pre style="white-space:pre-wrap">${esc(a.body || '')}</pre></details>
+    <div class="acts"><a class="btn sm ghost" href="#/blog/${esc(a.slug)}">Aperçu</a>
+    ${a.status === 'published' ? `<button class="btn sm ghost" data-bact="${a.id}:unpublish">Dépublier</button>` : `<button class="btn sm" data-bact="${a.id}:publish">Publier</button>`}
+    <button class="btn sm ghost" data-bedit="${a.id}">Modifier</button><button class="btn sm ghost" data-bact="${a.id}:trash">Corbeille</button></div></div>`).join('') || '<div class="empty">Aucun article pour l\'instant : touche « Générer un article maintenant ».</div>'}`;
+}
+async function modBlogEdit(id) {
+  const { data } = await sb.rpc('admin_blog', { p_action: 'list' });
+  const a = (data || []).find(x => x.id === id); if (!a) return;
+  modal(`<form class="form" id="bef"><h2 style="margin:0">Modifier l'article</h2>
+  <label class="f">Titre<input id="bet" maxlength="140" value="${esc(a.title)}"></label>
+  <label class="f">Chapeau<input id="bee" maxlength="240" value="${esc(a.excerpt || '')}"></label>
+  <label class="f">Rubrique<input id="beg" maxlength="30" value="${esc(a.tag || '')}"></label>
+  <label class="f">Texte (markdown : ## titre, - liste, **gras**)<textarea id="beb" rows="14">${esc(a.body || '')}</textarea></label>
+  <button class="btn">Enregistrer</button></form>`);
+  $('#bef').onsubmit = async e => { e.preventDefault();
+    const patch = { title: $('#bet').value.trim(), excerpt: $('#bee').value.trim(), tag: $('#beg').value.trim(), body: $('#beb').value };
+    const { error } = await sb.rpc('admin_blog', { p_action: 'edit', p_id: id, p_patch: patch });
+    close(); toast(error ? errMsg(error) : 'Article enregistré', !!error); if (!error) moderation(); };
+}
 async function modAct(v) {
   const [id, action] = v.split(':');
   const titles = { remove: 'Retirer ce contenu', suspend: 'Suspendre le membre 7 jours', ban: 'Bannir définitivement ce membre', dismiss: 'Ignorer ce signalement', unsuspend: 'Lever la suspension' };
@@ -1287,7 +1410,7 @@ async function modOffer(v) {
 
 // ---------- événements ----------
 document.addEventListener('click', async e => {
-  const t = e.target.closest('[data-set],[data-f],[data-tog],[data-iq],[data-dq],[data-put],[data-l],[data-buy],[data-trade],[data-rmlist],[data-report],[data-act],[data-ot],[data-am],[data-ts],[data-card],[data-close],[data-delpost],[data-scan],[data-express],[data-names],[data-connect],[data-auth],[data-export],[data-delacct],[data-prep],[data-label],[data-dl],[data-paylbl],[data-ordlbl],[data-pickrelay],[data-avk],[data-avh],[data-wish],[data-csv],[data-mt],[data-mst],[data-ract],[data-oact],[data-purge]');
+  const t = e.target.closest('[data-set],[data-f],[data-tog],[data-iq],[data-dq],[data-put],[data-l],[data-buy],[data-trade],[data-rmlist],[data-report],[data-act],[data-ot],[data-am],[data-ts],[data-card],[data-close],[data-delpost],[data-scan],[data-express],[data-names],[data-connect],[data-auth],[data-export],[data-delacct],[data-prep],[data-label],[data-dl],[data-paylbl],[data-ordlbl],[data-pickrelay],[data-avk],[data-avh],[data-wish],[data-csv],[data-mt],[data-mst],[data-ract],[data-oact],[data-purge],[data-fs],[data-vote],[data-bgen],[data-bact],[data-bedit],[data-rstat]');
   if (!t) return;
   const d = t.dataset;
   if (d.set) { S.set = d.set; classeur(); }
@@ -1329,7 +1452,19 @@ document.addEventListener('click', async e => {
   else if ('express' in d) expressModal();
   else if ('names' in d) nameSearch();
   else if ('connect' in d) { const { data, error } = await sb.functions.invoke('payments/connect'); if (error || !data?.url) return toast(data?.error || 'Activation des ventes bientôt disponible.', true); location.href = data.url; }
-  else if (d.delpost) { await sb.from('posts').delete().eq('id', d.delpost); forum(); }
+  else if (d.delpost) { await sb.from('posts').delete().eq('id', d.delpost); route(); }
+  else if (d.fs) { S.fsec = d.fs; forum(); }
+  else if (d.vote) votePost(+d.vote);
+  else if ('bgen' in d) { t.disabled = true; t.textContent = 'Écriture en cours…';
+    const { data, error } = await sb.functions.invoke('blog/generate');
+    toast(error || data?.error ? (data?.error || 'Génération impossible') : `Brouillon prêt : ${data.article.title}`, !!(error || data?.error));
+    moderation(); }
+  else if (d.bact) { const [id, action] = d.bact.split(':');
+    const { error } = await sb.rpc('admin_blog', { p_action: action, p_id: id });
+    toast(error ? errMsg(error) : 'C\'est fait', !!error); if (!error) moderation(); }
+  else if (d.bedit) modBlogEdit(d.bedit);
+  else if (d.rstat) { const { error } = await sb.rpc('admin_reset_stats', { p_user: d.rstat });
+    toast(error ? errMsg(error) : 'Trophées et compteurs remis à zéro', !!error); }
 });
 document.addEventListener('input', e => { if (e.target.id === 'tq') { S.tq = e.target.value; drawListings(); } });
 document.addEventListener('change', e => {
@@ -1368,6 +1503,7 @@ sb.auth.onAuthStateChange((ev) => { if (ev === 'SIGNED_IN' && !S.user) loadSessi
 window.addEventListener('hashchange', route);
 { let n = 0, tm; $('.logo').addEventListener('click', () => { n++; clearTimeout(tm); tm = setTimeout(() => n = 0, 2500); if (n >= 7) { n = 0; Game.flag('logo'); checkUnlock(); } }); }
 document.addEventListener('click', e => { if (e.target.closest('[data-intro]')) { e.preventDefault(); playIntro(true); } });
+Game.init({ bump: (k, n) => { sb.rpc('bump', { p_k: k, p_n: n }); } });
 initFx();
 initCritters({
   getCard: () => { const l = Object.values(S.cards).filter(c => c.image); const c = l[Math.floor(Math.random() * l.length)]; return c ? c.image + '/low.webp' : null; },

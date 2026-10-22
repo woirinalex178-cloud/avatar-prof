@@ -59,6 +59,17 @@
 - **Défi de la semaine** (`game.js`) : 5 défis en rotation (cartes ajoutées, scans, doubles posés, souhaits, contrôles), compteur local par semaine ISO, trophée `x_week` (3 semaines réussies). Affiché dans le classeur et les trophées.
 - **SQL de référence** : `supabase/sql/2026-10-21-moderation-rgpd-echanges.sql`. ⚠️ Le bloc RGPD (fonctions avec `delete`) + les 2 lignes `cron.schedule` doivent être collés une fois dans Supabase → SQL Editor : l'outil MCP refuse les instructions destructrices sans confirmation humaine.
 
+## Trophées honnêtes, forum en sections, blog (ajout 22/10)
+- **Compteurs en base** : table `stats(user_id,k,n,nd,nw,d,w)` + `bump(k,n)` (plafonds par jour, anti-triche) + `my_stats()`. `game.js` n'utilise plus `localStorage` dès qu'on est connecté (`Game.init({bump})`, `Game.setStats()`), le local ne sert plus qu'au mode invité et à la célébration des nouveaux trophées.
+- **Anti-aller-retour** : `collection.since` (trigger `collection_since`) ; une carte ne compte pour les trophées et l'XP qu'après `Game.STABLE_DAYS` = 7 jours. Le classeur affiche « ⏳ n carte(s) en attente ».
+- **Série de jours côté serveur** : `profiles.streak` / `streak_best` via `my_visit()` (remplace `touch_me()`, dont le type de retour ne pouvait plus changer).
+- **Trophées vivants** : ils restent recalculés à chaque visite ; `profiles.badges` est resynchronisé. Bouton « Remettre ses trophées à zéro » (`admin_reset_stats`) dans les signalements. Badges/XP des 2 comptes existants remis à zéro le 22/10.
+- **Masquage des coordonnées** : `mask_contacts()` + `safe_words` (noms de Pokémon, extensions, raretés, vocabulaire courant, reconstruits par `rebuild_safe_words()`). Les posts sont **masqués** (`posts.body`), l'original reste dans `posts.body_raw` (colonne révoquée pour les membres, lisible par la modération via `admin_reports`). La messagerie privée et les annonces restent **bloquantes**.
+- **Forum en 5 sections** : libre, recherche, idees (avec votes `post_votes` → `posts.votes`), presentation, blog. `posts.section`, `posts.title` (propositions).
+- **Blog** : table `blog`, page `#/blog` + `#/blog/<slug>`, rendu markdown maison (`md()` dans app.js), commentaires = `posts` avec `blog_id` (section blog). Onglet **Blog** dans la modération : générer / publier / dépublier / modifier / corbeille (`admin_blog`).
+- **Edge function `blog`** (`/generate`, verify_jwt off) : rassemble les vraies données (hausses de cote, dernière extension, activité), rédige avec Gemini puis Groq en secours, **sans clé IA écrit quand même** un article factuel. Toujours en brouillon. Cron `blog-weekly` lundi 6 h 13 UTC. Premier brouillon créé le 22/10 (version « maison », clé Gemini encore absente).
+- **SQL de référence** : `supabase/sql/2026-10-22-trophees-forum-blog.sql`.
+
 ## Prochaines tâches techniques
 1. Régler les seuils d'authenticité (attendre les scores de l'utilisateur, étape 4 d'A-FAIRE).
 2. Remplir `LEGAL` en haut de `legal.js` (nom, SIRET, adresse, e-mail, médiateur).

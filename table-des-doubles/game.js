@@ -5,6 +5,17 @@ const load = () => { try { return JSON.parse(localStorage.getItem(LS)) || {}; } 
 const save = g => { try { localStorage.setItem(LS, JSON.stringify(g)); } catch { } };
 export const G = load();
 G.seen ||= []; G.days ||= []; G.count ||= {}; G.flags ||= {};
+// Compteurs officiels : ils viennent de la base (anti-triche, et retrouvés sur tous les appareils).
+// En mode invité (sans compte), on retombe sur les compteurs locaux.
+let SRV = null, BUMP = null;
+export function init(o) { BUMP = o?.bump || null; }
+export function setStats(s) { SRV = s || null; }
+const cnt = k => SRV ? (SRV[k]?.n || 0) : (G.count[k] || 0);
+const cntDay = k => SRV ? (SRV[k]?.nd || 0) : (k === 'add' ? (G.daily?.d === today() ? G.daily.add : 0) : 0);
+const cntWeek = k => SRV ? (SRV[k]?.nw || 0) : (G.week?.w === isoWeek() ? G.week.c : 0);
+const srvBump = (k, n) => { if (!SRV) return false;
+  SRV[k] = { n: (SRV[k]?.n || 0) + n, nd: (SRV[k]?.nd || 0) + n, nw: (SRV[k]?.nw || 0) + n };
+  BUMP?.(k, n); return true; };
 const today = () => new Date().toISOString().slice(0, 10);
 // semaine ISO (2026-43) : sert au défi hebdomadaire
 function isoWeek(d = new Date()) {
@@ -26,12 +37,16 @@ function weekBox() { const w = isoWeek(); if (G.week?.w !== w) G.week = { w, c: 
 
 // ---------- événements comptés (scan, authentification, clics secrets…) ----------
 export function track(ev, n = 1) {
+  if (ev === 'add') { const h = new Date().getHours();
+    if (h < 5 && !cnt('night')) track('night');
+    if (h >= 5 && h < 7 && !cnt('early')) track('early'); }
+  if (srvBump(ev, n)) return;
   G.count[ev] = (G.count[ev] || 0) + n;
   const wk = weekBox(); if (ev === weekQuest(wk.w).k) wk.c += n;
-  if (ev === 'add') { const h = new Date().getHours(); if (h < 5) G.flags.night = 1; if (h >= 5 && h < 7) G.flags.early = 1; G.daily ||= {}; if (G.daily.d !== today()) G.daily = { d: today(), add: 0 }; G.daily.add++; }
+  if (ev === 'add') { G.daily ||= {}; if (G.daily.d !== today()) G.daily = { d: today(), add: 0 }; G.daily.add += n; }
   save(G);
 }
-export function flag(k) { G.flags[k] = 1; save(G); }
+export function flag(k) { if (srvBump(k, 1)) return; G.count[k] = 1; G.flags[k] = 1; save(G); }
 export function visit() {
   const d = today(); if (!G.days.includes(d)) { G.days.push(d); G.days = G.days.slice(-60); save(G); }
 }
@@ -49,10 +64,13 @@ const STARTERS = [['bulbizarre', 'bulbasaur'], ['salamèche', 'charmander'], ['c
 const BIRDS = [['artikodin', 'articuno'], ['électhor', 'zapdos'], ['sulfura', 'moltres']];
 
 // ---------- statistiques ----------
-export function stats(rows, coll, profile) {
-  const st = { uniq: 0, qty: 0, dbl: 0, value: 0, top: 0, langs: new Set(), sets: {}, series: new Set(), names: [], rar: {}, oldest: 9999, jp: 0, secretRare: 0, first: 0, n151: 0 };
+export const STABLE_DAYS = 7;
+const stableSince = s => !s || (Date.now() - new Date(s)) / 864e5 >= STABLE_DAYS;
+export function stats(rows, coll, profile, since) {
+  const st = { uniq: 0, qty: 0, dbl: 0, value: 0, top: 0, langs: new Set(), sets: {}, series: new Set(), names: [], rar: {}, oldest: 9999, jp: 0, secretRare: 0, first: 0, n151: 0, pending: 0 };
   for (const r of rows) {
     const q = coll[r.id] || 0; if (!q) continue;
+    if (since && !stableSince(since[r.id])) { st.pending++; continue; }
     st.uniq++; st.qty += q; st.dbl += q - 1; st.value += q * (r.price_eur || 0); st.top = Math.max(st.top, r.price_eur || 0);
     st.langs.add(r.lang); if (r.serie_id) st.series.add(r.serie_id); if (r.lang === 'ja') st.jp++;
     const s = st.sets[r.set_id] ||= { own: 0, total: r.set_total || 0 }; if (r.num && r.num <= s.total) s.own++;
@@ -66,7 +84,10 @@ export function stats(rows, coll, profile) {
   st.bestPct = Math.max(0, ...pcts); st.setsHalf = pcts.filter(p => p >= .5).length; st.setsFull = pcts.filter(p => p >= 1).length;
   const rc = k => Object.entries(st.rar).filter(([r]) => r.includes(k)).reduce((a, [, n]) => a + n, 0);
   st.holo = rc('holo'); st.ultra = rc('ultra'); st.ir = rc('illustration'); st.sir = rc('special illustration') + rc('spéciale'); st.hyper = rc('hyper') + rc('secret') + rc('gold');
-  st.trades = profile?.trades_done || 0; st.fil = profile?.filleuls || 0; st.streak = streak(); st.c = G.count; st.f = G.flags;
+  st.trades = profile?.trades_done || 0; st.fil = profile?.filleuls || 0;
+  st.streak = SRV ? (profile?.streak || 0) : streak();
+  st.c = { add: cnt('add'), scan: cnt('scan'), auth: cnt('auth'), list: cnt('list'), wish: cnt('wish'), catch: cnt('catch'), daily: cnt('daily'), weekly: cnt('weekly') };
+  st.f = { night: !!cnt('night'), early: !!cnt('early'), logo: !!cnt('logo') };
   return st;
 }
 
@@ -161,19 +182,18 @@ export function newlyUnlocked(ev) {
 
 // ---------- défi du jour ----------
 export function daily() {
-  const n = [3, 5, 2, 4][new Date().getDay() % 4];
-  G.daily ||= {}; if (G.daily.d !== today()) { G.daily = { d: today(), add: 0 }; save(G); }
-  const done = G.daily.add >= n;
-  if (done && !G.daily.ok) { G.daily.ok = 1; track('daily'); }
-  return { n, cur: Math.min(G.daily.add, n), done };
+  const n = [3, 5, 2, 4][new Date().getDay() % 4], c = cntDay('add'), done = c >= n;
+  if (!SRV) { G.daily ||= {}; if (G.daily.d !== today()) { G.daily = { d: today(), add: 0 }; save(G); } }
+  if (done && cntDay('daily') === 0) track('daily');
+  return { n, cur: Math.min(c, n), done };
 }
 
 // ---------- défi de la semaine ----------
 export function weekly() {
-  const wk = weekBox(), q = weekQuest(wk.w), done = wk.c >= q.n;
-  if (done && !wk.ok) { wk.ok = 1; track('weekly'); }
-  save(G);
-  return { ...q, cur: Math.min(wk.c, q.n), done };
+  const q = weekQuest(isoWeek()), c = SRV ? (SRV[q.k]?.nw || 0) : weekBox().c, done = c >= q.n;
+  if (done && cntWeek('weekly') === 0) track('weekly');
+  if (!SRV) save(G);
+  return { ...q, cur: Math.min(c, q.n), done };
 }
 export const weeklyLine = esc => { const w = weekly(); return `🗓️ Défi de la semaine : ${w.ic} ${esc(w.t)} — ${w.done ? '<b class="dn">réussi ✔</b>' : `${w.cur}/${w.n}`}`; };
 

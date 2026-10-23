@@ -27,7 +27,7 @@ function toast(m, bad) { const t = $('#toast'); t.textContent = m; t.className =
 function modal(html) { dbody.innerHTML = html; if (!dlg.open) dlg.showModal(); }
 const close = () => dlg.open && dlg.close();
 const errMsg = e => { const m = e?.message || String(e);
-  if (/posts_body_check/.test(m)) return 'Ton message doit faire entre 2 et 600 caractères.';
+  if (/posts_body_check/.test(m)) return 'Ton message doit faire entre 2 et 2 000 caractères.';
   if (/posts_title/.test(m)) return 'Le titre est trop long (90 caractères maximum).';
   if (/duplicate key/.test(m)) return 'C\'est déjà enregistré.';
   return m.replace(/^.*?Interdit/, 'Interdit'); };
@@ -951,7 +951,7 @@ async function forum() {
   <div class="seg wrapseg" style="margin-bottom:14px">${SECTIONS.map(([k, n]) => `<button data-fs="${k}" aria-pressed="${sec === k}">${n}</button>`).join('')}</div>
   <div class="panel"><h3 style="margin-top:0">${titre}</h3><p class="small mut">${sous}</p>
   ${S.profile ? `<form class="form" id="pf">${idees ? '<label class="f">Titre de ta proposition<input id="pt" maxlength="90" required></label>' : ''}
-    <textarea id="pb" maxlength="560" placeholder="${idees ? 'Décris ton idée : à quoi ça sert, pour qui ?' : sec === 'presentation' ? 'Présente-toi : depuis quand tu collectionnes, ce que tu cherches…' : sec === 'recherche' ? 'Les cartes que tu cherches (extension, numéro, état voulu)…' : 'Une question sur une cote, une carte, un conseil d\'état ?'}"></textarea>
+    <textarea id="pb" maxlength="1900" rows="4" placeholder="${idees ? 'Décris ton idée : à quoi ça sert, pour qui ?' : sec === 'presentation' ? 'Présente-toi : depuis quand tu collectionnes, ce que tu cherches…' : sec === 'recherche' ? 'Les cartes que tu cherches (extension, numéro, état voulu)…' : 'Une question sur une cote, une carte, un conseil d\'état ?'}"></textarea>
     <div class="bar" style="margin:0">${sec === 'libre' || sec === 'recherche' ? `<select id="ps" style="width:auto"><option value="">Général</option>${S.sets.filter(x => x.lang === S.lang).slice(0, 80).map(x => `<option value="${x.id}">${esc(x.name)}</option>`).join('')}</select>` : ''}<button class="btn">Publier</button></div>
     ${maskNote}<p class="err" id="perr"></p></form>` : `<p class="mut">Lecture libre. <a href="#/compte">Connecte-toi</a> pour participer.</p>`}
   ${(data || []).map(p => { const u = S.pseudos[p.user_id], mine = p.user_id === S.user?.id, voted = S.myvotes.has(p.id);
@@ -1017,7 +1017,7 @@ async function article(slug) {
     <p class="small mut">Cotes Cardmarket via TCGdex, relevées la nuit précédant la publication. Les prix bougent : vérifie toujours la fiche de la carte.</p></article>
   <h2>Commentaires <span class="mut small">${(cs || []).length}</span></h2>
   <div class="panel">
-  ${S.profile ? `<form class="form" id="cf"><textarea id="cb" maxlength="560" placeholder="Ton avis sur l'article…"></textarea><div class="bar" style="margin:0"><button class="btn">Commenter</button></div>${maskNote}<p class="err" id="cerr"></p></form>` : `<p class="mut"><a href="#/compte">Connecte-toi</a> pour commenter.</p>`}
+  ${S.profile ? `<form class="form" id="cf"><textarea id="cb" maxlength="1900" rows="4" placeholder="Ton avis sur l'article…"></textarea><div class="bar" style="margin:0"><button class="btn">Commenter</button></div>${maskNote}<p class="err" id="cerr"></p></form>` : `<p class="mut"><a href="#/compte">Connecte-toi</a> pour commenter.</p>`}
   ${(cs || []).map(c => { const u = S.pseudos[c.user_id], mine = c.user_id === S.user?.id;
     return `<div class="post">${av(u?.pseudo, u)}<div style="flex:1"><b>${who(c.user_id, u)}</b> <span class="small mut">${new Date(c.created_at).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' })}</span>
     <div style="white-space:pre-wrap">${esc(c.body)}</div>

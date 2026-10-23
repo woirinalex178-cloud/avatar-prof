@@ -12,9 +12,6 @@
 - [ ] **Boxtal, envoi sans imprimante** : demander au support (aide.boxtal.com ou chat) : « Puis-je obtenir via l'API v3 une étiquette **QR code / sans impression** pour Mondial Relay et Chronopost Shop2Shop ? Quel `shippingOfferCode` ou quel type de document ? » → transmets-moi la réponse, je l'affiche dans l'appli.
 - [ ] **Coller un fichier SQL (2 min)** : Supabase → SQL Editor → New query → copie tout le contenu de `table-des-doubles/supabase/sql/2026-10-21-moderation-rgpd-echanges.sql` → Run. Ça active la purge RGPD automatique et le remboursement automatique des litiges. (Je ne peux pas le lancer moi-même : mes outils refusent les instructions qui suppriment des données sans ton accord.)
 - [ ] **Relire le 1er article du blog** : Compte → Ouvrir la modération → onglet **Blog** → « Lire / modifier », puis **Publier** quand il te plaît. (Sans clé Gemini, l'article est écrit par le site lui-même ; avec la clé, il sera plus vivant.)
-- [ ] *(facultatif)* **Messages de forum plus longs** : aujourd'hui 600 caractères maximum. Pour passer à 2 000, Supabase → SQL Editor → New query → colle et Run :
-  `alter table public.posts drop constraint posts_body_check, add constraint posts_body_check check (char_length(body) between 2 and 2000);`
-  puis dis-le-moi, j'agrandis les champs dans l'appli.
 - ✅ Inscriptions, Stripe test, Boxtal, textes légaux, médiateur
 - ✅ Page modération (ton compte est admin : **Compte → Ouvrir la modération**), liste de souhaits, import/export CSV du classeur, défi de la semaine, frais d'échange payables
 

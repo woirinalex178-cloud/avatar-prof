@@ -69,6 +69,7 @@
 - **Blog** : table `blog`, page `#/blog` + `#/blog/<slug>`, rendu markdown maison (`md()` dans app.js), commentaires = `posts` avec `blog_id` (section blog). Onglet **Blog** dans la modération : générer / publier / dépublier / modifier / corbeille (`admin_blog`).
 - **Edge function `blog`** (`/generate`, verify_jwt off) : rassemble les vraies données (hausses de cote, dernière extension, activité), rédige avec Gemini puis Groq en secours, **sans clé IA écrit quand même** un article factuel. Toujours en brouillon. Cron `blog-weekly` lundi 6 h 13 UTC. Premier brouillon créé le 22/10 (version « maison », clé Gemini encore absente).
 - **SQL de référence** : `supabase/sql/2026-10-22-trophees-forum-blog.sql`.
+- Messages du forum : limite portée à **2 000 caractères** (`posts_body_check`), champs à 1900 et troncature dans `posts_before_insert` après masquage (le masquage peut rallonger le texte).
 
 ## Prochaines tâches techniques
 1. Régler les seuils d'authenticité (attendre les scores de l'utilisateur, étape 4 d'A-FAIRE).

@@ -959,8 +959,9 @@ async function forum() {
       <b>${who(p.user_id, u)}</b> <span class="small mut">${new Date(p.created_at).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' })}${p.set_id ? ' · ' + esc(setName(S.sets.find(x => x.id === p.set_id))) : ''}${p.blog ? ` · <a href="#/blog/${esc(p.blog.slug)}">${esc(p.blog.title)}</a>` : ''}</span>
       ${p.title ? `<h4 style="margin:4px 0">${esc(p.title)}</h4>` : ''}
       <div style="white-space:pre-wrap">${esc(p.body)}</div>
+      ${p.edited_at ? `<span class="small mut">(modifié le ${new Date(p.edited_at).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' })})</span>` : ''}
       <div class="acts" style="margin-top:6px">${idees ? `<button class="btn ghost sm${voted ? ' on' : ''}" data-vote="${p.id}">👍 ${p.votes}${voted ? ' · voté' : ''}</button>` : ''}
-      ${mine ? `<button class="btn ghost sm" data-delpost="${p.id}">Supprimer</button>` : `<button class="btn ghost sm" data-report="post:${p.id}">Signaler</button>`}</div>
+      ${mine ? `<button class="btn ghost sm" data-editpost="${p.id}">✏️ Modifier</button><button class="btn ghost sm" data-delpost="${p.id}">Supprimer</button>` : `<button class="btn ghost sm" data-report="post:${p.id}">Signaler</button>`}</div>
     </div></div>`; }).join('') || '<div class="empty">Sois le premier à écrire ici.</div>'}</div>`;
   const f = $('#pf'); if (!f) return;
   f.onsubmit = async e => { e.preventDefault();
@@ -969,6 +970,22 @@ async function forum() {
     const { error } = await sb.from('posts').insert(row);
     if (error) return $('#perr').textContent = errMsg(error);
     forum(); };
+}
+// corriger son propre message (fautes de frappe) : le masquage est réappliqué par la base
+async function editPost(id) {
+  const { data: p, error } = await sb.from('posts').select('id,body,title,section').eq('id', id).maybeSingle();
+  if (error || !p) return toast('Message introuvable', true);
+  modal(`<form class="form" id="epf"><h2 style="margin:0">✏️ Modifier mon message</h2>
+  ${p.section === 'idees' ? `<label class="f">Titre<input id="ept" maxlength="90" value="${esc(p.title || '')}"></label>` : ''}
+  <label class="f">Message<textarea id="epb" maxlength="1900" rows="6">${esc(p.body)}</textarea></label>
+  ${maskNote}<p class="err" id="eperr"></p><button class="btn">Enregistrer</button></form>`);
+  $('#epf').onsubmit = async e => { e.preventDefault();
+    const body = $('#epb').value.trim();
+    if (body.length < 2) return $('#eperr').textContent = 'Ton message doit faire au moins 2 caractères.';
+    const upd = { body }; if ($('#ept')) upd.title = $('#ept').value.trim() || null;
+    const { error: er } = await sb.from('posts').update(upd).eq('id', id);
+    if (er) return $('#eperr').textContent = errMsg(er);
+    close(); toast('Message modifié'); route(); };
 }
 async function votePost(id) {
   if (needAccount()) return;
@@ -1021,7 +1038,8 @@ async function article(slug) {
   ${(cs || []).map(c => { const u = S.pseudos[c.user_id], mine = c.user_id === S.user?.id;
     return `<div class="post">${av(u?.pseudo, u)}<div style="flex:1"><b>${who(c.user_id, u)}</b> <span class="small mut">${new Date(c.created_at).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' })}</span>
     <div style="white-space:pre-wrap">${esc(c.body)}</div>
-    <div class="acts" style="margin-top:6px">${mine ? `<button class="btn ghost sm" data-delpost="${c.id}">Supprimer</button>` : `<button class="btn ghost sm" data-report="post:${c.id}">Signaler</button>`}</div></div></div>`; }).join('') || '<p class="mut small">Pas encore de commentaire.</p>'}</div>`;
+    ${c.edited_at ? `<span class="small mut">(modifié)</span>` : ''}
+    <div class="acts" style="margin-top:6px">${mine ? `<button class="btn ghost sm" data-editpost="${c.id}">✏️ Modifier</button><button class="btn ghost sm" data-delpost="${c.id}">Supprimer</button>` : `<button class="btn ghost sm" data-report="post:${c.id}">Signaler</button>`}</div></div></div>`; }).join('') || '<p class="mut small">Pas encore de commentaire.</p>'}</div>`;
   const f = $('#cf'); if (!f) return;
   f.onsubmit = async e => { e.preventDefault(); const body = $('#cb').value.trim(); if (body.length < 2) return;
     const { error } = await sb.from('posts').insert({ body, section: 'blog', blog_id: a.id });
@@ -1414,7 +1432,7 @@ async function modOffer(v) {
 
 // ---------- événements ----------
 document.addEventListener('click', async e => {
-  const t = e.target.closest('[data-set],[data-f],[data-tog],[data-iq],[data-dq],[data-put],[data-l],[data-buy],[data-trade],[data-rmlist],[data-report],[data-act],[data-ot],[data-am],[data-ts],[data-card],[data-close],[data-delpost],[data-scan],[data-express],[data-names],[data-connect],[data-auth],[data-export],[data-delacct],[data-prep],[data-label],[data-dl],[data-paylbl],[data-ordlbl],[data-pickrelay],[data-avk],[data-avh],[data-wish],[data-csv],[data-mt],[data-mst],[data-ract],[data-oact],[data-purge],[data-fs],[data-vote],[data-bgen],[data-bact],[data-bedit],[data-rstat]');
+  const t = e.target.closest('[data-set],[data-f],[data-tog],[data-iq],[data-dq],[data-put],[data-l],[data-buy],[data-trade],[data-rmlist],[data-report],[data-act],[data-ot],[data-am],[data-ts],[data-card],[data-close],[data-delpost],[data-scan],[data-express],[data-names],[data-connect],[data-auth],[data-export],[data-delacct],[data-prep],[data-label],[data-dl],[data-paylbl],[data-ordlbl],[data-pickrelay],[data-avk],[data-avh],[data-wish],[data-csv],[data-mt],[data-mst],[data-ract],[data-oact],[data-purge],[data-fs],[data-vote],[data-bgen],[data-bact],[data-bedit],[data-rstat],[data-editpost]');
   if (!t) return;
   const d = t.dataset;
   if (d.set) { S.set = d.set; classeur(); }
@@ -1457,6 +1475,7 @@ document.addEventListener('click', async e => {
   else if ('names' in d) nameSearch();
   else if ('connect' in d) { const { data, error } = await sb.functions.invoke('payments/connect'); if (error || !data?.url) return toast(data?.error || 'Activation des ventes bientôt disponible.', true); location.href = data.url; }
   else if (d.delpost) { await sb.from('posts').delete().eq('id', d.delpost); route(); }
+  else if (d.editpost) editPost(+d.editpost);
   else if (d.fs) { S.fsec = d.fs; forum(); }
   else if (d.vote) votePost(+d.vote);
   else if ('bgen' in d) { t.disabled = true; t.textContent = 'Écriture en cours…';

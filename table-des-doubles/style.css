@@ -516,30 +516,33 @@ p .wish{position:static;display:inline-grid;vertical-align:middle;margin-right:4
 .post h4{font-size:16px}
 
 /* ---------- bannière du hero : animée (tout en CSS, aucun fichier en plus) ---------- */
-.hero-ban{position:relative;isolation:isolate;animation:bannerin .8s cubic-bezier(.2,.8,.2,1) both,float 7s ease-in-out 1s infinite}
-/* 1. l'image respire : zoom + léger panoramique */
-.hero-ban img{animation:kenburns 14s ease-in-out infinite alternate;will-change:transform;transform-origin:60% 50%}
-/* 2. reflet doré qui balaie la bannière comme sur une carte holo */
+.hero-ban{position:relative;isolation:isolate;border-radius:18px;
+  animation:bannerin .8s cubic-bezier(.2,.8,.2,1) both,float 7s ease-in-out 1s infinite}
+/* 1. l'image respire : zoom + panoramique */
+.hero-ban img{animation:kenburns 12s ease-in-out infinite alternate;will-change:transform;transform-origin:62% 48%}
+/* 2. éclair doré qui balaie la bannière comme sur une carte holo */
 .hero-ban::after{content:"";position:absolute;inset:0;z-index:3;pointer-events:none;mix-blend-mode:screen;
-  background:linear-gradient(104deg,#0000 30%,#ffffff26 42%,#f3d89266 48%,#ffffff40 52%,#ffffff26 58%,#0000 70%);
-  background-size:260% 100%;background-position:170% 0;animation:sweep 5.5s ease-in-out .6s infinite}
-/* 3. halo doré qui respire sur le cadre */
-.hero-ban::before{content:"";position:absolute;inset:0;z-index:2;pointer-events:none;border-radius:inherit;
-  box-shadow:inset 0 0 70px #000b,inset 0 0 0 1px #e0b85c66;animation:halo 4.5s ease-in-out infinite alternate}
-/* 4. braises dorées qui montent doucement */
-.hero-ban .glints{position:absolute;inset:0;z-index:4;pointer-events:none;border-radius:inherit;overflow:hidden;
+  background:linear-gradient(104deg,#0000 26%,#ffffff33 38%,#f3d89299 46%,#ffffffbb 50%,#f3d89299 54%,#ffffff33 62%,#0000 74%);
+  background-size:300% 100%;background-position:180% 0;animation:sweep 4.5s ease-in-out .4s infinite}
+/* 3. cadre doré qui tourne et respire */
+.hero-ban::before{content:"";position:absolute;inset:-3px;z-index:4;pointer-events:none;border-radius:21px;
+  padding:3px;background:conic-gradient(from var(--ang),#e0b85c44 0deg,#fff 40deg,#f3d892 80deg,#e0b85c44 160deg,#e0b85c22 260deg,#e0b85c44 360deg);
+  -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;
+  mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);mask-composite:exclude;
+  animation:spin 6s linear infinite}
+/* 4. braises dorées qui montent */
+.hero-ban .glints{position:absolute;inset:0;z-index:5;pointer-events:none;border-radius:inherit;overflow:hidden;
   background-repeat:no-repeat;
-  background-image:radial-gradient(circle,#ffe9b0 0 1.4px,#0000 2px),radial-gradient(circle,#f3d892 0 1.1px,#0000 2px),
-    radial-gradient(circle,#fff 0 1px,#0000 2px),radial-gradient(circle,#e0b85c 0 1.6px,#0000 2px),
-    radial-gradient(circle,#ffe9b0 0 1.2px,#0000 2px),radial-gradient(circle,#fff6d8 0 1px,#0000 2px);
+  background-image:radial-gradient(circle,#fff5c4 0 2px,#0000 3px),radial-gradient(circle,#f3d892 0 1.6px,#0000 3px),
+    radial-gradient(circle,#fff 0 1.4px,#0000 3px),radial-gradient(circle,#e0b85c 0 2.2px,#0000 3px),
+    radial-gradient(circle,#ffe9b0 0 1.8px,#0000 3px),radial-gradient(circle,#fff6d8 0 1.4px,#0000 3px);
   background-size:100% 100%;
   background-position:12% 95%,28% 100%,44% 92%,61% 100%,76% 96%,90% 100%;
-  animation:glints 7s linear infinite}
-@keyframes kenburns{from{transform:scale(1.02) translate3d(0,0,0)}to{transform:scale(1.11) translate3d(-2.5%,-1.5%,0)}}
-@keyframes sweep{0%{background-position:170% 0}48%,100%{background-position:-70% 0}}
-@keyframes halo{to{box-shadow:inset 0 0 80px #000c,inset 0 0 0 2px #e0b85ccc,0 0 36px #e0b85c3a}}
+  filter:drop-shadow(0 0 6px #ffcf4088);animation:glints 6s linear infinite}
+@keyframes kenburns{from{transform:scale(1.01) translate3d(0,0,0)}to{transform:scale(1.13) translate3d(-3%,-2%,0)}}
+@keyframes sweep{0%{background-position:180% 0}42%,100%{background-position:-80% 0}}
 @keyframes bannerin{from{opacity:0;transform:scale(.98) translateY(10px)}}
-@keyframes glints{from{background-position:12% 105%,28% 110%,44% 102%,61% 112%,76% 106%,90% 108%;opacity:0}
-  12%{opacity:.9} 85%{opacity:.5}
-  to{background-position:9% -10%,31% -14%,41% -6%,64% -18%,73% -8%,93% -12%;opacity:0}}
-@media (max-width:600px){.hero-ban img{animation-duration:18s}.hero-ban .glints{display:none}}
+@keyframes glints{from{background-position:12% 108%,28% 112%,44% 104%,61% 114%,76% 108%,90% 110%;opacity:0}
+  10%{opacity:1} 80%{opacity:.6}
+  to{background-position:9% -12%,31% -16%,41% -8%,64% -20%,73% -10%,93% -14%;opacity:0}}
+@media (max-width:600px){.hero-ban img{animation-duration:16s}.hero-ban .glints{display:none}}

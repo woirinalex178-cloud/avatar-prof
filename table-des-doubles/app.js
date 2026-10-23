@@ -195,7 +195,7 @@ async function home() {
   ]);
   const top = top0 || []; remember(top);
   const nbCards = S.sets.reduce((a, s) => a + s.card_count, 0).toLocaleString('fr-FR');
-  view.innerHTML = `<div class="banner"><img src="img/banner.webp" alt="Sharing Cards — Collectionnez. Échangez. Partagez." width="2000" height="745"></div>
+  view.innerHTML = `<div class="banner hero-ban"><img src="img/banner.webp" alt="Sharing Cards — Collectionnez. Échangez. Partagez." width="2000" height="745"><i class="glints"></i></div>
   <section class="hero">
     <div><h1>Par des collectionneurs,<br>pour des <span style="color:var(--gold)">collectionneurs</span>.</h1>
     <p class="lead">Coche les cartes que tu possèdes, suis la cote de ta collection, puis pose tes doubles sur la table pour les échanger ou les vendre en toute sécurité.</p>

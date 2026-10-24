@@ -591,6 +591,7 @@ async function tickBurst() {
   setTimeout(tickBurst, 600);
 }
 async function burstAdd(c, g) {
+  c = await toLang(c, wantLang()); // rafale : on respecte la langue choisie
   const had = owned(c); burst.last = g; burst.cleared = false; burst.added.unshift({ ...c, had: had.length > 0 }); beep();
   camtip(`✅ ${nm(c)} ajoutée${had.length ? ` (tu l'avais déjà : ${had.map(x => `×${x.q} ${x.lang === 'ja' ? 'JP' : x.lang.toUpperCase()}`).join(', ')})` : ''}`);
   await addMany({ [c.id]: 1 }); drawBurst();
@@ -645,29 +646,66 @@ async function expressModal() {
 }
 
 // ---------- page de classeur : 9 cartes d'une photo ----------
+// langue souhaitée pour la page (mémorisée d'un scan à l'autre)
+const wantLang = () => scanLang || S.lang;
+async function toLang(c, lang) {
+  if (!c || c.lang === lang) return c;
+  const v = (await langVersions(c)).find(x => x.lang === lang);
+  if (v) remember([v]);
+  return v || c;
+}
+const langChips = (c, attr) => ALL_LANGS.map(l => `<button type="button" class="chip lg${c.lang === l ? ' on' : ''}" data-${attr}="${l}" aria-pressed="${c.lang === l}">${l === 'ja' ? 'JP' : l.toUpperCase()}</button>`).join('');
 async function scanPage(file) {
   const [cols, rows] = pageFmt().split('x').map(Number), cells = await splitPage(file, cols, rows), res = cells.map(() => ({ st: 'wait' }));
   scanState.page = res;
   const draw = () => {
     const n = res.filter(r => r.on && r.pick).length;
-    $('#scr').innerHTML = `<div class="pagegrid" style="--cols:${cols}">${res.map((r, i) => `<button type="button" class="pcell ${r.st}${r.on ? ' on' : ''}" data-pc="${i}">${r.pick ? img(r.pick) + ownBadge(r.pick) : `<span>${{ wait: '…', blank: 'vide', none: '✖', run: '🔎' }[r.st] || '?'}</span>`}${r.st === 'unsure' ? '<i>?</i>' : r.on ? '<i>✓</i>' : ''}</button>`).join('')}</div>
+    $('#scr').innerHTML = `<div class="langsw" id="pglang"><span class="small mut">Langue de la page :</span>${ALL_LANGS.map(l => `<button type="button" class="chip lg${wantLang() === l ? ' on' : ''}" data-pl="${l}" aria-pressed="${wantLang() === l}">${l === 'ja' ? 'JP' : l.toUpperCase()}</button>`).join('')}</div>
+      <div class="pagegrid" style="--cols:${cols}">${res.map((r, i) => `<button type="button" class="pcell ${r.st}${r.on ? ' on' : ''}" data-pc="${i}">${r.pick ? img(r.pick) + ownBadge(r.pick) : `<span>${{ wait: '…', blank: 'vide', none: '✖', run: '🔎' }[r.st] || '?'}</span>`}${r.st === 'unsure' ? '<i>?</i>' : r.on ? '<i>✓</i>' : ''}</button>`).join('')}</div>
       <div id="pcpick"></div><button type="button" class="btn" id="pcadd" ${n ? '' : 'disabled'}>➕ Ajouter ${n} carte${n > 1 ? 's' : ''} au classeur</button>`;
     $('#pcadd').onclick = async () => { const m = {}; res.forEach(r => { if (r.on && r.pick) m[r.pick.id] = (m[r.pick.id] || 0) + 1; }); await addMany(m); toast(`${n} carte${n > 1 ? 's' : ''} ajoutée${n > 1 ? 's' : ''} au classeur`); $('#scr').innerHTML = '<p class="okline">✅ Page ajoutée ! Photographie la suivante.</p>'; };
   };
-  $('#scr').onclick = e => { const b = e.target.closest('[data-pc]'); if (!b) return; const r = res[+b.dataset.pc]; if (!r.list?.length) return;
-    $('#pcpick').innerHTML = `<p class="small" style="margin:8px 0 4px"><b>Case ${+b.dataset.pc + 1}</b> : laquelle ?</p><div class="alts">${r.list.slice(0, 6).map((c, j) => `<button type="button" data-pp="${j}">${img(c)}<small>${flag(c.lang)} ${esc(nm(c))}<br>${esc(c.local_id)}</small></button>`).join('')}<button type="button" data-pp="-1"><small>Ne pas ajouter</small></button></div>`;
-    $('#pcpick').onclick = ev => { const p = ev.target.closest('[data-pp]'); if (!p) return; ev.stopPropagation(); const j = +p.dataset.pp; if (j >= 0) { r.pick = r.list[j]; r.on = true; r.st = 'sure'; } else r.on = false; draw(); }; };
+  // changer la langue de toute la page d'un coup
+  const switchAll = async lang => {
+    setScanLang(lang); $('#scs').textContent = 'Changement de langue…';
+    for (const r of res) if (r.pick) { const v = await toLang(r.pick, lang);
+      if (v !== r.pick) { r.pick = v; if (!r.list.some(x => x.id === v.id)) r.list.unshift(v); } }
+    $('#scs').textContent = `Langue : ${lang === 'ja' ? 'japonais' : LANGS[lang]}.`; draw();
+  };
+  // choix d'une case : la bonne carte, et la bonne langue sans re-scanner
+  const cellPick = async i => {
+    const r = res[i]; if (!r.list?.length) return;
+    const vs = r.pick ? await langVersions(r.pick) : [];
+    $('#pcpick').innerHTML = `<p class="small" style="margin:8px 0 4px"><b>Case ${i + 1}</b> : laquelle ?</p>
+      <div class="alts">${r.list.slice(0, 6).map((c, j) => `<button type="button" data-pp="${j}">${img(c)}<small>${flag(c.lang)} ${esc(nm(c))}<br>${esc(c.local_id)}</small></button>`).join('')}<button type="button" data-pp="-1"><small>Ne pas ajouter</small></button></div>
+      ${r.pick && vs.length > 1 ? `<div class="langsw"><span class="small mut">Langue de cette carte :</span>${vs.sort((a, b) => ALL_LANGS.indexOf(a.lang) - ALL_LANGS.indexOf(b.lang)).map(v => `<button type="button" class="chip lg${v.id === r.pick.id ? ' on' : ''}" data-pcl="${esc(v.lang)}" aria-pressed="${v.id === r.pick.id}">${v.lang === 'ja' ? 'JP' : v.lang.toUpperCase()}${S.coll[v.id] ? ` <small>✓${S.coll[v.id]}</small>` : ''}</button>`).join('')}</div>` : ''}`;
+    $('#pcpick').onclick = async ev => {
+      const l = ev.target.closest('[data-pcl]');
+      if (l) { ev.stopPropagation(); r.pick = await toLang(r.pick, l.dataset.pcl); r.on = true; r.st = 'sure';
+        if (!r.list.some(x => x.id === r.pick.id)) r.list.unshift(r.pick); draw(); cellPick(i); return; }
+      const p = ev.target.closest('[data-pp]'); if (!p) return; ev.stopPropagation();
+      const j = +p.dataset.pp;
+      if (j >= 0) { r.pick = r.list[j]; r.on = true; r.st = 'sure'; } else r.on = false;
+      draw(); if (j >= 0) cellPick(i);
+    };
+  };
+  $('#scr').onclick = e => {
+    const l = e.target.closest('[data-pl]'); if (l) return switchAll(l.dataset.pl);
+    const b = e.target.closest('[data-pc]'); if (b) cellPick(+b.dataset.pc);
+  };
   draw();
   for (let i = 0; i < cells.length; i++) {
     $('#scs').textContent = `Lecture de la case ${i + 1}/${cells.length}…`;
     if (isBlank(thumb(cells[i]))) { res[i].st = 'blank'; draw(); continue; }
     res[i].st = 'run'; draw();
-    try { const r = await identify(cells[i]); Object.assign(res[i], { list: r.list, pick: r.list[0] || null, st: !r.list.length ? 'none' : r.sure ? 'sure' : 'unsure', on: r.sure }); }
+    try { const r = await identify(cells[i]); Object.assign(res[i], { list: r.list, pick: r.list[0] || null, st: !r.list.length ? 'none' : r.sure ? 'sure' : 'unsure', on: r.sure });
+      if (res[i].pick) { const v = await toLang(res[i].pick, wantLang());
+        if (v !== res[i].pick) { res[i].pick = v; if (!res[i].list.some(x => x.id === v.id)) res[i].list.unshift(v); } } }
     catch { res[i].st = 'none'; }
     if (scanState.page !== res || !$('#scr')) return; draw();
   }
   const ok = res.filter(r => r.st === 'sure').length, doubt = res.filter(r => r.st === 'unsure').length;
-  $('#scs').innerHTML = `${ok} carte${ok > 1 ? 's' : ''} reconnue${ok > 1 ? 's' : ''}${doubt ? `, <b>${doubt} à vérifier</b> (touche les cases « ? »)` : ''}.`;
+  $('#scs').innerHTML = `${ok} carte${ok > 1 ? 's' : ''} reconnue${ok > 1 ? 's' : ''}${doubt ? `, <b>${doubt} à vérifier</b> (touche les cases « ? »)` : ''}. <span class="mut">Mauvaise langue ? Touche une case, ou change la langue de toute la page en haut.</span>`;
 }
 
 async function manualSearch() {

@@ -32,6 +32,17 @@
     return (global.Auth && Auth.isSignedIn && Auth.isSignedIn()) ? Auth.token() : '';
   }
 
+  /* Clé posée sur le serveur (variable YT_API_KEY) : rien à saisir sur chaque
+     appareil, et la clé ne transite jamais par la page. */
+  var serverKey = false;
+
+  function probeServer() {
+    return fetch('/api/yt?path=health')
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (j) { serverKey = !!(j && j.key); return serverKey; })
+      .catch(function () { serverKey = false; return false; });
+  }
+
   /* "PT1H2M3S" -> 3723 */
   function isoSeconds(iso) {
     var m = /^P(?:(\d+)D)?T?(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?$/.exec(iso || '');
@@ -64,14 +75,17 @@
   function api(path, params, opts) {
     opts = opts || {};
     var bearer = token();
-    if (!key() && !bearer) {
+    var viaProxy = !key() && !bearer && serverKey;
+    if (!key() && !bearer && !serverKey) {
       var noKey = new Error('no-key');
       noKey.reason = 'no-key';
       return Promise.reject(noKey);
     }
     params = params || {};
     if (key()) { params.key = key(); }
-    var url = API + path + '?' + qs(params);
+    var url = viaProxy
+      ? '/api/yt?path=' + encodeURIComponent(path) + '&' + qs(params)
+      : API + path + '?' + qs(params);
     var ck = 'api:' + path + ':' + qs(Object.assign({}, params, { key: '' })) +
       (opts.mine ? ':me' : '');
     var hit = cacheGet(ck, opts.mine ? 5 * 60 * 1000 : 0);
@@ -176,6 +190,8 @@
     mapVideo: mapVideo,
     mapChannel: mapChannel,
     hasKey: function () { return !!key(); },
+    hasServerKey: function () { return serverKey; },
+    probeServer: probeServer,
     clearCache: function () {
       cache = {};
       try { localStorage.removeItem(CACHE_KEY); } catch (e) { /* ignore */ }

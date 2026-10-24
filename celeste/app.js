@@ -612,6 +612,8 @@
   function viewSettings(token) {
     var st = Store.state;
     var modeLabel = { yt: 'YouTube (API officielle)', links: 'Liens ajoutés à la main', demo: 'Démo locale' };
+    var source = Auth.isSignedIn() ? 'compte connecté'
+      : (st.ytKey ? 'clé de cet appareil' : (Ytb.hasServerKey() ? 'clé du serveur' : 'aucune'));
     paint(token, '<div class="page-head"><h1>Paramètres</h1></div><div class="rows">' +
 
       '<div class="description open"><div class="stats">Compte Google — ' +
@@ -639,10 +641,16 @@
       '<p class="card-meta">Le nom affiché dans l’en-tête et l’onglet du navigateur.</p></div>' +
 
       '<div class="description open"><div class="stats">Source des vidéos — ' +
-      esc(modeLabel[Catalog.mode()]) + '</div>' +
-      '<p>Colle ici une clé <strong>YouTube Data API v3</strong> (gratuite, quota quotidien) ' +
-      'pour parcourir, rechercher et commenter les vraies vidéos YouTube. ' +
-      'Elle reste dans ce navigateur.</p>' +
+      esc(modeLabel[Catalog.mode()]) + ' (' + esc(source) + ')</div>' +
+      (Ytb.hasServerKey()
+        ? '<p><strong>Une clé est installée sur le serveur</strong> : rien à saisir ici, ' +
+          'tous les appareils en profitent. Le champ ci-dessous ne sert qu’à utiliser ' +
+          'une autre clé sur cet appareil précis.</p>'
+        : '<p>Colle une clé <strong>YouTube Data API v3</strong> (gratuite) pour parcourir ' +
+          'et rechercher YouTube. Elle ne vaudra que pour <strong>ce navigateur</strong>.<br>' +
+          'Pour n’avoir à la saisir qu’une seule fois, pose-la plutôt sur le serveur : ' +
+          'Vercel → le projet → Settings → Environment Variables → nom <code>YT_API_KEY</code>, ' +
+          'puis redéploie.</p>') +
       '<form data-action="save-key"><input type="text" name="key" placeholder="AIza…" value="' +
       esc(st.ytKey) + '" autocomplete="off" spellcheck="false">' +
       '<select name="region">' + ['FR', 'BE', 'CH', 'CA', 'US', 'GB', 'DE', 'ES', 'IT'].map(function (r) {
@@ -1209,5 +1217,8 @@
   Auth.onChange(renderAccount);
   window.addEventListener('hashchange', render);
   render();
+  Ytb.probeServer().then(function (hasKey) {
+    if (hasKey && !Store.state.ytKey) { render(); }
+  });
   if (Auth.isSignedIn()) { Auth.loadProfile().then(renderAccount).then(syncAccount); }
 })();

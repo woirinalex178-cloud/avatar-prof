@@ -6,7 +6,7 @@
   'use strict';
 
   function mode() {
-    if (Ytb.hasKey() || (global.Auth && Auth.isSignedIn())) { return 'yt'; }
+    if (Ytb.hasKey() || Ytb.hasServerKey() || (global.Auth && Auth.isSignedIn())) { return 'yt'; }
     if ((Store.state.links || []).length) { return 'links'; }
     return 'demo';
   }

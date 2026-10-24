@@ -24,12 +24,27 @@ carrousel, aucune lecture verticale, nulle part.
 
 | Mode | Ce qu'il faut | Ce que tu obtiens |
 | --- | --- | --- |
-| **Compte Google** | un ID client OAuth | tes abonnements, tes playlists, tes vidéos aimées, + tout le mode clé API |
-| **Clé API** | une clé YouTube Data v3 | tendances, recherche, chaînes, commentaires, vues et likes réels |
+| **Clé serveur** | `YT_API_KEY` dans Vercel | tout le site marche sur **tous les appareils**, sans rien saisir |
+| **Compte Google** | un ID client OAuth | tes abonnements, tes playlists, tes vidéos aimées |
+| **Clé API locale** | une clé collée dans Paramètres | pareil, mais valable sur **ce navigateur** uniquement |
 | **Liens** | rien | tu colles des liens YouTube : ils forment la bibliothèque (titres via oEmbed) |
 | **Démo** | rien | catalogue local embarqué, pour voir l'interface hors ligne |
 
-### 1. La clé API (gratuit, ~2 min)
+### 1. La clé, posée une fois pour toutes (recommandé)
+
+1. `console.cloud.google.com` → créer un projet ;
+2. API et services → activer **YouTube Data API v3** ;
+3. Identifiants → **Créer une clé API** ;
+4. Vercel → le projet → **Settings → Environment Variables** → nom `YT_API_KEY`,
+   valeur = la clé, pour les trois environnements ;
+5. **Redeploy** (Deployments → ⋯ → Redeploy).
+
+Tous les appareils en profitent aussitôt, et la clé n'apparaît jamais dans la
+page : les appels passent par `/api/yt`, une fonction qui n'ouvre que les routes
+de lecture de l'API, refuse les appels venus d'un autre site et met les réponses
+en cache 30 min côté CDN (autant de quota économisé).
+
+### 1 bis. La clé sur un seul appareil (dépannage)
 
 1. `console.cloud.google.com` → créer un projet ;
 2. API et services → activer **YouTube Data API v3** ;
@@ -72,6 +87,7 @@ Raccourcis : `espace`/`k` lecture-pause, `←`/`→` ±5 s, `j`/`l` ±10 s, `m` 
 
 | Fichier | Rôle |
 | --- | --- |
+| `api/yt.js` | relais serveur : garde la clé, filtre les routes, met en cache |
 | `auth.js` | connexion Google (Identity Services, modèle jeton, sans secret) |
 | `yt.js` | API YouTube Data v3 + oEmbed, cache, filtre Shorts |
 | `catalog.js` | couche unique au-dessus des quatre modes |
@@ -84,7 +100,7 @@ déplacer dans le DOM : déplacer une iframe la rechargerait et couperait le son
 
 ## Données
 
-Clé API, ID client, abonnements locaux, historique, playlists, notes et
+ID client, clé locale éventuelle, abonnements locaux, historique, playlists, notes et
 progression vivent dans le `localStorage` de ce navigateur ; le jeton Google
 dans le `sessionStorage`. Aucun serveur, aucun suivi.
 Paramètres → **Tout effacer** remet à zéro.
@@ -92,7 +108,7 @@ Paramètres → **Tout effacer** remet à zéro.
 ## Vérification
 
 Une passe automatisée (Playwright headless, API Google, OAuth et lecteur
-simulés) couvre 41 parcours : les quatre modes, la connexion et la
-déconnexion, les abonnements et playlists du compte, le montage du lecteur, le
+simulés) couvre 47 parcours : les modes (serveur, compte, clé locale, liens, démo), la
+connexion et la déconnexion, les abonnements et playlists du compte, le montage du lecteur, le
 filtrage des Shorts, les commentaires, le mini-lecteur, le message de quota
 dépassé, le renommage et l'absence de scroll horizontal en mobile.

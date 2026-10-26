@@ -11,6 +11,13 @@
     region: 'FR',
     googleClientId: '',       // ID client OAuth (web), pour la connexion Google
     brandName: 'Céleste',     // nom affiché, modifiable
+    interests: ['sciences expliquées', 'documentaire animalier', 'dessin et peinture',
+      'espace et astronomie', 'bricolage et expériences', 'histoire racontée',
+      'musique instruments', 'nature et randonnée'],
+    baitStrength: 1,          // sévérité du filtre anti-appât à clic (0 à 2)
+    shortsBudgetMin: 10,      // minutes de format court par jour (0 = désactivé)
+    shortsUsed: { day: '', seconds: 0 },
+    pin: '',                  // code parent : protège les réglages
     links: [],                // vidéos YouTube ajoutées à la main (ids)
     linkMeta: {},             // id -> métadonnées oEmbed
     subChannels: {},          // id de chaîne -> { name, avatar }
@@ -194,6 +201,37 @@
     },
 
     isCommentLiked: function (commentId) { return state.commentLikes.indexOf(commentId) !== -1; },
+
+    /* Dose quotidienne de formats courts : le compteur se remet à zéro
+       chaque jour, et ne bouge que pendant la lecture. */
+    today: function () { return new Date().toISOString().slice(0, 10); },
+
+    shortsLeft: function () {
+      var budget = (state.shortsBudgetMin || 0) * 60;
+      if (!budget) { return 0; }
+      var used = state.shortsUsed.day === Store.today() ? state.shortsUsed.seconds : 0;
+      return Math.max(0, budget - used);
+    },
+
+    spendShorts: function (seconds) {
+      if (state.shortsUsed.day !== Store.today()) {
+        state.shortsUsed = { day: Store.today(), seconds: 0 };
+      }
+      state.shortsUsed.seconds += seconds;
+      save();
+      return Store.shortsLeft();
+    },
+
+    favouriteChannels: function () {
+      var counts = {};
+      state.history.slice(0, 60).forEach(function (h) {
+        var meta = state.linkMeta[h.id];
+        var ch = meta && meta.channelId;
+        if (ch) { counts[ch] = (counts[ch] || 0) + 1; }
+      });
+      state.subs.forEach(function (id) { counts[id] = (counts[id] || 0) + 3; });
+      return Object.keys(counts).sort(function (a, b) { return counts[b] - counts[a]; });
+    },
 
     remember: function (query) {
       if (!query) { return; }

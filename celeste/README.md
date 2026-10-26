@@ -14,11 +14,47 @@ normalement pour le créateur. Céleste n'est que l'interface.
 > YouTube est interdit par les conditions de l'API Google (clé et connexion
 > révocables). Le nom affiché se change dans Paramètres → **Nom affiché**.
 
-## Sans Shorts, vraiment
+## Les formats courts : rationnés, pas interdits
 
-Le filtre s'applique à la source, sur chaque liste : toute vidéo de **61 s ou
-moins**, ou marquée `#shorts`, est écartée avant affichage. Aucun onglet, aucun
-carrousel, aucune lecture verticale, nulle part.
+Partout dans l'application — accueil, recherche, abonnements, suggestions —
+toute vidéo de **61 s ou moins**, ou marquée `#shorts`, est écartée avant
+affichage. Pas de carrousel, pas de défilement vertical.
+
+La seule porte d'entrée est **« Pause courte »**, une dose quotidienne :
+
+- **durée réglable** (10 min par défaut, 0 = désactivé), remise à zéro chaque jour ;
+- **le minuteur ne tourne que pendant la lecture**, et il est affiché en grand ;
+- **une vidéo à la fois** : on passe à la suivante en le demandant, jamais par
+  défilement — c'est ce geste-là qui rend le format sans fin ;
+- à zéro, la lecture s'arrête et la page le dit ; retour aux vidéos longues.
+
+Le temps restant s'affiche en permanence dans le menu.
+
+## Le classement : pas celui du moteur
+
+L'accueil ne reprend pas l'ordre proposé par YouTube. Il part des **chaînes
+suivies** et de **centres d'intérêt** fixés dans les paramètres (sciences,
+animaux, dessin, espace…), puis reclasse chaque vidéo (`ranker.js`) :
+
+| Ce qui fait monter | Ce qui fait descendre |
+| --- | --- |
+| rapport j'aime/vues élevé (vrai signal de qualité) | titre qui crie : majuscules, `!!!`, émojis en rafale |
+| catégories Éducation, Sciences, Tutos, Animaux | mots d'appât : « 24 h », défi, prank, « incroyable », « top 10 », réaction |
+| durée de 4 à 25 min (un sujet traité) | moins de 2 min (fragment) ou plus de 50 min |
+| chaînes déjà regardées ou suivies | viral creux : millions de vues, engagement faible |
+
+Puis : **pas plus de 3 vidéos par chaîne**, jamais 3 d'affilée, et un léger
+décalage quotidien pour que la page ne soit pas figée. Les recherches passent
+en **SafeSearch strict**, et le filtre a trois niveaux (souple / normal /
+strict — en strict, les appâts sont retirés, pas seulement relégués).
+
+Tout est modifiable dans Paramètres, et la liste des mots d'appât est en clair
+en haut de `ranker.js`.
+
+## Code parent
+
+Un code à 4–6 chiffres (Paramètres → Code parent) verrouille la page des
+réglages : sans lui, elle peut elle-même rallonger sa dose de vidéos courtes.
 
 ## Les quatre façons de s'en servir
 
@@ -87,6 +123,7 @@ Raccourcis : `espace`/`k` lecture-pause, `←`/`→` ±5 s, `j`/`l` ±10 s, `m` 
 
 | Fichier | Rôle |
 | --- | --- |
+| `ranker.js` | classement maison : qualité, anti-appât à clic, variété |
 | `api/yt.js` | relais serveur : garde la clé, filtre les routes, met en cache |
 | `auth.js` | connexion Google (Identity Services, modèle jeton, sans secret) |
 | `yt.js` | API YouTube Data v3 + oEmbed, cache, filtre Shorts |
@@ -108,7 +145,9 @@ Paramètres → **Tout effacer** remet à zéro.
 ## Vérification
 
 Une passe automatisée (Playwright headless, API Google, OAuth et lecteur
-simulés) couvre 47 parcours : les modes (serveur, compte, clé locale, liens, démo), la
+simulés) couvre 65 parcours (plus 13 tests unitaires du classement) : les modes (serveur, compte, clé locale, liens, démo), la
 connexion et la déconnexion, les abonnements et playlists du compte, le montage du lecteur, le
-filtrage des Shorts, les commentaires, le mini-lecteur, le message de quota
-dépassé, le renommage et l'absence de scroll horizontal en mobile.
+filtrage des formats courts, la dose quotidienne et sa coupure, le code
+parent, le reclassement (l'appât à clic ne remonte jamais), les commentaires,
+le mini-lecteur, le message de quota dépassé et l'absence de scroll horizontal
+en mobile.

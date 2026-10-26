@@ -49,6 +49,15 @@
     }));
   }
 
+  function rankCtx() {
+    return {
+      strength: Store.state.baitStrength,
+      favouriteChannels: Store.favouriteChannels()
+    };
+  }
+
+  function rank(list) { return Ranker.rank(list, rankCtx()); }
+
   function sortByDate(list) {
     return list.slice().sort(function (a, b) { return b.published - a.published; });
   }
@@ -86,23 +95,50 @@
       if (filter && filter !== 'all') {
         return Ytb.byCategory(filter, Store.state.region);
       }
+      return Catalog.discover();
+    },
+
+    /* L'accueil ne reprend pas le classement du moteur : on part des chaînes
+       suivies et de centres d'intérêt choisis par le parent, puis on reclasse. */
+    discover: function () {
       var signedIn = global.Auth && Auth.isSignedIn();
       var subs = Store.state.subs.filter(function (id) { return /^UC/.test(id); });
-      if (!signedIn && !subs.length) { return Ytb.trending(Store.state.region); }
-      return Catalog.subsFeed().then(function (feed) {
-        return Ytb.trending(Store.state.region).then(function (top) {
-          var seen = {};
-          return feed.slice(0, 12).concat(top).filter(function (v) {
-            if (seen[v.id]) { return false; }
-            seen[v.id] = 1;
-            return true;
-          });
-        });
+      var interests = (Store.state.interests || []).slice(0, 4);
+      var sources = [];
+
+      if (signedIn || subs.length) {
+        sources.push(Catalog.subsFeed().then(function (l) { return l.slice(0, 15); })
+          .catch(function () { return []; }));
+      }
+      interests.forEach(function (q) {
+        sources.push(Ytb.search(q, { region: Store.state.region, maxResults: 12 })
+          .catch(function () { return []; }));
+      });
+      if (!sources.length) {
+        sources.push(Ytb.trending(Store.state.region).catch(function () { return []; }));
+      }
+
+      return Promise.all(sources).then(function (lists) {
+        var merged = Ranker.interleave(lists);
+        if (!merged.length) { return Ytb.trending(Store.state.region).then(rank); }
+        return rank(merged);
+      });
+    },
+
+    /* Formats courts : seulement ici, seulement dans la limite du temps alloué. */
+    shorts: function () {
+      var interests = (Store.state.interests || []).slice(0, 3);
+      var queries = interests.length ? interests : ['science amusante', 'animaux', 'dessin'];
+      return Promise.all(queries.map(function (q) {
+        return Ytb.shorts(q, { region: Store.state.region }).catch(function () { return []; });
+      })).then(function (lists) {
+        var merged = Ranker.interleave(lists);
+        return Ranker.rank(merged, { strength: Store.state.baitStrength, perChannel: 2 });
       });
     },
 
     trending: function () {
-      if (mode() === 'yt') { return Ytb.trending(Store.state.region); }
+      if (mode() === 'yt') { return Ytb.trending(Store.state.region).then(rank); }
       if (mode() === 'links') { return linkVideos(); }
       return Promise.resolve(DB.videos.map(fromDemo).sort(function (a, b) { return b.views - a.views; }));
     },
@@ -113,7 +149,7 @@
         return Promise.all([
           Ytb.search(q, { region: Store.state.region }),
           Ytb.searchChannels(q).catch(function () { return []; })
-        ]).then(function (r) { return { videos: r[0], channels: r[1] }; });
+        ]).then(function (r) { return { videos: rank(r[0]), channels: r[1] }; });
       }
       var pool = m === 'links' ? linkVideos() : Promise.resolve(DB.videos.map(fromDemo));
       return pool.then(function (list) {

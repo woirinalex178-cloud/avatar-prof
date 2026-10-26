@@ -222,6 +222,7 @@
     liked: '<path d="M7 20V10l4-7 1.5 1.2L11 9h6.5a2 2 0 0 1 2 2.4l-1.5 7A2 2 0 0 1 16 20z"/><path d="M4 10h3v10H4z"/>',
     playlist: '<path d="M4 7h11M4 11h11M4 15h7"/><path d="M16 13.5v6l5-3z"/>',
     trending: '<path d="M3 17l5-6 4 3 5-7"/><path d="M17 7h4v4"/>',
+    timer: '<circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 1.5M9 2h6"/>',
     settings: '<circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3M6 6l2 2M16 16l2 2M18 6l-2 2M8 16l-2 2"/>'
   };
 
@@ -240,6 +241,9 @@
       navItem('#/', ICONS.home, 'Accueil') +
       navItem('#/subs', ICONS.subs, 'Abonnements') +
       navItem('#/trending', ICONS.trending, 'Tendances') +
+      (st.shortsBudgetMin
+        ? navItem('#/shorts', ICONS.timer, 'Pause courte', clock(Store.shortsLeft()))
+        : '') +
       '</div><div class="nav-group"><h3>Vous</h3>' +
       navItem('#/history', ICONS.history, 'Historique', st.history.length || '') +
       navItem('#/later', ICONS.later, 'À regarder plus tard', st.watchLater.length || '') +
@@ -609,6 +613,108 @@
         : emptyHtml('Aucune playlist. Utilise « Enregistrer » sur une vidéo.')));
   }
 
+  /* Dose quotidienne de formats courts : une seule porte, un minuteur visible,
+     pas de défilement infini — on passe à la suivante en le demandant. */
+  var shortsSession = { list: [], index: 0, ticker: 0 };
+
+  function stopShortsTicker() {
+    clearInterval(shortsSession.ticker);
+    shortsSession.ticker = 0;
+  }
+
+  function shortsClock() {
+    var left = Store.shortsLeft();
+    var el = $('#shorts-left');
+    if (el) {
+      el.textContent = clock(left);
+      el.classList.toggle('low', left <= 60);
+    }
+    return left;
+  }
+
+  function endShorts(message) {
+    stopShortsTicker();
+    Player.stop();
+    mini.hidden = true;
+    main.innerHTML = '<div class="shorts-page"><div class="empty">' +
+      '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>' +
+      '<h2>' + esc(message) + '</h2>' +
+      '<p>Le compteur repart demain. En attendant, il y a tout le reste.</p>' +
+      '<a class="pill accent" href="#/">Retour à l’accueil</a></div></div>';
+  }
+
+  function playShort(index) {
+    var v = shortsSession.list[index];
+    if (!v) { endShorts('Plus de vidéos courtes pour aujourd’hui'); return; }
+    shortsSession.index = index;
+    var slot = $('#shorts-slot');
+    if (!slot) { return; }
+    Store.watch(v.id);
+    Player.mount(slot, v, { autoplay: true, dock: $('#mini-slot'), onMini: miniHandler(v) });
+    var title = $('#shorts-title');
+    if (title) { title.textContent = v.title; }
+    var chan = $('#shorts-channel');
+    if (chan) { chan.textContent = v.channelTitle || ''; }
+    var pos = $('#shorts-pos');
+    if (pos) { pos.textContent = (index + 1) + ' / ' + shortsSession.list.length; }
+  }
+
+  function startShortsTicker() {
+    stopShortsTicker();
+    shortsSession.ticker = setInterval(function () {
+      if (!document.getElementById('shorts-slot')) { stopShortsTicker(); return; }
+      if (!Player.isPlaying()) { return; }
+      Store.spendShorts(1);
+      if (shortsClock() <= 0) { endShorts('Temps écoulé pour aujourd’hui'); }
+    }, 1000);
+  }
+
+  function viewShorts(token) {
+    var budget = Store.state.shortsBudgetMin || 0;
+    if (!budget) {
+      paint(token, '<div class="page-head"><h1>Pause courte</h1></div>' +
+        emptyHtml('Les vidéos courtes sont désactivées. Un adulte peut en autoriser ' +
+          'quelques minutes par jour dans les paramètres.'));
+      return;
+    }
+    var left = Store.shortsLeft();
+    if (left <= 0) { endShorts('Temps écoulé pour aujourd’hui'); return; }
+
+    main.innerHTML = '<div class="shorts-page"><div class="shorts-intro">' +
+      '<h1>Pause courte</h1>' +
+      '<p class="shorts-budget">Il te reste <strong>' + clock(left) + '</strong> aujourd’hui, ' +
+      'sur ' + budget + ' minutes.</p>' +
+      '<p class="card-meta">Une vidéo à la fois : tu passes à la suivante quand tu le décides. ' +
+      'Le minuteur ne tourne que pendant la lecture.</p>' +
+      '<button class="pill accent" data-action="shorts-start">Commencer</button>' +
+      '<a class="pill" href="#/">Revenir aux vidéos longues</a></div></div>';
+  }
+
+  function viewShortsPlayer(token) {
+    main.innerHTML = '<div class="shorts-page"><div class="shorts-stage">' +
+      '<div class="shorts-frame" id="shorts-slot"></div>' +
+      '<div class="shorts-side">' +
+      '<div class="shorts-timer">Temps restant <span id="shorts-left">' +
+      clock(Store.shortsLeft()) + '</span></div>' +
+      '<p class="shorts-title" id="shorts-title">Chargement…</p>' +
+      '<p class="card-meta" id="shorts-channel"></p>' +
+      '<p class="card-meta" id="shorts-pos"></p>' +
+      '<button class="pill solid" data-action="shorts-next">Suivante</button>' +
+      '<a class="pill" href="#/" data-action="shorts-quit">J’arrête</a>' +
+      '</div></div></div>';
+
+    Catalog.shorts().then(function (list) {
+      if (token !== current.token) { return; }
+      shortsSession.list = list.slice(0, 20);
+      if (!shortsSession.list.length) {
+        endShorts('Aucune vidéo courte trouvée');
+        return;
+      }
+      playShort(0);
+      startShortsTicker();
+    }).catch(function (err) { fail(token, err); });
+  }
+
   function viewSettings(token) {
     var st = Store.state;
     var modeLabel = { yt: 'YouTube (API officielle)', links: 'Liens ajoutés à la main', demo: 'Démo locale' };
@@ -669,6 +775,41 @@
         ? '<button class="pill" data-action="clear-links">Tout retirer</button>' : '') +
       '</div></div>' +
 
+      '<div class="description open"><div class="stats">Ce qu’on lui propose</div>' +
+      '<p>L’accueil ne reprend pas le classement de YouTube : il part de ces thèmes ' +
+      'et des chaînes suivies, puis reclasse selon la qualité (voir le README).</p>' +
+      '<form data-action="save-feed">' +
+      '<input type="text" name="interests" value="' + esc((st.interests || []).join(', ')) +
+      '" placeholder="sciences, animaux, dessin…">' +
+      '<select name="baitStrength">' +
+      [[0.5, 'Filtre souple'], [1, 'Filtre normal'], [2, 'Filtre strict']].map(function (o) {
+        return '<option value="' + o[0] + '"' +
+          (String(st.baitStrength) === String(o[0]) ? ' selected' : '') + '>' + o[1] + '</option>';
+      }).join('') + '</select>' +
+      '<div class="modal-actions"><button class="pill solid" type="submit">Enregistrer</button></div>' +
+      '</form>' +
+      '<p class="card-meta">Thèmes séparés par des virgules. Le filtre fait redescendre ' +
+      'les titres qui crient, les « 24 h », les défis et les réactions.</p></div>' +
+
+      '<div class="description open"><div class="stats">Vidéos courtes — dose quotidienne</div>' +
+      '<form data-action="save-shorts">' +
+      '<input type="number" name="shortsBudgetMin" min="0" max="60" step="1" value="' +
+      (st.shortsBudgetMin || 0) + '"><span class="card-meta">minutes par jour (0 = désactivé)</span>' +
+      '<div class="modal-actions"><button class="pill solid" type="submit">Enregistrer</button>' +
+      '<button class="pill" type="button" data-action="reset-shorts">Remettre le compteur à zéro</button>' +
+      '</div></form>' +
+      '<p class="card-meta">Reste aujourd’hui : ' + clock(Store.shortsLeft()) + '. ' +
+      'Le minuteur ne tourne que pendant la lecture, et il n’y a pas de défilement continu.</p></div>' +
+
+      '<div class="description open"><div class="stats">Code parent</div>' +
+      '<p>' + (st.pin ? 'Un code protège cette page.' :
+        'Sans code, elle peut tout modifier elle-même (y compris la dose de vidéos courtes).') + '</p>' +
+      '<form data-action="save-pin"><input type="password" name="pin" inputmode="numeric" ' +
+      'pattern="[0-9]*" maxlength="6" placeholder="' + (st.pin ? 'nouveau code' : 'code à 4 chiffres') +
+      '"><div class="modal-actions">' +
+      (st.pin ? '<button class="pill" type="button" data-action="clear-pin">Retirer le code</button>' : '') +
+      '<button class="pill solid" type="submit">Enregistrer</button></div></form></div>' +
+
       '<div class="description open"><div class="stats">Lecture</div>' +
       '<label class="switch"><input type="checkbox" data-action="autoplay"' +
       (st.autoplay ? ' checked' : '') + '>Lecture automatique de la vidéo suivante</label></div>' +
@@ -685,20 +826,34 @@
       '<button class="pill" data-action="reset">Tout effacer</button></div></div></div>');
   }
 
+  function viewLock(token) {
+    paint(token, '<div class="empty"><svg viewBox="0 0 24 24">' +
+      '<rect x="4" y="10" width="16" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>' +
+      '<h2>Réglages protégés</h2><p>Demande à un adulte.</p>' +
+      '<form data-action="unlock" class="lock-form">' +
+      '<input type="password" name="pin" inputmode="numeric" pattern="[0-9]*" maxlength="6" ' +
+      'placeholder="code" autocomplete="off">' +
+      '<button class="pill solid" type="submit">Déverrouiller</button></form></div>');
+  }
+
   /* ---------------- lecteur ---------------- */
+
+  function miniHandler(video) {
+    return function (on) {
+      mini.hidden = !on;
+      if (on) {
+        $('#mini-title').textContent = video.title;
+        $('#mini-channel').textContent = video.channelTitle || '';
+      }
+    };
+  }
 
   function mountPlayer(video) {
     Player.mount($('#player-slot'), video, {
       autoplay: Store.state.autoplay,
       start: Store.progressOf(video.id),
       dock: $('#mini-slot'),
-      onMini: function (on) {
-        mini.hidden = !on;
-        if (on) {
-          $('#mini-title').textContent = video.title;
-          $('#mini-channel').textContent = video.channelTitle || '';
-        }
-      }
+      onMini: miniHandler(video)
     });
   }
 
@@ -769,10 +924,15 @@
         });
         break;
       }
-      case 'settings': viewSettings(token); break;
+      case 'shorts': viewShorts(token); break;
+      case 'settings':
+        if (Store.state.pin && !current.unlocked) { viewLock(token); }
+        else { viewSettings(token); }
+        break;
       default: main.innerHTML = emptyHtml('Page introuvable.');
     }
 
+    if (seg[0] !== 'shorts') { stopShortsTicker(); }
     current.path = r.path;
     renderSidebar();
     window.scrollTo(0, 0);
@@ -937,6 +1097,19 @@
           render();
         }
         return;
+      case 'shorts-start': viewShortsPlayer(++current.token); return;
+      case 'shorts-next': playShort(shortsSession.index + 1); return;
+      case 'shorts-quit': stopShortsTicker(); Player.stop(); mini.hidden = true; return;
+      case 'reset-shorts':
+        Store.set('shortsUsed', { day: Store.today(), seconds: 0 });
+        toast('Compteur remis à zéro');
+        render();
+        return;
+      case 'clear-pin':
+        Store.set('pin', '');
+        toast('Code retiré');
+        render();
+        return;
       case 'signin': signIn(); return;
       case 'signout':
         Auth.signOut();
@@ -981,6 +1154,40 @@
       Store.addComment(form.dataset.id, input.value.trim());
       input.value = '';
       render();
+    }
+    if (form.dataset.action === 'save-feed') {
+      e.preventDefault();
+      Store.set('interests', form.interests.value.split(',')
+        .map(function (s2) { return s2.trim(); }).filter(Boolean));
+      Store.set('baitStrength', parseFloat(form.baitStrength.value));
+      Ytb.clearCache();
+      toast('Sélection mise à jour');
+      render();
+    }
+    if (form.dataset.action === 'save-shorts') {
+      e.preventDefault();
+      Store.set('shortsBudgetMin', Math.max(0, Math.min(60, parseInt(form.shortsBudgetMin.value, 10) || 0)));
+      toast('Dose quotidienne enregistrée');
+      render();
+    }
+    if (form.dataset.action === 'save-pin') {
+      e.preventDefault();
+      var code = form.pin.value.trim();
+      if (code && !/^[0-9]{4,6}$/.test(code)) { toast('4 à 6 chiffres'); return; }
+      Store.set('pin', code);
+      current.unlocked = true;
+      toast(code ? 'Code enregistré' : 'Code retiré');
+      render();
+    }
+    if (form.dataset.action === 'unlock') {
+      e.preventDefault();
+      if (form.pin.value.trim() === Store.state.pin) {
+        current.unlocked = true;
+        render();
+      } else {
+        toast('Code incorrect');
+        form.pin.value = '';
+      }
     }
     if (form.dataset.action === 'save-account') {
       e.preventDefault();

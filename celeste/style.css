@@ -418,3 +418,42 @@ body.rail .main { margin-left: var(--rail-w); }
 .up-next-head h2 { font-weight: 600; }
 .page-head h1 { font-weight: 700; letter-spacing: -.3px; }
 @media (max-width: 680px) { .search .voice { display: none; } }
+
+
+/* ---------- Pause courte (dose quotidienne de formats verticaux) ---------- */
+.shorts-page { max-width: 1000px; margin: 0 auto; }
+.shorts-intro { text-align: center; padding: 40px 16px; }
+.shorts-intro h1 { margin: 0 0 12px; }
+.shorts-budget { font-size: 18px; margin: 0 0 8px; }
+.shorts-intro .pill { margin: 16px 8px 0; }
+.shorts-stage { display: grid; grid-template-columns: minmax(0, 420px) 1fr; gap: 24px;
+                align-items: start; }
+.shorts-frame { aspect-ratio: 9 / 16; background: #000; border-radius: var(--radius); overflow: hidden; }
+.shorts-side { display: flex; flex-direction: column; gap: 12px; padding-top: 8px; }
+.shorts-timer { font-size: 15px; color: var(--text-dim); }
+.shorts-timer span {
+  display: inline-block; margin-left: 8px; padding: 4px 12px; border-radius: 8px;
+  background: var(--chip); color: var(--text); font-weight: 700; font-variant-numeric: tabular-nums;
+  font-size: 20px;
+}
+.shorts-timer span.low { background: #c0392b; color: #fff; }
+.shorts-title { margin: 0; font-size: 18px; font-weight: 600; }
+.shorts-side .pill { align-self: flex-start; }
+.lock-form { display: flex; gap: 8px; justify-content: center; margin-top: 16px; }
+.lock-form input {
+  height: 38px; width: 140px; padding: 0 12px; border-radius: 8px; text-align: center;
+  border: 1px solid var(--line); background: var(--bg); color: var(--text); font: inherit;
+  letter-spacing: 6px;
+}
+.description input[type="number"] { flex: 0 0 90px; height: 38px; padding: 0 10px;
+  border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--text);
+  font: inherit; }
+.description input[type="password"] { flex: 0 0 160px; height: 38px; padding: 0 10px;
+  border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--text);
+  font: inherit; letter-spacing: 4px; }
+.nav-item .count { font-variant-numeric: tabular-nums; }
+@media (max-width: 860px) {
+  .shorts-stage { grid-template-columns: 1fr; justify-items: center; }
+  .shorts-frame { width: min(100%, 360px); }
+  .shorts-side { width: min(100%, 360px); }
+}

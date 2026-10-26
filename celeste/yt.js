@@ -262,14 +262,30 @@
         part: 'snippet',
         q: q,
         type: 'video',
-        maxResults: 25,
+        maxResults: opts.maxResults || 25,
         order: opts.order || 'relevance',
         regionCode: opts.region || 'FR',
         relevanceLanguage: 'fr',
-        videoEmbeddable: 'true'
+        videoEmbeddable: 'true',
+        videoDuration: opts.duration || '',
+        safeSearch: 'strict'
       }).then(function (j) {
         return videosByIds((j.items || []).map(function (i) { return i.id.videoId; }));
-      }).then(noShorts);
+      }).then(function (list) {
+        return opts.onlyShorts
+          ? list.filter(function (v) { return isShort(v) && v.duration > 0; })
+          : noShorts(list);
+      });
+    },
+
+    /* Uniquement les formats courts : sert à la dose quotidienne, qui est
+       la seule porte d'entrée vers ce format dans l'application. */
+    shorts: function (q, opts) {
+      opts = opts || {};
+      opts.onlyShorts = true;
+      opts.duration = 'short';
+      opts.maxResults = 25;
+      return Yt.search(q, opts);
     },
 
     searchChannels: function (q) {

@@ -172,7 +172,7 @@ function legal() {
   view.innerHTML = renderLegal(esc, sub);
   if (sub) document.getElementById('lg-' + sub)?.scrollIntoView();
 }
-const routes = { '': home, trophees, legal, classeur, table, offres, forum, blog, compte, regles, guide, membre, souhaits, moderation };
+const routes = { '': home, trophees, legal, classeur, table, offres, forum, blog, compte, regles, guide, membre, souhaits, boutiques, moderation };
 function guide() {
   const k = location.hash.split('/')[2]; view.innerHTML = renderGuide();
   const el = k && document.getElementById('g-' + k); if (!el) return;
@@ -1369,6 +1369,23 @@ function reportModal(target) {
   };
 }
 
+// ---------- boutiques partenaires ----------
+async function boutiques() {
+  const { data } = await sb.from('shops').select('*').eq('status', 'published').order('city');
+  const byCity = {}; for (const b of data || []) (byCity[b.city] ||= []).push(b);
+  view.innerHTML = `<h2>🏪 Boutiques partenaires</h2>
+  <p class="mut">Les boutiques qui font vivre la collection près de chez toi et qui relaient Sharing Cards. Passe les voir : c'est là qu'on ouvre les boosters, qu'on parle extensions et qu'on organise les soirées d'échange.</p>
+  ${(data || []).length ? Object.entries(byCity).map(([city, list]) => `<h3 style="margin:18px 0 8px">${esc(city)}</h3>
+    <div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(240px,1fr))">${list.map(b => `<div class="panel">
+      <b>${esc(b.name)}</b>${b.address ? `<p class="small mut" style="margin:4px 0">${esc(b.address)}${b.zip ? ' · ' + esc(b.zip) : ''}</p>` : ''}
+      ${b.note ? `<p class="small" style="margin:4px 0">${esc(b.note)}</p>` : ''}
+      ${b.url ? `<a class="btn sm ghost" href="${esc(b.url)}" target="_blank" rel="noopener nofollow">Voir la boutique</a>` : ''}</div>`).join('')}</div>`).join('')
+  : '<div class="empty">Les premières boutiques arrivent bientôt.</div>'}
+  <div class="panel" style="margin-top:20px"><h3 style="margin-top:0">Vous tenez une boutique ?</h3>
+  <p class="small mut">Sharing Cards est gratuit et ne vend rien : on envoie des collectionneurs chez vous, vous affichez notre affiche près des cartes. Écris-nous depuis le <a href="#/forum">forum</a> (section Expression libre) ou via les <a href="#/legal/mentions">mentions légales</a>, on vous ajoute ici.</p>
+  <a class="btn sm ghost" href="affiche.html" target="_blank">🖨️ Voir l'affiche à imprimer</a></div>`;
+}
+
 // ---------- modération (réservée aux comptes admin) ----------
 const askNote = (title) => new Promise(r => {
   modal(`<form class="form" id="nf"><h2 style="margin:0">${esc(title)}</h2>
@@ -1382,11 +1399,12 @@ async function moderation() {
   if (error) { view.innerHTML = `<div class="empty">${esc(errMsg(error))}</div>`; return; }
   view.innerHTML = `<h2>🛡️ Modération</h2>
   <div class="kpis">${[['membres', 'membres'], ['annonces', 'annonces actives'], ['offres_en_cours', 'offres en cours'], ['signalements_ouverts', 'signalements'], ['litiges', 'litiges'], ['suspendus', 'suspendus']].map(([k, n]) => `<div><b>${ov[k] ?? 0}</b><span>${n}</span></div>`).join('')}</div>
-  <div class="seg wrapseg" style="margin:14px 0">${[['rep', 'Signalements'], ['dis', 'Litiges & remboursements'], ['blog', 'Blog'], ['rgpd', 'RGPD & données']].map(([k, n]) => `<button data-mt="${k}" aria-pressed="${tab === k}">${n}</button>`).join('')}</div>
+  <div class="seg wrapseg" style="margin:14px 0">${[['rep', 'Signalements'], ['dis', 'Litiges & remboursements'], ['blog', 'Blog'], ['shops', 'Boutiques'], ['rgpd', 'RGPD & données']].map(([k, n]) => `<button data-mt="${k}" aria-pressed="${tab === k}">${n}</button>`).join('')}</div>
   <div id="mbody"><div class="skel"><div class="sk sk-card"></div></div></div>`;
   if (tab === 'rep') return modReports();
   if (tab === 'dis') return modDisputes();
   if (tab === 'blog') return modBlog();
+  if (tab === 'shops') return modShops();
   modRgpd(ov);
 }
 async function modReports() {
@@ -1437,6 +1455,27 @@ async function modBlog() {
     ${a.status === 'published' ? `<button class="btn sm ghost" data-bact="${a.id}:unpublish">Dépublier</button>` : `<button class="btn sm" data-bact="${a.id}:publish">Publier</button>`}
     <button class="btn sm ghost" data-bedit="${a.id}">Modifier</button><button class="btn sm ghost" data-bact="${a.id}:trash">Corbeille</button></div></div>`).join('') || '<div class="empty">Aucun article pour l\'instant : touche « Générer un article maintenant ».</div>'}`;
 }
+async function modShops() {
+  const { data, error } = await sb.rpc('admin_shops', { p_action: 'list' });
+  if (error) return $('#mbody').innerHTML = `<div class="empty">${esc(errMsg(error))}</div>`;
+  const f = (id, lbl, val = '', ph = '') => `<label class="f">${lbl}<input id="${id}" value="${esc(val)}" placeholder="${esc(ph)}" maxlength="120"></label>`;
+  $('#mbody').innerHTML = `<div class="panel"><h3 style="margin-top:0">Ajouter une boutique</h3>
+    <form class="form" id="shf"><div class="row2">${f('shn', 'Nom')}${f('shc', 'Ville')}</div>
+    <div class="row2">${f('sha', 'Adresse')}${f('shz', 'Code postal')}</div>
+    ${f('shu', 'Site ou page (facultatif)', '', 'https://…')}${f('sho', 'Petite phrase (facultatif)', '', 'Tournois le samedi, gros rayon cartes…')}
+    <p class="err" id="sherr"></p><button class="btn sm">Ajouter</button></form></div>
+    ${(data || []).map(b => `<div class="panel mod"><b>${esc(b.name)}</b> <span class="small mut">${esc(b.city)}${b.zip ? ' · ' + esc(b.zip) : ''}${b.status !== 'published' ? ' · <span class="pill p-PL">masquée</span>' : ''}</span>
+      ${b.address ? `<p class="small mut" style="margin:4px 0">${esc(b.address)}</p>` : ''}${b.note ? `<p class="small">${esc(b.note)}</p>` : ''}
+      <div class="acts">${b.status === 'published' ? `<button class="btn sm ghost" data-shact="${b.id}:hide">Masquer</button>` : `<button class="btn sm" data-shact="${b.id}:show">Afficher</button>`}</div></div>`).join('')
+    || '<div class="empty">Aucune boutique pour l\'instant.</div>'}
+    <p class="small mut">La page publique est <a href="#/boutiques">#/boutiques</a>, elle est aussi en bas de chaque page.</p>`;
+  $('#shf').onsubmit = async e => { e.preventDefault();
+    const patch = { name: $('#shn').value.trim(), city: $('#shc').value.trim(), address: $('#sha').value.trim(), zip: $('#shz').value.trim(), url: $('#shu').value.trim(), note: $('#sho').value.trim() };
+    if (!patch.name || !patch.city) return $('#sherr').textContent = 'Le nom et la ville sont obligatoires.';
+    const { error: er } = await sb.rpc('admin_shops', { p_action: 'add', p_patch: patch });
+    if (er) return $('#sherr').textContent = errMsg(er);
+    toast('Boutique ajoutée'); moderation(); };
+}
 async function modBlogEdit(id) {
   const { data } = await sb.rpc('admin_blog', { p_action: 'list' });
   const a = (data || []).find(x => x.id === id); if (!a) return;
@@ -1470,7 +1509,7 @@ async function modOffer(v) {
 
 // ---------- événements ----------
 document.addEventListener('click', async e => {
-  const t = e.target.closest('[data-set],[data-f],[data-tog],[data-iq],[data-dq],[data-put],[data-l],[data-buy],[data-trade],[data-rmlist],[data-report],[data-act],[data-ot],[data-am],[data-ts],[data-card],[data-close],[data-delpost],[data-scan],[data-express],[data-names],[data-connect],[data-auth],[data-export],[data-delacct],[data-prep],[data-label],[data-dl],[data-paylbl],[data-ordlbl],[data-pickrelay],[data-avk],[data-avh],[data-wish],[data-csv],[data-mt],[data-mst],[data-ract],[data-oact],[data-purge],[data-fs],[data-vote],[data-bgen],[data-bact],[data-bedit],[data-rstat],[data-editpost]');
+  const t = e.target.closest('[data-set],[data-f],[data-tog],[data-iq],[data-dq],[data-put],[data-l],[data-buy],[data-trade],[data-rmlist],[data-report],[data-act],[data-ot],[data-am],[data-ts],[data-card],[data-close],[data-delpost],[data-scan],[data-express],[data-names],[data-connect],[data-auth],[data-export],[data-delacct],[data-prep],[data-label],[data-dl],[data-paylbl],[data-ordlbl],[data-pickrelay],[data-avk],[data-avh],[data-wish],[data-csv],[data-mt],[data-mst],[data-ract],[data-oact],[data-purge],[data-fs],[data-vote],[data-bgen],[data-bact],[data-bedit],[data-rstat],[data-editpost],[data-shact]');
   if (!t) return;
   const d = t.dataset;
   if (d.set) { S.set = d.set; classeur(); }
@@ -1524,6 +1563,9 @@ document.addEventListener('click', async e => {
     const { error } = await sb.rpc('admin_blog', { p_action: action, p_id: id });
     toast(error ? errMsg(error) : 'C\'est fait', !!error); if (!error) moderation(); }
   else if (d.bedit) modBlogEdit(d.bedit);
+  else if (d.shact) { const [id, action] = d.shact.split(':');
+    const { error } = await sb.rpc('admin_shops', { p_action: action, p_id: id });
+    toast(error ? errMsg(error) : 'C\'est fait', !!error); if (!error) moderation(); }
   else if (d.rstat) { const { error } = await sb.rpc('admin_reset_stats', { p_user: d.rstat });
     toast(error ? errMsg(error) : 'Trophées et compteurs remis à zéro', !!error); }
 });

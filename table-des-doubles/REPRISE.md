@@ -72,6 +72,11 @@
 - Forum : chacun peut **modifier son propre message** (`posts.edited_at`, policy update + trigger `posts_mask_update` qui remasque, recalcule `votes` depuis `post_votes` et gèle user_id/section/blog_id/created_at). L'original d'avant correction n'est pas conservé : `body_raw` suit la dernière version.
 - Messages du forum : limite portée à **2 000 caractères** (`posts_body_check`), champs à 1900 et troncature dans `posts_before_insert` après masquage (le masquage peut rallonger le texte).
 
+## Lancement (ajout 28/10)
+- `LANCEMENT.md` : kit prêt à copier (invitations, posts Facebook/Discord, scripts TikTok, discours boutique, réponses aux objections, calendrier 6 semaines, interdits).
+- Table `shops` + `admin_shops(action,id,patch)` : page publique `#/boutiques` (lien dans le pied de page) et onglet **Boutiques** dans la modération pour ajouter / masquer.
+- État au 28/10 : `payments_live = true` mais clés Stripe encore en test ; `rgpd_purge` et les crons `rgpd-purge` / `refunds` **toujours pas installés** (fichier SQL du 21/10 à coller) ; 0 annonce active ; 2 brouillons de blog à publier.
+
 ## Prochaines tâches techniques
 1. Régler les seuils d'authenticité (attendre les scores de l'utilisateur, étape 4 d'A-FAIRE).
 2. Remplir `LEGAL` en haut de `legal.js` (nom, SIRET, adresse, e-mail, médiateur).

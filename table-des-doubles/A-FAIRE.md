@@ -1,161 +1,102 @@
-# À faire (toi) — étape par étape
+# À faire (toi) — checklist avant l'ouverture
 
-## Où en es-tu ? (au 04/10)
-- [ ] **Clé IA de secours Groq (gratuite, 2 min)**, utilisée quand Gemini est saturé : 1) console.groq.com → compte (Google ou e-mail) → **API Keys** → « Create API Key » ; 2) Supabase → Edge Functions → **Secrets** → ajouter `GROQ_API_KEY` = ta clé. (Option : `MISTRAL_API_KEY` depuis console.mistral.ai, palier « Experiment » gratuit.) Ne colle jamais une clé dans le chat.
-- [ ] **Clé IA Gemini (gratuite, 2 min)** pour la reconnaissance des cartes : 1) aistudio.google.com/apikey → « Create API key » (compte Google, pas de carte bancaire) ; 2) Supabase → Edge Functions → **Secrets** → ajouter `GEMINI_API_KEY` = ta clé. Ne la colle jamais dans le chat. Sans clé, le scanner marche quand même (moteur local seul).
-- [ ] **Test à deux** du nouveau parcours avec bordereaux (étape 2)
-- [ ] **Scores d'authenticité** vraie / fausse carte (étape 4)
-- [ ] **INPI** : vérifier que « Sharing Cards » est libre (étape 5.2)
-- [ ] **Accès de ton frère** : GitHub → Collaborators + Supabase → Team
-- [ ] **CM2C** : n° d'adhérent à afficher ? (en attente)
-- [ ] **Ouverture** : Stripe en mode réel (SIRET, IBAN) → puis `BOXTAL_LIVE=1` + carte enregistrée chez Boxtal (étape 5 ter)
-- [ ] **Boxtal, envoi sans imprimante** : demander au support (aide.boxtal.com ou chat) : « Puis-je obtenir via l'API v3 une étiquette **QR code / sans impression** pour Mondial Relay et Chronopost Shop2Shop ? Quel `shippingOfferCode` ou quel type de document ? » → transmets-moi la réponse, je l'affiche dans l'appli.
-- [ ] **Coller un fichier SQL (2 min)** : Supabase → SQL Editor → New query → copie tout le contenu de `table-des-doubles/supabase/sql/2026-10-21-moderation-rgpd-echanges.sql` → Run. Ça active la purge RGPD automatique et le remboursement automatique des litiges. (Je ne peux pas le lancer moi-même : mes outils refusent les instructions qui suppriment des données sans ton accord.)
-- [ ] **Relire le 1er article du blog** : Compte → Ouvrir la modération → onglet **Blog** → « Lire / modifier », puis **Publier** quand il te plaît. (Sans clé Gemini, l'article est écrit par le site lui-même ; avec la clé, il sera plus vivant.)
-- ✅ Inscriptions, Stripe test, Boxtal, textes légaux, médiateur
-- ✅ Page modération (ton compte est admin : **Compte → Ouvrir la modération**), liste de souhaits, import/export CSV du classeur, défi de la semaine, frais d'échange payables
-
-
-Environ 1 h 30 pour les étapes 1 à 3. Tout est gratuit.
-
-
-## ÉTAPE 1 — Faire marcher les inscriptions (10 min, gratuit) — PRIORITÉ
-
-### 1.a Adresse du site dans Supabase
-1. Va sur https://supabase.com/dashboard et connecte-toi.
-2. Clique sur le projet **table-des-doubles**.
-3. Menu de gauche : **Authentication** (icône de bonhomme), puis **URL Configuration**.
-4. Champ **Site URL** : efface `http://localhost:3000` et colle `https://table-des-doubles.vercel.app`.
-5. Plus bas, dans **Redirect URLs**, clique **Add URL**, colle `https://table-des-doubles.vercel.app/**` et valide.
-6. Clique **Save**.
-
-### 1.b E-mail de confirmation (le plus simple pour la bêta)
-Le service d'e-mails fourni par défaut n'envoie que 2 à 3 mails par heure : les inscriptions bloqueraient.
-1. Toujours dans **Authentication** : ouvre **Sign In / Providers** (parfois nommé **Providers**), puis **Email**.
-2. Désactive **Confirm email**, puis **Save**.
-   → Les gens s'inscrivent sans cliquer sur un lien. La vérification 18+ reste active (date de naissance obligatoire, contrôlée par la base).
-3. Plus tard, avec un nom de domaine (étape 6) : on remettra la confirmation avec Resend. Sans domaine à toi, Resend ne sait envoyer des mails qu'à ta propre adresse.
-
-### 1.c Test
-1. Ouvre https://table-des-doubles.vercel.app → **Compte** → **Créer un compte**.
-2. Remplis les champs (pseudo, date de naissance de plus de 18 ans, les 2 cases), puis valide.
-3. Tu dois arriver sur ton classeur, avec ton pseudo en haut à droite.
-4. Essaie avec une date de moins de 18 ans : le compte doit être refusé.
-5. Envoie-moi une capture si ça bloque.
+*Mise à jour : 29/10/2026. Tout est gratuit. L'ordre compte : fais le bloc A en entier avant d'inviter qui que ce soit.*
 
 ---
 
-## ÉTAPE 2 — Tester l'appli à deux (30 min) — À REFAIRE avec les bordereaux
-1. Chacun : **Compte** → *Mon adresse d'expédition* : adresse + **téléphone** → Enregistrer, puis **📍 Mon point relais → Choisir** (vrais points Mondial Relay).
-2. Chacun ajoute quelques cartes au classeur, dont une en ×2 (bouton **+**).
-3. Toi : sur le double, **Poser** (état, prix < 50 €).
-4. Lui : **La table** → ta carte → **Acheter** → livraison **📍 Point relais** → Confirmer.
-5. Toi : **Offres → Reçues → Accepter**. Lui : **Payer** avec la carte test `4242 4242 4242 4242`.
-6. Toi : **📄 Générer mon bordereau** → un PDF d'essai (marqué TEST) se télécharge, le suivi se remplit seul.
-7. Lui : **Vérifier la carte reçue** → **J'ai reçu la carte**. Chacun laisse un avis.
-8. Refaites la même chose en **échange** (bouton *Proposer un échange*) : chacun paie et télécharge son propre bordereau.
+# BLOC A — Avant d'inviter les premiers collectionneurs
+**Total : environ 2 h, étalables sur une semaine.**
+
+## A1. Coller le fichier SQL (2 min) — LE PLUS IMPORTANT
+Sans ça, la purge RGPD automatique et surtout le **remboursement automatique d'un litige** ne tournent pas : si tu tranches « rembourser l'acheteur », rien ne part chez Stripe.
+
+1. Ouvre https://github.com/woirinalex178-cloud/avatar-prof/blob/claude/relaxed-galileo-u5yzct/table-des-doubles/supabase/sql/2026-10-21-moderation-rgpd-echanges.sql
+2. En haut à droite du cadre de code : bouton **« Copy raw file »** (icône deux feuilles).
+3. https://supabase.com/dashboard → projet **table-des-doubles** → menu de gauche **SQL Editor** → **New query**.
+4. Colle (Ctrl+V), puis bouton vert **Run**.
+5. Attendu : **Success**. Si c'est rouge, envoie-moi la ligne d'erreur.
+6. Vérif : appli → **Compte → Modération → RGPD & données** : les compteurs s'affichent.
+
+## A2. Les deux clés d'IA (5 min)
+Elles rendent le scanner plus malin et le blog plus vivant. Ne colle **jamais** une clé dans le chat.
+
+- **Gemini** : https://aistudio.google.com/apikey → « Create API key » (compte Google, pas de carte bancaire) → Supabase → **Edge Functions → Secrets** → `GEMINI_API_KEY` = ta clé.
+- **Groq** (secours quand Gemini sature) : https://console.groq.com → API Keys → « Create API Key » → Supabase → Secrets → `GROQ_API_KEY`.
+
+## A3. Amorcer le site (30 min) — sinon personne ne reste
+Aujourd'hui : **0 annonce**. Un site d'échange vide, le visiteur part et ne revient pas.
+
+1. Toi + ton frère : posez **30 à 50 doubles** sur la table (Classeur → carte en ×2 → **Poser**).
+2. Lance **4 sujets** dans le forum : une présentation dans *Présentez-vous*, une idée dans *Améliorations / propositions*, une carte cherchée dans *Recherche de cartes*, un message dans *Expression libre*.
+3. **Publie un article** : Compte → Modération → onglet **Blog** → « Lire / modifier » → corrige si besoin → **Publier**. (2 brouillons t'attendent.)
+4. Ajoute ta première **boutique partenaire** si tu en as déjà une (onglet Boutiques).
+
+## A4. Test complet à deux, avec de vrais bordereaux (30 min)
+1. Chacun : **Compte → Mon adresse d'expédition** (adresse + **téléphone**) → Enregistrer, puis **📍 Mon point relais → Choisir**.
+2. Toi : sur un double, **Poser** (état, prix < 50 €).
+3. Lui : **La table** → ta carte → **Acheter** → livraison **📍 Point relais** → Confirmer.
+4. Toi : **Offres → Reçues → Accepter**. Lui : **Payer** avec la carte de test `4242 4242 4242 4242` (date future, code au hasard).
+5. Toi : **📄 Générer mon bordereau** → un PDF marqué TEST se télécharge, le suivi se remplit seul.
+6. Lui : **Vérifier la carte reçue** → **J'ai reçu la carte**. Chacun laisse un avis.
+7. Refaites en **échange** (bouton *Proposer un échange*) : chacun paie son bordereau.
+8. **Teste aussi un litige** : ouvre un litige sur une offre, va dans Modération → Litiges → « Rembourser l'acheteur », et vérifie que le remboursement apparaît dans Stripe (c'est ce que A1 débloque).
 9. Note tout ce qui coince (capture d'écran) et envoie-le-moi.
 
----
+## A5. Régler l'authenticité (15 min)
+1. Classeur → **📷 Scanner une carte** → une **vraie** carte → **🔍 Authentifier**.
+2. Ajoute les photos du dos et du test de la lampe (pièce sombre, lampe d'un 2ᵉ téléphone collée derrière la carte).
+3. Note le score. Refais avec une **fausse** carte si tu en as une (1 € sur AliExpress).
+4. Envoie-moi les deux scores : je règle les seuils avec.
 
-## ÉTAPE 3 — Vrais paiements Stripe en mode test ✅ FAIT (paiements activés le 29/09)
-Pour tester : le vendeur va dans **Compte → Activer mes ventes** (Stripe propose « Utiliser des données de test »), puis l'acheteur paie avec la carte `4242 4242 4242 4242`.
+## A6. Vérifications juridiques (20 min)
+- **INPI** : https://data.inpi.fr → recherche « Sharing Cards » en **marques**. Si rien d'identique en classes 9/35/42, tu peux continuer sereinement. (Le dépôt, 190 €, n'est pas obligatoire pour démarrer.)
+- **Relire** une dernière fois Mentions légales / CGU / CGV / Confidentialité (bas du site) : ton SIRET, ton adresse et ton médiateur CM2C y sont déjà.
+- **CM2C** : si ton contrat te donne un numéro d'adhérent à afficher, envoie-le-moi.
+- Conseil gratuit : permanence juridique de ta mairie, de la CCI ou de l'ordre des avocats.
 
-### 3.a Créer le compte
-1. Va sur https://dashboard.stripe.com/register et crée un compte (e-mail et mot de passe).
-2. Tu n'as pas besoin de finir l'activation (pièce d'identité, IBAN) pour le mode test : laisse-la de côté.
-3. En haut du tableau de bord, vérifie que le bouton **Mode test** (ou « Test mode ») est **activé**.
-
-### 3.b Activer Connect (paiement aux vendeurs)
-1. Menu **Connect** (ou **Paramètres → Connect**), puis **Commencer**.
-2. Choisis **Plateforme / Marketplace**, puis laisse **Stripe gère l'onboarding (Express)**.
-3. Réponds aux questions (activité : place de marché de cartes à collectionner, pays : France).
-
-### 3.c Récupérer la clé secrète
-1. Menu **Développeurs**, puis **Clés API**.
-2. Ligne **Clé secrète** : **Révéler la clé de test**, puis copie la clé (elle commence par `sk_test_`).
-3. ⚠️ Ne l'envoie à personne, pas même à moi dans le chat : elle se colle uniquement dans Supabase.
-
-### 3.d La coller dans Supabase
-1. Supabase → projet **table-des-doubles** → menu **Edge Functions**, puis **Secrets** (ou **Manage secrets**).
-2. **Add new secret** : nom `STRIPE_SECRET_KEY`, valeur = la clé `sk_test_…`. **Save**.
-3. **Add new secret** : nom `CRON_SECRET`, valeur = un mot de passe inventé et long (ex. `doubles-2026-xK9pQ`). **Save**.
-
-### 3.e Les webhooks (Stripe prévient l'appli) — 2 destinations
-Stripe sépare « Votre compte » (paiements) et « Comptes connectés » (vendeurs). Il en faut une de chaque, même URL :
-`https://zfnjljfmhlnctlidtvqm.supabase.co/functions/v1/payments/webhook`
-
-**Destination 1 : Votre compte**
-1. Stripe → Développeurs → Webhooks → **Ajouter une destination** → **Votre compte** → Continuer.
-2. Coche `checkout.session.completed` → Continuer → **Endpoint webhook** → colle l'URL → Créer.
-3. **Clé secrète de signature** → Révéler → copie `whsec_…`.
-4. Supabase → Edge Functions → Secrets → `STRIPE_WEBHOOK_SECRET` = cette clé → Save.
-
-**Destination 2 : Comptes connectés**
-1. **Ajouter une destination** → **Comptes connectés** → Continuer.
-2. Coche `account.updated` → Continuer → **Endpoint webhook** → même URL → Créer.
-3. Révèle et copie cette 2e clé `whsec_…` (différente).
-4. Supabase → Secrets → `STRIPE_WEBHOOK_SECRET_CONNECT` = cette clé → Save.
-
-### 3.f Me prévenir
-- Écris-moi « Stripe OK ». J'active alors les paiements réels (en mode test) et le versement automatique aux vendeurs, puis je fais un test complet.
-- Carte bancaire de test Stripe : `4242 4242 4242 4242`, n'importe quelle date future, n'importe quel code.
+➡️ **Quand A1 à A6 sont faits, tu peux lancer la vague 1** (10-20 invitations). Les textes sont prêts dans `LANCEMENT.md`.
 
 ---
 
-## ÉTAPE 4 — Tester l'authenticité (15 min)
-1. Classeur → **📷 Scanner une carte** → prends une vraie carte en photo → **🔍 Authentifier**.
-2. Ajoute les photos du dos et du test de la lampe (pièce sombre, lampe d'un 2e téléphone collée derrière la carte).
-3. Note le score. Refais la même chose avec une fausse carte si tu en as une (1 € sur AliExpress).
-4. Envoie-moi les deux scores : je réglerai les seuils avec.
+# BLOC B — Avant d'accepter de l'argent (ventes réelles)
+Tant que ce bloc n'est pas fait, **les échanges carte contre carte fonctionnent**, mais un vendeur ne serait jamais payé pour de vrai. Les paiements tournent sur des clés Stripe de **test**.
+
+## B1. Stripe en mode réel
+1. https://dashboard.stripe.com → finis l'activation : identité, **IBAN**, **SIRET**.
+2. Développeurs → Clés API → copie la clé **live** (`sk_live_…`).
+3. Supabase → Edge Functions → Secrets → remplace `STRIPE_SECRET_KEY`.
+4. Refais les **2 webhooks** en mode réel (Votre compte : `checkout.session.completed` ; Comptes connectés : `account.updated`), même URL `https://zfnjljfmhlnctlidtvqm.supabase.co/functions/v1/payments/webhook`, et remplace `STRIPE_WEBHOOK_SECRET` et `STRIPE_WEBHOOK_SECRET_CONNECT`.
+5. Écris-moi **« Stripe réel OK »** : je vérifie tout et on fait un achat à 1 € en vrai.
+
+## B2. Boxtal en réel
+1. Boxtal → Mon compte → Paiement : enregistre une carte bancaire (chaque étiquette est prélevée, tu es remboursé par le port payé par les membres).
+2. Supabase → Secrets → `BOXTAL_LIVE` = `1`.
+3. Dis-le-moi : je vérifie le code d'offre Colissimo et on fait un vrai envoi.
+
+## B3. Question au support Boxtal (5 min, à faire quand tu veux)
+> « Puis-je obtenir via l'API v3 une étiquette **QR code / sans impression** pour Mondial Relay et Chronopost Shop2Shop ? Quel `shippingOfferCode` ou quel type de document ? »
+
+→ Transmets-moi la réponse, je l'affiche dans l'appli (beaucoup de gens n'ont pas d'imprimante).
 
 ---
 
-## ÉTAPE 5 — Avant d'ouvrir au public (administratif, gratuit)
-1. **Micro-entreprise** : https://autoentrepreneur.urssaf.fr → **Créer mon auto-entreprise**. Activité : « plateforme de mise en relation, commerce en ligne ». Environ 15 min, puis réception du numéro SIRET sous 1 à 4 semaines.
-2. **Nom libre ?** https://data.inpi.fr → recherche « **Sharing Cards** » en marques. Si rien d'identique en classes 9/35/42 : OK. (Le dépôt de marque est payant, 190 € : pas obligatoire pour démarrer.)
-3. **Textes légaux** ✅ complets (nom, SIRET, adresse, e-mail, médiateur CM2C). Si ton contrat CM2C donne un n° d'adhérent à afficher, envoie-le-moi (page « Infos légales » en bas du site). Il te reste à remplir **une seule fois** le haut du fichier `legal.js` (je peux le faire si tu me donnes les infos) :
-   - ton prénom NOM, ton n° SIRET, ton adresse postale, un e-mail de contact ;
-   - un **médiateur de la consommation** (obligatoire dès que tu vends un service à des particuliers ; environ 50 à 150 €/an, ex. CM2C, Medicys) ;
-   - conseil : faire relire les textes gratuitement (permanences juridiques de ta mairie, de la CCI ou de l'ordre des avocats).
-4. **Stripe en mode réel** : finaliser l'activation Stripe (pièce d'identité, IBAN, SIRET). Ensuite, je passe l'appli en paiements réels.
-5. **DAC7** (plus tard) : chaque année en janvier, déclarer aux impôts les vendeurs qui ont fait plus de 30 ventes ou 2 000 €. L'appli pourra générer le fichier.
+# BLOC C — Quand il y a du monde
+- **Nom de domaine** (~10 €/an chez OVH ou Gandi) → je le branche sur Vercel.
+- **Resend** (gratuit, 3 000 mails/mois) avec ce domaine → je réactive la confirmation par e-mail et les alertes « une carte de ta liste de souhaits vient d'être posée ».
+- **Google Play** (25 $ une fois) puis **App Store** (99 $/an).
+- **DAC7** : chaque janvier, déclarer aux impôts les vendeurs ayant dépassé 30 ventes ou 2 000 €. L'appli pourra générer le fichier.
+- **Accès de ton frère** : GitHub → Collaborators, et Supabase → Team.
 
 ---
 
-## ÉTAPE 5 bis — Les boutiques de cartes près de chez toi (0 €)
-1. Ouvre https://table-des-doubles.vercel.app/affiche.html → bouton **🖨️ Imprimer** (A4 couleur, ~0,50 € en reprographie). Le QR code mène au site.
-2. Liste 5 à 10 boutiques (Google Maps : « cartes Pokémon », « jeux de société », « boutique manga »).
-3. Passe en semaine, pas le samedi (le vendeur a le temps). Phrase d'accroche :
-   > « Bonjour, je lance Sharing Cards, un site gratuit pour que les collectionneurs échangent leurs doubles en sécurité. Ça ramène du monde qui cherche des boosters. Je peux laisser une affiche près des cartes ? »
-4. Propose en échange : leur boutique citée sur le site (plus tard, une page « Boutiques partenaires ») et un tournoi / soirée d'échange organisé chez eux.
-5. Note dans un tableau : boutique, date, réponse, contact du gérant.
-6. Les visites venues de l'affiche arrivent avec `?src=boutique` : je pourrai les compter plus tard.
+# Ce que je fais dès que tu me le dis
+- « **SQL OK** » → je vérifie que la purge et les remboursements tournent.
+- « **Stripe réel OK** » → j'active les vrais paiements et je teste tout.
+- « **scores authenticité : X et Y** » → je règle les seuils.
+- « **boutique : [nom, ville]** » → je l'ajoute aux partenaires (ou tu le fais toi-même en 20 s).
+- Tout bug remonté pendant le test à deux → correction le jour même.
 
 ---
 
-## ÉTAPE 5 ter — Bordereaux Boxtal ✅ connecté (01/10)
-- Clés Boxtal en place : les **vrais points relais Mondial Relay** s'affichent déjà dans l'appli, et le suivi des colis est abonné (webhook).
-- Les bordereaux restent **en mode essai** tant que Stripe est en mode test (sinon tu paierais de vraies étiquettes avec de faux paiements).
-- **Le jour de l'ouverture** (Stripe en réel) :
-  1. Boxtal → Mon compte → Paiement : enregistre une carte bancaire (Boxtal prélève chaque étiquette achetée) ou approvisionne un solde de quelques dizaines d'euros. Tu es remboursé par le port payé par les membres.
-  2. Supabase → Edge Functions → Secrets : ajoute `BOXTAL_LIVE` = `1`.
-  3. Dis-le-moi : je vérifie le code d'offre Colissimo et je fais un 1er envoi réel de test.
-- **API Suivi La Poste** : pas indispensable. Boxtal envoie déjà le suivi de tous ses transporteurs (Mondial Relay, Colissimo, Chronopost…). Elle servira seulement pour les « Lettre suivie » achetées à part.
-- Chaque membre doit indiquer un **téléphone** dans Compte → Mon adresse (exigé par les transporteurs, jamais affiché).
-
----
-
-## ÉTAPE 6 — Quand il y a du monde (payant, optionnel)
-1. **Nom de domaine** (~10 €/an, ex. table-des-doubles.fr chez OVH ou Gandi) → je le branche sur Vercel.
-2. **Resend** (gratuit, 3 000 mails/mois) avec ce domaine → je réactive la confirmation par e-mail.
-3. **Google Play** (25 $ une fois) puis **App Store** (99 $/an) : je transforme l'appli web en appli des stores.
-4. **Communication** : groupes Facebook et Discord Pokémon TCG, boutiques locales (affiche avec QR code), TikTok.
-
----
-
-## Ce que je fais de mon côté quand tu me le dis
-- « Stripe OK » → activer les paiements et le versement aux vendeurs, puis tout tester.
-- « scores authenticité : X et Y » → régler les seuils.
-- « rédige les CGU » → textes légaux complets.
-- Tout bug remonté pendant l'étape 2 → correction.
+# Déjà fait ✅
+Inscriptions · Stripe en test · Boxtal connecté (vrais points relais) · textes légaux + médiateur · page de modération (signalements, litiges, RGPD) · liste de souhaits · import/export CSV · défi de la semaine · frais d'échange payables · forum en 5 sections · blog hebdomadaire automatique · masquage des coordonnées · trophées honnêtes · page Boutiques partenaires · kit de lancement (`LANCEMENT.md`).

@@ -546,3 +546,14 @@ p .wish{position:static;display:inline-grid;vertical-align:middle;margin-right:4
   10%{opacity:1} 80%{opacity:.6}
   to{background-position:9% -12%,31% -16%,41% -8%,64% -20%,73% -10%,93% -14%;opacity:0}}
 @media (max-width:600px){.hero-ban img{animation-duration:16s}.hero-ban .glints{display:none}}
+
+/* ---------- fourchette par état et avertissements ---------- */
+.condtab{width:100%;border-collapse:collapse;margin:6px 0;font-size:13px}
+.condtab th{text-align:left;font-weight:600;padding:5px 8px 5px 0;white-space:nowrap}
+.condtab td{padding:5px 8px 5px 0;font-family:var(--mono);color:var(--gold);white-space:nowrap}
+.condtab td.small{font-family:var(--body);color:var(--mut);white-space:normal}
+.condtab tr+tr th,.condtab tr+tr td{border-top:1px solid var(--line)}
+.condtab tr.on{background:#e0b85c14}
+.condtab tr.on td{color:var(--gold2)}
+.disc{font-size:12px;line-height:1.5;color:var(--mut);background:#0005;border-left:3px solid #e0b85c66;border-radius:0 8px 8px 0;padding:8px 10px;margin:10px 0 0}
+details>summary{cursor:pointer}

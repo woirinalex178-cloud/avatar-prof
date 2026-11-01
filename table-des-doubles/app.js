@@ -17,6 +17,18 @@ const LANGS = { fr: 'Français', en: 'Anglais (US/UK)', ja: 'Japonais', de: 'All
 const flag = l => `<span class="lang">${l === 'ja' ? 'JP' : l.toUpperCase()}</span>`;
 const COND = { NM: ['Near Mint', 'Comme neuve, aucun défaut visible', 1], EX: ['Excellent', 'Micro-défauts (léger blanchiment)', .85], GD: ['Bon', 'Usure visible, coins/bords marqués', .65], PL: ['Joué', 'Pliure, rayure ou usure forte', .4] };
 const STEPS = ['Offre', 'Acceptée', 'Payée', 'Expédiée', 'Reçue', 'Terminée'];
+// La cote publiée décrit une carte Near Mint : on en déduit une fourchette par état.
+const condPrice = (p, k) => p == null ? null : Math.max(0.5, Math.round(p * COND[k][2] * 100) / 100);
+// Avertissements affichés au bon endroit : le site héberge, il ne vend pas et n'expertise pas.
+const DISC = {
+  cote: "Cotes indicatives, issues de données publiques (Cardmarket / TCGplayer via TCGdex), relevées chaque nuit. Ce n'est ni une estimation officielle, ni un conseil d'achat ou d'investissement : Sharing Cards n'intervient pas dans la fixation des prix.",
+  etat: "La fourchette par état est un simple ordre de grandeur calculé à partir de la cote Near Mint. L'état réel, l'édition et la demande du moment décident du prix final.",
+  deal: "Sharing Cards héberge des annonces entre particuliers : le site n'est ni vendeur, ni acheteur, ni expert. L'état, l'authenticité et la conformité de la carte relèvent du membre qui la propose.",
+  auth: "Le contrôle d'authenticité est une aide automatique et indicative : il ne remplace ni une expertise, ni une gradation professionnelle, et aucune carte n'est certifiée par le site.",
+  ship: "Le transport est assuré par le transporteur choisi. En cas de perte ou de casse, la réclamation se fait auprès de lui : le site t'accompagne mais n'achemine rien.",
+  ja: "Les cartes japonaises ne sont pas cotées sur les places de marché européennes : la cote est le plus souvent absente, et le visuel peut manquer dans la base communautaire."
+};
+const disc = (...ks) => `<p class="disc">⚠️ ${ks.map(k => esc(DISC[k])).join(' ')}</p>`;
 
 // ---------- utilitaires ----------
 const $ = (s, r = document) => r.querySelector(s);
@@ -306,7 +318,9 @@ function listingModal(l) {
   <dl class="kv">${l.auc ? '' : `<dt>Prix</dt><dd>${l.price ? eur(l.price) : 'Échange uniquement'}</dd>`}<dt>Cote Cardmarket</dt><dd><button type="button" class="cote" data-cote="${c.id}">${eur(c.price_eur)}${trend(c)} 📈</button>${c.price_updated ? ` <span class="small mut">du ${new Date(c.price_updated).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })}</span>` : ''}<div class="spark" data-spark="${esc(c.tcg_id || '')}"></div></dd><dt>État</dt><dd><span class="pill p-${l.condition}">${l.condition}</span> ${COND[l.condition][0]}</dd><dt>Échange</dt><dd>${l.trade_ok ? 'accepté' : 'non'}</dd><dt>Vendeur</dt><dd>${who(l.user_id, s)} · ${stars(s)} · ${s.trades_done || 0} transaction(s)${s.verified ? ' · ✔ identité vérifiée' : ''}${s.passionne ? '<span class="badge-coll">🏅 Collectionneur passionné</span>' : ''} · ${esc(s.region || '')}</dd></dl>
   ${l.note ? `<p class="panel small" style="margin-top:12px">${esc(l.note)}</p>` : ''}
   ${l.auth_score != null ? `<div class="panel small" style="margin-top:10px">${authBadge(l)} <b>Contrôle photo d'authenticité : ${l.auth_score}/100</b> — ${esc(l.auth_report?.meta?.verdict || '')} (fiabilité ${esc(l.auth_report?.meta?.confidence || '?')}). <span class="mut">Indicatif, tu pourras refaire le contrôle à la réception.</span></div>` : ''}
+  ${c.price_eur != null ? `<details class="small" style="margin-top:10px"><summary>Que vaut cette carte selon son état ?</summary>${condTable(c.price_eur, l.condition)}${disc('etat')}</details>` : ''}
   ${l.photo_path && l.verify_code ? `<p class="small mut">Code de vérification attendu sur la photo : <b class="mono">${esc(l.verify_code)}</b>. S'il n'y est pas, signale l'annonce.</p>` : ''}
+  ${disc('deal', ...(l.auth_score != null ? ['auth'] : []))}
   ${l.auc ? `<div id="auc" class="panel auc" style="margin-top:12px"></div>` : ''}
   ${mine ? '' : `<p class="small" style="margin-top:10px">${wishStar(c.id)} ${S.wish.has(c.id) ? 'Dans ta liste de souhaits' : 'Ajouter cette carte à ma liste de souhaits'}</p>`}
   <div id="ofr" style="margin-top:16px">${l.auc ? (mine ? '' : `<button class="btn ghost sm" data-report="listing:${l.id}">Signaler</button>`) : mine ? `<button class="btn ghost" data-rmlist="${l.id}">Retirer de la table</button>` : `<div class="acts">${l.price ? `<button class="btn" data-buy="${l.id}">Acheter ${eur(l.price)}</button>` : ''}${l.trade_ok ? `<button class="btn ghost" data-trade="${l.id}">Proposer un échange</button>` : ''}<button class="btn ghost sm" data-report="listing:${l.id}">Signaler</button></div>`}</div>
@@ -770,6 +784,12 @@ function showScan(c) {
     </div><div class="sr-acts"><p class="small" style="margin:0"><b>C'est bien elle ?</b></p>${add ? bAdd + bAuth : bAuth + bAdd}${askAI(scanState.how)}
     <p class="small" style="margin:6px 0 0">${wishStar(c.id)} ${S.wish.has(c.id) ? 'Dans ta liste de souhaits' : 'La chercher : ajouter à mes souhaits'}</p></div></div>
     ${others.length ? `<details class="small"><summary>Pas la bonne ? (${others.length} autres)</summary><div class="alts">${others.map(x => `<button type="button" data-tw="${x.id}">${img(x)}<small>${flag(x.lang)} ${esc(nm(x))}<br>${esc(x.set_name)} · ${esc(x.local_id)}</small></button>`).join('')}</div></details>` : ''}`;
+  if (!c.image) cardRef(c).then(r => {
+    const b = $('#scr .sr-img'); if (!b || scanState.shown !== c) return;
+    b.innerHTML = r?.img
+      ? `<img class="cimg" src="${r.img.image}/high.webp" alt="${esc(nm(c))}"><p class="small mut" style="margin:4px 0 0">Visuel de la version ${r.img.lang === 'ja' ? 'JP' : r.img.lang.toUpperCase()} : la base communautaire n'a pas encore l'image de cette version.</p>`
+      : `<div class="ph"><span>${esc(nm(c))}</span></div><p class="small mut" style="margin:4px 0 0">Visuel non disponible dans la base (fréquent pour les éditions japonaises).</p>`;
+  });
   langVersions(c).then(vs => {
     if (scanState.shown !== c || !$('#langsw')) return;
     for (const v of vs) if (!list.some(x => x.id === v.id)) list.push(v);
@@ -833,6 +853,15 @@ function sheet(html, cls = '') {
 document.addEventListener('click', e => { const i = e.target.closest('.sr-img img, .split > div:first-child > img.cimg, .ns-img img'); if (!i) return;
   e.preventDefault(); e.stopPropagation(); sheet(`<img src="${i.src.replace('/low.webp', '/high.webp')}" alt="${esc(i.alt)}">`, 'zoom'); }, true);
 document.addEventListener('click', e => { const b = e.target.closest('[data-cote]'); if (!b) return; e.preventDefault(); e.stopPropagation(); coteModal(S.cards[b.dataset.cote]); }, true);
+const condTable = (p, cur) => p == null ? '' : `<table class="condtab"><tbody>${Object.entries(COND).map(([k, v]) => `<tr${cur === k ? ' class="on"' : ''}><th><span class="pill p-${k}">${k}</span> ${esc(v[0])}</th><td>${eur(condPrice(p, k))}</td><td class="small mut">${esc(v[1])}</td></tr>`).join('')}</tbody></table>`;
+// Carte de référence : quand la cote ou le visuel manquent (surtout en japonais), on regarde les autres langues.
+async function cardRef(c) {
+  if (!c || (c.image && c.price_eur != null)) return null;
+  const vs = await langVersions(c).catch(() => []);
+  const im = c.image ? null : vs.find(v => v.image && v.id !== c.id);
+  const px = c.price_eur != null ? null : [...vs].filter(v => v.price_eur != null).sort((a, b) => (b.lang === 'en') - (a.lang === 'en'))[0];
+  return im || px ? { img: im, px } : null;
+}
 const histCache = new Map();
 const priceHist = id => { if (!histCache.has(id)) histCache.set(id, sb.from('price_history').select('d,price').eq('tcg_id', id).gte('d', new Date(Date.now() - 365 * 864e5).toISOString().slice(0, 10)).order('d').then(r => r.data || [])); return histCache.get(id); };
 // courbe : points [x, y] dans un cadre W×H (marges incluses)
@@ -845,7 +874,17 @@ const fmtD = d => new Date(d).toLocaleDateString('fr-FR', { day: '2-digit', mont
 async function coteModal(c) {
   if (!c) return;
   const z = sheet(`<div class="cotebox"><p class="small mut" style="margin:0">${flag(c.lang)} ${esc(setName(S.sets.find(x => x.id === c.set_id)) || c.set_name || '')} · n° ${esc(c.local_id)}</p>
-    <h3 style="margin:2px 0 4px">${esc(nm(c))}</h3><p class="cotebig">${eur(c.price_eur)}${trend(c)}</p><div id="cotech"><div class="skel" style="height:150px"></div></div></div>`, 'cotedlg');
+    <h3 style="margin:2px 0 4px">${esc(nm(c))}</h3><p class="cotebig">${eur(c.price_eur)}${trend(c)}</p>
+    <div id="coteref"></div>
+    ${c.price_eur != null ? `<h4 style="margin:10px 0 4px">Estimation selon l'état</h4>${condTable(c.price_eur)}${disc('etat')}` : ''}
+    <div id="cotech"><div class="skel" style="height:150px"></div></div>
+    ${disc('cote', ...(c.lang === 'ja' ? ['ja'] : []))}</div>`, 'cotedlg');
+  if (c.price_eur == null) cardRef(c).then(r => {
+    const b = $('#coteref', z); if (!b || !b.isConnected) return;
+    b.innerHTML = r?.px
+      ? `<div class="panel small"><b>Pas de cote pour cette version.</b> À titre indicatif, la version ${r.px.lang === 'ja' ? 'japonaise' : LANGS[r.px.lang]} de la même carte est cotée <b>${eur(r.px.price_eur)}</b>.<h4 style="margin:8px 0 4px">Estimation selon l'état</h4>${condTable(r.px.price_eur)}</div>`
+      : '<p class="small mut">Pas de cote connue pour cette carte. Fixe ton prix en comparant des ventes récentes, et explique ton état dans la note de l\'annonce.</p>';
+  });
   const box = $('#cotech', z), data = c.tcg_id ? await priceHist(c.tcg_id) : [];
   if (!box.isConnected) return;
   if (data.length < 2) { box.innerHTML = `<p class="small mut">${c.lang === 'ja' ? 'Pas de cote pour les cartes japonaises.' : 'Historique en construction : la courbe apparaîtra après quelques jours de relevés.'}</p>`; return; }
@@ -1681,7 +1720,8 @@ function buyForm(l) {
     <dl class="kv" style="margin-top:12px"><dt>Carte</dt><dd>${eur(l.price)}</dd><dt>Protection acheteur</dt><dd>${eur(f)}</dd><dt>Livraison</dt><dd id="shp"></dd><dt><b>Total</b></dt><dd><b id="tot"></b></dd></dl>
     <p class="small mut">Le vendeur accepte d'abord. Tu paies ensuite : l'argent reste bloqué jusqu'à ce que tu confirmes la réception. Le bordereau est généré pour le vendeur, rien à faire de ton côté.</p>
     ${gtip('paiement', 'Paiement bloqué, livraison, réception : comment ça marche ?')}
-    <button class="btn" id="cbuy">Confirmer l'offre d'achat</button><p class="err" id="berr"></p></div>`;
+    <button class="btn" id="cbuy">Confirmer l'offre d'achat</button><p class="err" id="berr"></p>
+    ${disc('deal', 'ship')}</div>`;
   const upd = async () => { const m = $('#ofr input[name=shm]:checked').value, p = SHIP().find(x => x[0] === m)[3];
     $('#shp').textContent = p ? eur(p) : '—'; $('#tot').textContent = eur(l.price + f + p);
     if (m === 'relay') { const { data: a } = await sb.from('addresses').select('relay').eq('user_id', S.user.id).maybeSingle(); $('#relayline').innerHTML = `📍 Ton point relais : <b>${esc(a?.relay?.name || 'pas encore choisi')}</b> <button class="btn sm ghost" data-pickrelay>${a?.relay ? 'Changer' : 'Choisir'}</button>`; }

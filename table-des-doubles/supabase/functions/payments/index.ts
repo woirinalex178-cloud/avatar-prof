@@ -5,6 +5,7 @@ import { createClient } from 'npm:@supabase/supabase-js@2';
 // /checkout : l'acheteur paie (carte + frais protection + port éventuel) -> argent sur le compte plateforme Stripe
 // /label    : un membre paie l'étiquette de son envoi (échanges)
 // /trade    : chacun des deux membres paie ses frais d'échange (échange sans argent)
+// /photos   : un vendeur ajoute 5 photos à son annonce (option payante)
 // /connect  : le vendeur ouvre son compte vendeur (identité vérifiée par Stripe, 18+)
 // /webhook  : Stripe confirme paiement (destination « Votre compte ») / compte vendeur (destination « Comptes connectés »)
 // /release  : (pg_cron toutes les 15 min) verse la part vendeur quand la transaction est terminée
@@ -95,6 +96,22 @@ Deno.serve(async (req) => {
       await db.from('offers').update(role === 'buyer' ? { trade_session_buyer: s.id } : { trade_session_seller: s.id }).eq('id', o.id);
       return json({ url: s.url });
     }
+    if (path === 'photos') {
+      const u = await me(req); const { listing_id } = await req.json();
+      const { data: l } = await db.from('listings').select('id,user_id,photo_quota,status').eq('id', listing_id).single();
+      if (!l || l.user_id !== u.id) return json({ error: 'Annonce introuvable.' }, 404);
+      if (l.photo_quota > 3) return json({ paid: true });
+      const { data: st } = await db.from('settings').select('extra_photos_price,extra_photos_count').single();
+      const n = st?.extra_photos_count ?? 5, price = Number(st?.extra_photos_price ?? 0.99);
+      const s = await stripe.checkout.sessions.create({
+        mode: 'payment', locale: 'fr', customer_email: u.email,
+        line_items: [{ quantity: 1, price_data: { currency: 'eur', unit_amount: Math.round(price * 100), product_data: { name: `${n} photos supplémentaires sur une annonce` } } }],
+        metadata: { photos_listing: l.id },
+        success_url: `${SITE}/#/compte`, cancel_url: `${SITE}/#/compte`
+      });
+      await db.from('listings').update({ photos_session: s.id }).eq('id', l.id);
+      return json({ url: s.url });
+    }
     if (path === 'connect') {
       const u = await me(req);
       const { data: p } = await db.from('profiles').select('stripe_account_id').eq('id', u.id).single();
@@ -112,6 +129,7 @@ Deno.serve(async (req) => {
         const s = ev.data.object as Stripe.Checkout.Session;
         if (s.metadata?.shipment_id) await db.from('shipments').update({ paid: true }).eq('id', s.metadata.shipment_id).eq('stripe_session_id', s.id);
         else if (s.metadata?.trade_offer) await db.rpc('trade_fee_paid', { p_offer: s.metadata.trade_offer, p_role: s.metadata.role, p_session: s.id });
+        else if (s.metadata?.photos_listing) await db.rpc('photos_unlocked', { p_listing: s.metadata.photos_listing, p_session: s.id });
         else await db.from('offers').update({ status: 'paid', paid_amount: (s.amount_total ?? 0) / 100, stripe_payment_intent: String(s.payment_intent), updated_at: new Date().toISOString() })
           .eq('id', s.metadata!.offer_id).eq('status', 'accepted');
       }

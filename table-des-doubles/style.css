@@ -557,3 +557,11 @@ p .wish{position:static;display:inline-grid;vertical-align:middle;margin-right:4
 .condtab tr.on td{color:var(--gold2)}
 .disc{font-size:12px;line-height:1.5;color:var(--mut);background:#0005;border-left:3px solid #e0b85c66;border-radius:0 8px 8px 0;padding:8px 10px;margin:10px 0 0}
 details>summary{cursor:pointer}
+
+/* ---------- galerie de photos d'annonce ---------- */
+.galstrip{display:flex;gap:6px;margin-top:8px;overflow-x:auto;padding-bottom:4px}
+.galstrip button{flex:0 0 56px;padding:0;border:2px solid var(--line);border-radius:6px;overflow:hidden;background:none;cursor:pointer}
+.galstrip button:hover{border-color:var(--gold)}
+.galstrip img{display:block;width:100%;aspect-ratio:63/88;object-fit:cover}
+.galedit{display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:10px;margin:8px 0}
+.galedit img{width:100%;aspect-ratio:63/88;object-fit:cover;border-radius:8px;display:block;margin-bottom:4px}

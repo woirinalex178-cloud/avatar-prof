@@ -313,7 +313,10 @@ function drawListings() {
 function listingModal(l) {
   setTimeout(sparks, 0); remember([l.card]);
   const c = l.card, s = S.pseudos[l.user_id] || {}, mine = l.user_id === S.user?.id;
-  modal(`<div class="split"><div>${l.photo_path ? `<img class="cimg" src="${photoUrl(l.photo_path)}" alt="Photo du vendeur">` : img(c, true)}${l.photo_path ? `<p class="small mut">Photo du vendeur · <a href="${c.image}/high.webp" target="_blank" rel="noopener">voir la carte officielle</a></p>` : ''}</div>
+  const ph = (l.photos || []).filter(Boolean);
+  modal(`<div class="split"><div>${ph.length ? `<img class="cimg" id="galmain" src="${photoUrl(ph[0])}" alt="Photo du vendeur">
+    ${ph.length > 1 ? `<div class="galstrip">${ph.map((x, i) => `<button type="button" data-gal="${esc(photoUrl(x))}" aria-label="Photo ${i + 1}"><img src="${photoUrl(x)}" alt=""></button>`).join('')}</div>` : ''}
+    <p class="small mut">${ph.length} photo(s) du vendeur · <a href="${c.image}/high.webp" target="_blank" rel="noopener">voir la carte officielle</a></p>` : img(c, true)}</div>
   <div><p class="mut small">${flag(c.lang)} ${LANGS[c.lang]} · ${esc(setName(S.sets.find(x => x.id === c.set_id)))} · ${c.local_id} · ${esc(c.rarity || '')}</p><h2 style="margin:4px 0 12px">${esc(nm(c))}</h2>${jp(c)}
   <dl class="kv">${l.auc ? '' : `<dt>Prix</dt><dd>${l.price ? eur(l.price) : 'Échange uniquement'}</dd>`}<dt>Cote Cardmarket</dt><dd><button type="button" class="cote" data-cote="${c.id}">${eur(c.price_eur)}${trend(c)} 📈</button>${c.price_updated ? ` <span class="small mut">du ${new Date(c.price_updated).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })}</span>` : ''}<div class="spark" data-spark="${esc(c.tcg_id || '')}"></div></dd><dt>État</dt><dd><span class="pill p-${l.condition}">${l.condition}</span> ${COND[l.condition][0]}</dd><dt>Échange</dt><dd>${l.trade_ok ? 'accepté' : 'non'}</dd><dt>Vendeur</dt><dd>${who(l.user_id, s)} · ${stars(s)} · ${s.trades_done || 0} transaction(s)${s.verified ? ' · ✔ identité vérifiée' : ''}${s.passionne ? '<span class="badge-coll">🏅 Collectionneur passionné</span>' : ''} · ${esc(s.region || '')}</dd></dl>
   ${l.note ? `<p class="panel small" style="margin-top:12px">${esc(l.note)}</p>` : ''}
@@ -401,7 +404,7 @@ async function listForm(cardId) {
     <div class="row2" id="lauc" hidden><label class="f">Prix de départ (€)<input type="number" id="lsp" min="0.5" step="0.5" inputmode="decimal"></label><label class="f">Durée<select id="ldays"><option value="1">1 jour</option><option value="3" selected>3 jours</option><option value="7">7 jours</option></select></label></div>
     <p class="small mut" id="lhint" style="margin:0"></p>
     <div class="panel small">🔐 Écris ce code sur un papier et photographie-le à côté de ta carte : <b class="mono" style="font-size:18px">${code}</b><br><span class="mut">Il prouve que tu as vraiment la carte. ${need ? 'Photo obligatoire pour cette carte (cote ≥ ' + eur(S.st.photo_required_from || 50) + ').' : 'Recommandé.'}</span></div>
-    <label class="f">Photo de TA carte avec le code<input type="file" id="lph" accept="image/*" capture="environment" ${need ? 'required' : ''}></label>
+    <label class="f">Photos de TA carte avec le code (3 maximum : recto, verso, défaut)<input type="file" id="lph" accept="image/*" capture="environment" multiple ${need ? 'required' : ''}></label>
     <label class="f">Note (optionnel, 280 car.)<textarea id="ln" maxlength="280" placeholder="Ex : sortie de booster, sous sleeve depuis."></textarea></label>
     <p class="err" id="lerr"></p><button class="btn">Poser mon double</button></form></div>`);
   const hint = () => { const k = COND[$('#lc').value][2], sug = c.price_eur ? Math.max(0.5, Math.round(c.price_eur * k * 2) / 2) : null; $('#lp').placeholder = sug ?? 'Prix'; $('#lhint').textContent = sug ? `Prix conseillé en ${$('#lc').value} : ${eur(sug)} (cote × ${k}). Laisse vide pour échange seul.` : 'Laisse vide pour échange seul.'; };
@@ -416,12 +419,17 @@ async function listForm(cardId) {
     e.preventDefault(); if (!guardInput($('#ln'), $('#lerr'))) return;
     const btn = e.submitter; btn.disabled = true; btn.textContent = 'Envoi…';
     try {
-      let photo_path = null; const f = $('#lph').files[0];
-      if (f) { const blob = await shrink(f); photo_path = `${S.user.id}/${crypto.randomUUID()}.jpg`; const up = await sb.storage.from('photos').upload(photo_path, blob, { contentType: 'image/jpeg' }); if (up.error) throw up.error; }
+      const photos = [];
+      for (const f of [...$('#lph').files].slice(0, 3)) {
+        const blob = await shrink(f), path = `${S.user.id}/${crypto.randomUUID()}.jpg`;
+        const up = await sb.storage.from('photos').upload(path, blob, { contentType: 'image/jpeg' });
+        if (up.error) throw up.error; photos.push(path);
+      }
+      const photo_path = photos[0] || null;
       const price = auc ? +$('#lsp').value || null : $('#lp').value ? +$('#lp').value : null, trade_ok = !auc && $('#lt').checked;
       if (auc && !(price >= 0.5)) throw new Error('Indique un prix de départ (0,50 € minimum).');
       if (!price && !trade_ok) throw new Error('Indique un prix ou accepte les échanges.');
-      const { data: nl, error } = await sb.from('listings').insert({ user_id: S.user.id, card_id: c.id, condition: $('#lc').value, price, trade_ok, note: $('#ln').value.trim() || null, photo_path, verify_code: code }).select('id').single();
+      const { data: nl, error } = await sb.from('listings').insert({ user_id: S.user.id, card_id: c.id, condition: $('#lc').value, price, trade_ok, note: $('#ln').value.trim() || null, photo_path, photos, verify_code: code }).select('id').single();
       if (error) throw error;
       if (auc) { const r = await sb.rpc('start_auction', { p_listing: nl.id, p_start: price, p_days: +$('#ldays').value });
         if (r.error) { await sb.from('listings').update({ status: 'removed' }).eq('id', nl.id); throw r.error; } }
@@ -1156,7 +1164,7 @@ async function compte() {
       <p class="small mut">Conservation : messages et forum 3 ans, contrôles d'authenticité 2 ans, compte anonymisé après 3 ans sans visite.</p></div>
     <div class="panel" style="margin-top:12px"><h3>⭐ Ma liste de souhaits</h3><p class="small mut">Les cartes que tu cherches : la table peut les filtrer et les autres membres peuvent te les proposer.</p><a class="btn sm" href="#/souhaits">Voir ma liste${S.wish.size ? ` (${S.wish.size})` : ''}</a></div>
     ${S.profile.is_admin ? `<div class="panel" style="margin-top:12px"><h3>🛡️ Modération</h3><p class="small mut">Signalements, litiges et purge des données.</p><a class="btn sm" href="#/moderation">Ouvrir la modération</a></div>` : ''}
-    <h2>Mes doubles sur la table</h2><div class="grid">${(ls || []).map(l => `<div class="tile">${l.photo_path ? `<img class="cimg" src="${photoUrl(l.photo_path)}" alt="">` : img(l.card)}<div class="meta"><span class="nm">${esc(nm(l.card))}</span><span class="v">${l.price ? eur(l.price) : 'Échange'}</span></div><div class="seller small"><span class="pill p-${l.condition}">${l.condition}</span>${authBadge(l) || `<button class="btn ghost sm" data-auth="${l.card_id}" data-lid="${l.id}">🔍 Authentifier</button>`}${l.status === 'reserved' ? '<span class="pill p-tr">réservée</span>' : `<button class="btn ghost sm" data-rmlist="${l.id}">Retirer</button>`}</div></div>`).join('') || '<div class="empty" style="grid-column:1/-1">Aucun double posé. <a href="#/classeur">Va dans ton classeur</a> et touche « Poser » sur une carte en double.</div>'}</div>`;
+    <h2>Mes doubles sur la table</h2><div class="grid">${(ls || []).map(l => `<div class="tile">${l.photo_path ? `<img class="cimg" src="${photoUrl(l.photo_path)}" alt="">` : img(l.card)}<div class="meta"><span class="nm">${esc(nm(l.card))}</span><span class="v">${l.price ? eur(l.price) : 'Échange'}</span></div><div class="seller small"><span class="pill p-${l.condition}">${l.condition}</span><button class="btn ghost sm" data-photos="${l.id}">📷 ${(l.photos || []).filter(Boolean).length}/${l.photo_quota || 3}</button>${authBadge(l) || `<button class="btn ghost sm" data-auth="${l.card_id}" data-lid="${l.id}">🔍 Authentifier</button>`}${l.status === 'reserved' ? '<span class="pill p-tr">réservée</span>' : `<button class="btn ghost sm" data-rmlist="${l.id}">Retirer</button>`}</div></div>`).join('') || '<div class="empty" style="grid-column:1/-1">Aucun double posé. <a href="#/classeur">Va dans ton classeur</a> et touche « Poser » sur une carte en double.</div>'}</div>`;
     $('#refshare').onclick = async () => { const url = $('#reflink').value, text = 'Rejoins-moi sur Sharing Cards, l\'espace des collectionneurs Pokémon :';
       if (navigator.share) { try { await navigator.share({ title: 'Sharing Cards', text, url }); } catch {} } else { await navigator.clipboard?.writeText(url); toast('Lien copié !'); } };
     if ($('#install')) $('#install').onclick = async () => { S.install.prompt(); S.install = null; compte(); };
@@ -1258,6 +1266,51 @@ function deleteAccount() {
     e.preventDefault(); if ($('#delp').value.trim() !== S.profile.pseudo) return $('#derr').textContent = 'Le pseudo ne correspond pas.';
     const { error } = await sb.rpc('delete_my_account'); if (error) return $('#derr').textContent = errMsg(error);
     await sb.auth.signOut(); try { localStorage.clear(); } catch { } close(); await loadSession(); toast('Ton compte a été supprimé.'); location.hash = '#/';
+  };
+}
+
+// ---------- photos d'une annonce : 3 gratuites, 5 de plus en option ----------
+async function photosModal(id) {
+  const { data: l, error } = await sb.from('listings').select('id,photos,photo_quota,verify_code,card:cards(*)').eq('id', id).maybeSingle();
+  if (error || !l) return toast('Annonce introuvable', true);
+  const ph = (l.photos || []).filter(Boolean), left = l.photo_quota - ph.length, px = S.st.extra_photos_price ?? 0.99, extra = S.st.extra_photos_count ?? 5;
+  modal(`<div class="form"><h2 style="margin:0">📷 Photos de l'annonce</h2>
+  <p class="small mut" style="margin:0">${esc(nm(l.card))} · ${ph.length}/${l.photo_quota} photo(s).
+  ${l.verify_code ? `Le code <b class="mono">${esc(l.verify_code)}</b> doit être visible sur au moins une photo.` : ''}</p>
+  <div class="galedit">${ph.map((x, i) => `<div><img src="${photoUrl(x)}" alt="Photo ${i + 1}"><button type="button" class="btn sm ghost" data-rmph="${esc(x)}">Retirer</button></div>`).join('') || '<p class="small mut">Aucune photo pour l\'instant.</p>'}</div>
+  ${left > 0 ? `<label class="f">Ajouter ${left} photo(s)<input type="file" id="phin" accept="image/*" capture="environment" multiple></label>`
+    : l.photo_quota <= 3 ? `<div class="panel small"><b>Tu as utilisé tes 3 photos gratuites.</b><br>Pour une carte chère, des photos supplémentaires rassurent l'acheteur (verso, coins, tranche, défaut, code de vérification).
+      <div class="acts" style="margin-top:8px"><button class="btn sm" id="phbuy">➕ ${extra} photos de plus · ${eur(px)}</button></div>
+      <p class="small mut" style="margin:6px 0 0">Paiement unique pour cette annonce, via Stripe.</p></div>`
+    : '<p class="small mut">Tu as atteint le maximum de photos pour cette annonce.</p>'}
+  <p class="err" id="pherr"></p>
+  <p class="disc">⚠️ Photographie <b>ta</b> carte, jamais une image trouvée sur internet : une annonce illustrée par une photo qui n'est pas la tienne est retirée et peut valoir une suspension.</p></div>`);
+  const save = async photos => {
+    const { error: er } = await sb.from('listings').update({ photos }).eq('id', id);
+    if (er) { $('#pherr').textContent = errMsg(er); return false; }
+    return true;
+  };
+  if ($('#phin')) $('#phin').onchange = async e => {
+    const files = [...e.target.files].slice(0, left); if (!files.length) return;
+    $('#pherr').textContent = 'Envoi des photos…';
+    const added = [];
+    for (const f of files) {
+      const blob = await shrink(f), path = `${S.user.id}/${crypto.randomUUID()}.jpg`;
+      const up = await sb.storage.from('photos').upload(path, blob, { contentType: 'image/jpeg' });
+      if (up.error) { $('#pherr').textContent = errMsg(up.error); return; }
+      added.push(path);
+    }
+    if (await save([...ph, ...added])) { toast(`${added.length} photo(s) ajoutée(s)`); photosModal(id); route(); }
+  };
+  dbody.querySelectorAll('[data-rmph]').forEach(b => b.onclick = async () => {
+    const rest = ph.filter(x => x !== b.dataset.rmph);
+    if (await save(rest)) { sb.storage.from('photos').remove([b.dataset.rmph]); toast('Photo retirée'); photosModal(id); route(); }
+  });
+  if ($('#phbuy')) $('#phbuy').onclick = async () => {
+    if (!S.st.payments_live) return $('#pherr').textContent = 'Les paiements sont en mode test : l\'option sera disponible à l\'ouverture.';
+    const { data, error: er } = await sb.functions.invoke('payments/photos', { body: { listing_id: id } });
+    if (er || !data?.url) return $('#pherr').textContent = data?.error || 'Paiement indisponible, réessaie.';
+    location.href = data.url;
   };
 }
 
@@ -1548,7 +1601,7 @@ async function modOffer(v) {
 
 // ---------- événements ----------
 document.addEventListener('click', async e => {
-  const t = e.target.closest('[data-set],[data-f],[data-tog],[data-iq],[data-dq],[data-put],[data-l],[data-buy],[data-trade],[data-rmlist],[data-report],[data-act],[data-ot],[data-am],[data-ts],[data-card],[data-close],[data-delpost],[data-scan],[data-express],[data-names],[data-connect],[data-auth],[data-export],[data-delacct],[data-prep],[data-label],[data-dl],[data-paylbl],[data-ordlbl],[data-pickrelay],[data-avk],[data-avh],[data-wish],[data-csv],[data-mt],[data-mst],[data-ract],[data-oact],[data-purge],[data-fs],[data-vote],[data-bgen],[data-bact],[data-bedit],[data-rstat],[data-editpost],[data-shact]');
+  const t = e.target.closest('[data-set],[data-f],[data-tog],[data-iq],[data-dq],[data-put],[data-l],[data-buy],[data-trade],[data-rmlist],[data-report],[data-act],[data-ot],[data-am],[data-ts],[data-card],[data-close],[data-delpost],[data-scan],[data-express],[data-names],[data-connect],[data-auth],[data-export],[data-delacct],[data-prep],[data-label],[data-dl],[data-paylbl],[data-ordlbl],[data-pickrelay],[data-avk],[data-avh],[data-wish],[data-csv],[data-mt],[data-mst],[data-ract],[data-oact],[data-purge],[data-fs],[data-vote],[data-bgen],[data-bact],[data-bedit],[data-rstat],[data-editpost],[data-shact],[data-photos],[data-gal]');
   if (!t) return;
   const d = t.dataset;
   if (d.set) { S.set = d.set; classeur(); }
@@ -1601,6 +1654,8 @@ document.addEventListener('click', async e => {
   else if (d.bact) { const [id, action] = d.bact.split(':');
     const { error } = await sb.rpc('admin_blog', { p_action: action, p_id: id });
     toast(error ? errMsg(error) : 'C\'est fait', !!error); if (!error) moderation(); }
+  else if (d.photos) photosModal(d.photos);
+  else if (d.gal) { const m = $('#galmain'); if (m) m.src = d.gal; }
   else if (d.bedit) modBlogEdit(d.bedit);
   else if (d.shact) { const [id, action] = d.shact.split(':');
     const { error } = await sb.rpc('admin_shops', { p_action: action, p_id: id });

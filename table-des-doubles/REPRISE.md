@@ -77,6 +77,12 @@
 - Table `shops` + `admin_shops(action,id,patch)` : page publique `#/boutiques` (lien dans le pied de page) et onglet **Boutiques** dans la modération pour ajouter / masquer.
 - État au 28/10 : `payments_live = true` mais clés Stripe encore en test ; `rgpd_purge` et les crons `rgpd-purge` / `refunds` **toujours pas installés** (fichier SQL du 21/10 à coller) ; 0 annonce active ; 2 brouillons de blog à publier.
 
+## Cotes par état, photos multiples (ajout 01/11)
+- **Fourchette par état** : `condPrice(p, k)` + `condTable()` (NM ×1, EX ×0.85, GD ×0.65, PL ×0.4) sur la fiche de cote et l'annonce. La cote publiée = Near Mint.
+- **Cartes sans cote ni visuel** : `cardRef(c)` cherche dans les autres langues (cache `langVersions`). JP : 12 992 / 13 006 sans cote, 70 % sans image → on affiche la cote EN à titre indicatif et le visuel d'une autre langue, toujours annoncé.
+- **Avertissements** : objet `DISC` + `disc(...)` (cote, etat, deal, auth, ship, ja), placés sur la fiche de cote, l'annonce, l'achat et le guide. Guide : 6 sections « bien utiliser » (état, cote, pièges, réception, bonnes manières, données).
+- **Photos d'annonce** : `listings.photos text[]`, `photo_quota` (3 par défaut), `photos_paid_at`, `photos_session` ; trigger `listings_photos` (quota gelé hors déblocage, `photo_path` = première photo) ; `photos_unlocked(listing, session)` via le webhook Stripe (route `payments/photos`, `settings.extra_photos_price` 0,99 € / `extra_photos_count` 5) ; `photos_free_unlock(listing)` pour la modération. Front : galerie sur l'annonce, `photosModal()` depuis Compte (ajout / retrait / achat).
+
 ## Prochaines tâches techniques
 1. Régler les seuils d'authenticité (attendre les scores de l'utilisateur, étape 4 d'A-FAIRE).
 2. Remplir `LEGAL` en haut de `legal.js` (nom, SIRET, adresse, e-mail, médiateur).

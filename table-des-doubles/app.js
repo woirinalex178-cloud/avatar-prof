@@ -843,7 +843,7 @@ const setScanLang = l => { scanLang = l; try { localStorage.setItem('sc_lang', l
 async function langVersions(c) {
   const k = artKey(c.id);
   if (!langCache.has(k)) langCache.set(k, (async () => {
-    const { data } = await sb.from('cards').select('id,name,name_fr,lang,local_id,image,price_eur,set_id,set:sets(name,name_fr)').in('id', ALL_LANGS.map(l => `${l}:${k}`));
+    const { data } = await sb.from('cards').select('id,name,name_fr,lang,local_id,image,price_eur,tcg_id,set_id,set:sets(name,name_fr)').in('id', ALL_LANGS.map(l => `${l}:${k}`));
     return (data || []).map(x => ({ ...x, set_name: x.set?.name_fr || x.set?.name || '', alt: true }));
   })().catch(() => []));
   return langCache.get(k);
@@ -930,6 +930,8 @@ function sheet(html, cls = '') {
 document.addEventListener('click', e => { const i = e.target.closest('.sr-img img, .split > div:first-child > img.cimg, .ns-img img'); if (!i) return;
   e.preventDefault(); e.stopPropagation(); sheet(`<img src="${i.src.replace('/low.webp', '/high.webp')}" alt="${esc(i.alt)}">`, 'zoom'); }, true);
 document.addEventListener('click', e => { const b = e.target.closest('[data-cote]'); if (!b) return; e.preventDefault(); e.stopPropagation(); coteModal(S.cards[b.dataset.cote]); }, true);
+// Dans le classeur, le clic ouvre la fiche ; le diaporama reste sur son bouton dédié.
+document.addEventListener('click', e => { const b = e.target.closest('[data-binder-card]'); if (!b) return; e.preventDefault(); e.stopImmediatePropagation(); cardInfoModal(S.cards[b.dataset.binderCard]); }, true);
 const condTable = (p, cur) => p == null ? '' : `<table class="condtab"><tbody>${Object.entries(COND).map(([k, v]) => `<tr${cur === k ? ' class="on"' : ''}><th><span class="pill p-${k}">${k}</span> ${esc(v[0])}</th><td>${eur(condPrice(p, k))}</td><td class="small mut">${esc(v[1])}</td></tr>`).join('')}</tbody></table>`;
 // Carte de référence : quand la cote ou le visuel manquent (surtout en japonais), on regarde les autres langues.
 async function cardRef(c) {
@@ -938,6 +940,29 @@ async function cardRef(c) {
   const im = c.image ? null : vs.find(v => v.image && v.id !== c.id);
   const px = c.price_eur != null ? null : [...vs].filter(v => v.price_eur != null).sort((a, b) => (b.lang === 'en') - (a.lang === 'en'))[0];
   return im || px ? { img: im, px } : null;
+}
+const rarityMark = rarity => {
+  const r = String(rarity || '').toLowerCase();
+  if (/(common|commune)/.test(r) && !/(uncommon|peu)/.test(r)) return '●';
+  if (/(uncommon|peu commune)/.test(r)) return '◆';
+  return r ? '★' : '—';
+};
+async function cardInfoModal(c) {
+  if (!c) return;
+  const set = S.sets.find(s => s.id === c.set_id), total = set?.total || c.set_total || '?';
+  const ref = await cardRef(c), quote = c.price_eur != null ? c : ref?.px;
+  const history = quote?.tcg_id ? await priceHist(quote.tcg_id) : [], rarity = c.rarity || 'Rareté non renseignée';
+  const z = sheet(`<div class="cardinfo"><div class="cardinfo-art">${img(c, true)}</div><div class="cardinfo-main">
+    <p class="small mut" style="margin:0">${flag(c.lang)} ${esc(LANGS[c.lang] || c.lang || '')}</p><h2>${esc(nm(c))}</h2>${jp(c)}
+    <dl class="kv"><dt>Collection</dt><dd>${esc(setName(set) || c.set_name || 'Non renseignée')}</dd><dt>Numéro</dt><dd><b>${esc(c.local_id ?? c.num ?? '?')}/${esc(total)}</b></dd><dt>Rareté</dt><dd><span class="rarity-mark" aria-label="${esc(rarity)}">${rarityMark(rarity)}</span> ${esc(rarity)}</dd><dt>Illustrateur</dt><dd>${esc(c.illustrator || 'Non renseigné')}</dd></dl>
+    <section class="cardinfo-price"><h3>Cote</h3>${quote ? `<p class="cotebig">${eur(quote.price_eur)}${trend(quote)}</p>${quote !== c ? `<p class="small mut">Cote indicative de la version ${flag(quote.lang)} de la même carte.</p>` : ''}<h4>Selon l'état</h4>${condTable(quote.price_eur)}<button type="button" class="btn ghost sm" id="info-price">Voir l'historique complet</button>` : '<p class="mut">Aucune cote connue pour cette carte actuellement.</p>'}</section>
+    <section class="cardinfo-history"><h3>Historique</h3>${history.length >= 2 ? `<p><b>${history.length}</b> relevés · de ${eur(Math.min(...history.map(x => +x.price)))} à ${eur(Math.max(...history.map(x => +x.price)))}</p><div class="spark" id="info-spark"></div>` : '<p class="small mut">Historique en construction : la courbe apparaît après plusieurs relevés.</p>'}</section>
+  </div></div>`, 'cotedlg cardinfodlg');
+  if (quote) $('#info-price', z).onclick = () => coteModal(quote);
+  if (history.length >= 2) {
+    const { line, up } = curve(history, 280, 70, 4), box = $('#info-spark', z);
+    box.innerHTML = `<svg viewBox="0 0 280 70" class="${up ? 'up' : 'dn'}" role="img" aria-label="Historique de la cote"><polyline points="${line}"/></svg><p class="small mut">${fmtD(history[0].d)} → ${fmtD(history.at(-1).d)}</p>`;
+  }
 }
 const histCache = new Map();
 const priceHist = id => { if (!histCache.has(id)) histCache.set(id, sb.from('price_history').select('d,price').eq('tcg_id', id).gte('d', new Date(Date.now() - 365 * 864e5).toISOString().slice(0, 10)).order('d').then(r => r.data || [])); return histCache.get(id); };

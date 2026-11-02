@@ -291,6 +291,16 @@ async function classeur() {
   $('#binder-add').onclick = catalogue;
   if (!ids.length) { $('#binder-empty-add').onclick = catalogue; return; }
   $('#binder-size').onchange = e => { binder.size = Number(e.target.value); classeur(); };
+  // L'édition japonaise partage généralement l'illustration des autres langues.
+  // Quand TCGdex ne fournit pas son fichier image, on montre cette illustration de référence.
+  view.querySelectorAll('.binder-pocket[data-id]').forEach(el => {
+    const c = S.cards[el.dataset.id]; if (!c || c.image) return;
+    cardRef(c).then(ref => {
+      if (!el.isConnected || !ref?.img?.image) return;
+      const art = $('.binder-art', el);
+      if (art) art.innerHTML = '<img class="cimg" loading="lazy" src="' + ref.img.image + '/low.webp" alt="' + esc(nm(c)) + '"><span class="binder-count ' + (S.coll[c.id] > 1 ? 'is-double' : '') + '">×' + S.coll[c.id] + '</span>';
+    });
+  });
   const cinema = () => { const c = cards[binder.current]; const g = collections.find(x => x.rows.includes(c)); return `<div class="binder-cinema" role="dialog" aria-modal="true" aria-label="Diaporama"><button class="binder-cinema-close" aria-label="Fermer">×</button><div class="binder-cinema-copy"><span>${esc(g?.name || '')}</span><h2>${esc(nm(c))}</h2><p>N° ${esc(c.local_id ?? c.num)} · ${flag(c.lang)} · ×${S.coll[c.id]}</p></div><div class="binder-cinema-card">${img(c,true)}</div><div class="binder-cinema-controls"><button data-cinema="prev" aria-label="Carte précédente">←</button><button data-cinema="play" class="binder-cinema-play" aria-label="${binder.playing ? 'Mettre en pause' : 'Lire'}">${binder.playing ? 'Ⅱ' : '▶'}</button><button data-cinema="next" aria-label="Carte suivante">→</button></div><div class="binder-cinema-count">${binder.current + 1} / ${cards.length}</div></div>`; };
   const drawCinema = () => { clearTimeout(binderTimer); view.querySelector('.binder-cinema')?.remove(); view.insertAdjacentHTML('beforeend', cinema()); const el = $('.binder-cinema'); $('.binder-cinema-close', el).onclick = () => { binder.cinema = binder.playing = false; clearTimeout(binderTimer); el.remove(); }; el.querySelectorAll('[data-cinema]').forEach(b => b.onclick = () => { if (b.dataset.cinema === 'play') binder.playing = !binder.playing; else binder.current = (binder.current + (b.dataset.cinema === 'next' ? 1 : cards.length - 1)) % cards.length; drawCinema(); }); if (binder.playing) binderTimer = setTimeout(() => { binder.current = (binder.current + 1) % cards.length; drawCinema(); }, 3500); };
   $('#binder-slide').onclick = () => { binder.current = 0; binder.playing = true; drawCinema(); };

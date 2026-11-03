@@ -2,13 +2,10 @@
 
 La fonction utilise uniquement l'API PikaQian ; la clé reste dans les secrets Supabase.
 
-Secrets requis :
+Secret requis : `PIKAQIAN_API_KEY` (clé `pk_live_...` PikaQian).
 
-- `PIKAQIAN_API_KEY` : clé `pk_live_...` PikaQian
-- `PIKAQIAN_SYNC_SECRET` : secret aléatoire réservé à la tâche d'import
-
-La fonction doit être appelée avec le jeton service role dans `Authorization` et
-`x-sync-token: <PIKAQIAN_SYNC_SECRET>`. Sans `apply=1`, elle reste en simulation.
+La fonction doit être appelée avec le jeton service role dans `Authorization`.
+Sans `apply=1`, elle reste en simulation.
 
 Exemples :
 

@@ -3,6 +3,7 @@
 // 3) recherche des candidats, 4) classement par ressemblance visuelle avec l'image officielle.
 import { SUPABASE_URL } from './config.js';
 import { toCanvas, gridVec, corr } from './auth.js';
+import { cardImageUrl } from './card-image.js';
 
 const CW = 900, CH = 1257; // carte 63 x 88 mm, assez de pixels pour lire le petit numéro
 
@@ -120,9 +121,10 @@ export async function readCard(cv, H) {
 const refs = new Map(); // empreintes des images officielles déjà chargées (utile en rafale)
 function refVec(c) {
   if (!c.image) return null;
-  if (!refs.has(c.image)) refs.set(c.image, fetch(`${SUPABASE_URL}/functions/v1/img?u=${encodeURIComponent(c.image + '/low.webp')}`)
+  const source = cardImageUrl(c);
+  if (!refs.has(source)) refs.set(source, fetch(`${SUPABASE_URL}/functions/v1/img?u=${encodeURIComponent(source)}`)
     .then(async r => r.ok ? gridVec(await toCanvas(await r.blob())) : null).catch(() => null));
-  return refs.get(c.image);
+  return refs.get(source);
 }
 const art = id => id.replace(/^[a-z]{2}:/, '').toLowerCase(); // même illustration dans toutes les langues
 export async function rank(cards, cv, lang) {

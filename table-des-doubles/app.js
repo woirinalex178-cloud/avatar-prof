@@ -1,5 +1,6 @@
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/+esm';
 import { SUPABASE_URL, SUPABASE_KEY } from './config.js';
+import { cardImageUrl, isPikaImage, pikaCardUrl } from './card-image.js';
 import { openAuth } from './auth.js';
 import { recognize, loadRecog } from './recog.js';
 import { startCam, fileToCard, toBlob, readCard, rank, thumb, frameDiff, isBlank, splitPage } from './scan.js';
@@ -28,7 +29,14 @@ function toast(m, bad) { const t = $('#toast'); t.textContent = m; t.className =
 function modal(html) { dbody.innerHTML = html; if (!dlg.open) dlg.showModal(); }
 const close = () => dlg.open && dlg.close();
 const errMsg = e => (e?.message || String(e)).replace(/^.*?Interdit/, 'Interdit');
-const img = (c, big) => c?.image ? `<img class="cimg" loading="lazy" src="${c.image}/${big ? 'high' : 'low'}.webp" alt="${esc(nm(c))}">` : `<div class="ph"><span>${esc(c?.name || '?')}</span></div>`;
+const img = (c, big) => {
+  const src = cardImageUrl(c, big ? 'high' : 'low'), full = cardImageUrl(c, 'high');
+  return src ? `<img class="cimg" loading="lazy" src="${esc(src)}" data-full="${esc(full)}" alt="${esc(nm(c))}">` : `<div class="ph"><span>${esc(c?.name || '?')}</span></div>`;
+};
+const pikaCredit = c => {
+  const href = pikaCardUrl(c);
+  return href && isPikaImage(c) ? `<p class="small mut card-source">Données et visuel : <a href="${esc(href)}" target="_blank" rel="noopener">PikaQian</a></p>` : '';
+};
 const nm = c => c?.name_fr || c?.name || '?';
 const jp = c => c?.name_fr ? `<small class="jp">${esc(c.name)}</small>` : '';
 const setName = s => s ? (s.name_fr || s.name) : '';
@@ -187,7 +195,7 @@ async function home() {
     <p class="lead">Coche les cartes que tu possèdes, suis la cote de ta collection, puis pose tes doubles sur la table pour les échanger ou les vendre en toute sécurité.</p>
     <div class="seg"><a class="btn" href="#/classeur">Remplir mon classeur</a><a class="btn ghost" href="#/table">Voir la table</a><a class="btn ghost" href="#/guide">📖 Guide des échanges</a><button class="btn ghost" data-scan>📷 Scanner une carte</button><button class="btn ghost" data-scan="auth">🔍 Authentifier</button></div>
     <div class="stats"><div><b>${nbCards}</b><span class="mut small">cartes · ${S.sets.length} sets · ${Object.keys(LANGS).length} langues</span></div><div><b>${count ?? 0}</b><span class="mut small">doubles sur la table</span></div><div><b>0 %</b><span class="mut small">de frais vendeur</span></div></div></div>
-    <div class="fan">${top.map((c, i) => `<img src="${c.image}/low.webp" alt="${esc(nm(c))}" style="--r:${(i - 2) * 11}deg">`).join('')}</div>
+    <div class="fan">${top.map((c, i) => `<img src="${esc(cardImageUrl(c))}" alt="${esc(nm(c))}" style="--r:${(i - 2) * 11}deg">`).join('')}</div>
   </section>
   <section class="panel manifeste"><h2>Un espace réservé aux passionnés</h2><ul>
     <li><b>🃏 Pas de revendeurs pros ni de spéculateurs.</b> Ici, des passionnés qui complètent leurs classeurs : on ne pose que ses doubles (30 annonces max).</li>
@@ -269,7 +277,7 @@ async function classeur() {
   const change = (id, key, convert = v => v) => { $(id).onchange = e => { binder[key] = convert(e.target.value); classeur(); }; };
   change('#binder-lang','lang'); change('#binder-size','size',Number);
   $('#binder-doubles').onclick = () => { binder.doubles = !binder.doubles; classeur(); };
-  view.querySelectorAll('[data-binder-card]').forEach(el => el.onclick = () => { const c = S.cards[el.dataset.binderCard], cardGroup = collections.find(g => g.rows.some(row => row.id === c.id)); modal(`<div class="binder-detail">${img(c,true)}<h2>${esc(nm(c))}</h2><p>${esc(cardGroup?.name || c.set_name || '')} · N° ${esc(c.local_id)} · ${flag(c.lang)}</p><b>×${S.coll[c.id]} exemplaire(s) dans ton classeur</b></div>`); });
+  view.querySelectorAll('[data-binder-card]').forEach(el => el.onclick = () => { const c = S.cards[el.dataset.binderCard], cardGroup = collections.find(g => g.rows.some(row => row.id === c.id)); modal(`<div class="binder-detail">${img(c,true)}<h2>${esc(nm(c))}</h2><p>${esc(cardGroup?.name || c.set_name || '')} · N° ${esc(c.local_id)} · ${flag(c.lang)}</p>${pikaCredit(c)}<b>×${S.coll[c.id]} exemplaire(s) dans ton classeur</b></div>`); });
 }
 
 async function catalogClasseur() {
@@ -342,7 +350,7 @@ function drawListings() {
 function listingModal(l) {
   setTimeout(sparks, 0); remember([l.card]);
   const c = l.card, s = S.pseudos[l.user_id] || {}, mine = l.user_id === S.user?.id;
-  modal(`<div class="split"><div>${l.photo_path ? `<img class="cimg" src="${photoUrl(l.photo_path)}" alt="Photo du vendeur">` : img(c, true)}${l.photo_path ? `<p class="small mut">Photo du vendeur · <a href="${c.image}/high.webp" target="_blank" rel="noopener">voir la carte officielle</a></p>` : ''}</div>
+  modal(`<div class="split"><div>${l.photo_path ? `<img class="cimg" src="${photoUrl(l.photo_path)}" alt="Photo du vendeur">` : img(c, true)}${l.photo_path ? `<p class="small mut">Photo du vendeur · <a href="${esc(cardImageUrl(c, 'high'))}" target="_blank" rel="noopener">voir la carte officielle</a></p>` : ''}${pikaCredit(c)}</div>
   <div><p class="mut small">${flag(c.lang)} ${LANGS[c.lang]} · ${esc(setName(S.sets.find(x => x.id === c.set_id)))} · ${c.local_id} · ${esc(c.rarity || '')}</p><h2 style="margin:4px 0 12px">${esc(nm(c))}</h2>${jp(c)}
   <dl class="kv">${l.auc ? '' : `<dt>Prix</dt><dd>${l.price ? eur(l.price) : 'Échange uniquement'}</dd>`}<dt>Cote Cardmarket</dt><dd><button type="button" class="cote" data-cote="${c.id}">${eur(c.price_eur)}${trend(c)} 📈</button>${c.price_updated ? ` <span class="small mut">du ${new Date(c.price_updated).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })}</span>` : ''}<div class="spark" data-spark="${esc(c.tcg_id || '')}"></div></dd><dt>État</dt><dd><span class="pill p-${l.condition}">${l.condition}</span> ${COND[l.condition][0]}</dd><dt>Échange</dt><dd>${l.trade_ok ? 'accepté' : 'non'}</dd><dt>Vendeur</dt><dd>${who(l.user_id, s)} · ${stars(s)} · ${s.trades_done || 0} transaction(s)${s.verified ? ' · ✔ identité vérifiée' : ''}${s.passionne ? '<span class="badge-coll">🏅 Collectionneur passionné</span>' : ''} · ${esc(s.region || '')}</dd></dl>
   ${l.note ? `<p class="panel small" style="margin-top:12px">${esc(l.note)}</p>` : ''}
@@ -831,7 +839,7 @@ function sheet(html, cls = '') {
 }
 // toucher une carte (fiche du scan, annonce, recherche par nom) l'affiche en plein écran
 document.addEventListener('click', e => { const i = e.target.closest('.sr-img img, .split > div:first-child > img.cimg, .ns-img img'); if (!i) return;
-  e.preventDefault(); e.stopPropagation(); sheet(`<img src="${i.src.replace('/low.webp', '/high.webp')}" alt="${esc(i.alt)}">`, 'zoom'); }, true);
+  e.preventDefault(); e.stopPropagation(); const full = i.dataset.full || (i.src.endsWith('/low.webp') ? i.src.replace('/low.webp', '/high.webp') : i.src); sheet(`<img src="${esc(full)}" alt="${esc(i.alt)}">`, 'zoom'); }, true);
 document.addEventListener('click', e => { const b = e.target.closest('[data-cote]'); if (!b) return; e.preventDefault(); e.stopPropagation(); coteModal(S.cards[b.dataset.cote]); }, true);
 const histCache = new Map();
 const priceHist = id => { if (!histCache.has(id)) histCache.set(id, sb.from('price_history').select('d,price').eq('tcg_id', id).gte('d', new Date(Date.now() - 365 * 864e5).toISOString().slice(0, 10)).order('d').then(r => r.data || [])); return histCache.get(id); };
@@ -1180,7 +1188,7 @@ window.addEventListener('hashchange', route);
 document.addEventListener('click', e => { if (e.target.closest('[data-intro]')) { e.preventDefault(); playIntro(true); } });
 initFx();
 initCritters({
-  getCard: () => { const l = Object.values(S.cards).filter(c => c.image); const c = l[Math.floor(Math.random() * l.length)]; return c ? c.image + '/low.webp' : null; },
+  getCard: () => { const l = Object.values(S.cards).filter(c => c.image); const c = l[Math.floor(Math.random() * l.length)]; return cardImageUrl(c) || null; },
   onCatch: () => { Game.track('catch'); checkUnlock(); }
 });
 view.innerHTML = `<div class="skel"><div class="sk sk-ban"></div><div class="grid">${'<div class="sk sk-card"></div>'.repeat(8)}</div></div>`;

@@ -65,7 +65,7 @@ export function playIntro(force = false) {
   const sprite = (c0, c1) => { const c = document.createElement('canvas'); c.width = c.height = 64; const g = c.getContext('2d'), rg = g.createRadialGradient(32, 32, 0, 32, 32, 32);
     rg.addColorStop(0, c0); rg.addColorStop(.4, c1); rg.addColorStop(1, 'rgba(0,0,0,0)'); g.fillStyle = rg; g.fillRect(0, 0, 64, 64); return c; };
   const SPR = [sprite('rgba(255,250,220,.9)', 'rgba(255,210,90,.35)'), sprite('rgba(255,190,60,.8)', 'rgba(255,110,20,.3)'), sprite('rgba(240,90,20,.7)', 'rgba(170,30,10,.25)'), sprite('rgba(60,45,40,.45)', 'rgba(30,25,22,.2)')];
-  let raf, done = false, heat = 0;
+  let raf, watchdog, done = false, heat = 0;
   const T = { enter: 0, open: 1100, fire: 1300, heat: 2000, fireEnd: 3300, reveal: 3350, end: 4600 };
   const frame = now => {
     const t = now - t0;
@@ -100,12 +100,13 @@ export function playIntro(force = false) {
     if (t < T.end) raf = requestAnimationFrame(frame); else finish();
   };
   const finish = () => {
-    if (done) return; done = true; cancelAnimationFrame(raf);
+    if (done) return; done = true; cancelAnimationFrame(raf); clearTimeout(watchdog);
     ov.classList.add('bye'); removeEventListener('resize', size); removeEventListener('keydown', onKey);
     setTimeout(() => { ov.remove(); document.documentElement.classList.remove('intro-on'); running = null; }, 450);
   };
   const onKey = e => { if (e.key === 'Escape') finish(); };
   addEventListener('keydown', onKey);
   ov.addEventListener('click', finish);
+  watchdog = setTimeout(finish, 6500);
   running = requestAnimationFrame(frame); raf = running;
 }

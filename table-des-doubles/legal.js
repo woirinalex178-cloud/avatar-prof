@@ -16,7 +16,7 @@ const SECTIONS = [
 <p><b>Directeur de la publication :</b> ${L.directeur}.</p>
 <p><b>Hébergement du site :</b> Vercel Inc., 440 N Barranca Ave #4133, Covina, CA 91723, États-Unis (vercel.com).<br>
 <b>Hébergement des données :</b> Supabase Inc., 970 Toa Payoh North #07-04, Singapour 318992 (supabase.com), serveurs situés à Paris (Union européenne).</p>
-<p><b>Propriété intellectuelle :</b> le site, son code, sa marque et son design appartiennent à l'éditeur. Les noms, images et illustrations des cartes Pokémon® sont la propriété de Nintendo, The Pokémon Company, Creatures et Game Freak. ${L.site} est un service indépendant, <b>non affilié, non sponsorisé et non approuvé</b> par ces sociétés. Les images de cartes proviennent de la base communautaire TCGdex et sont affichées à titre d'identification.</p>
+<p><b>Propriété intellectuelle :</b> le site, son code, sa marque et son design appartiennent à l'éditeur. Les noms, images et illustrations des cartes Pokémon® sont la propriété de Nintendo, The Pokémon Company, Creatures et Game Freak. ${L.site} est un service indépendant, <b>non affilié, non sponsorisé et non approuvé</b> par ces sociétés. Les images de cartes proviennent de TCGdex et, pour certaines cartes chinoises simplifiées, de PikaQian ; elles sont affichées à titre d'identification avec un lien de source lorsque requis.</p>
 <p><b>Cotes :</b> indicatives, issues de données publiques (Cardmarket, TCGplayer via TCGdex). Elles ne constituent ni une estimation officielle ni un conseil financier.</p>`],
 
 ['cgu', 'Conditions générales d\'utilisation (CGU)', `
@@ -84,7 +84,7 @@ const SECTIONS = [
 <li>Supabase (base de données et fichiers, serveurs à Paris).</li>
 <li>Vercel (hébergement du site, États-Unis : clauses contractuelles types de la Commission européenne).</li>
 <li>Stripe (paiements, vérification d'identité).</li>
-<li>Google Fonts (polices d'écriture), jsDelivr (scripts), TCGdex (images des cartes) : ils reçoivent ton adresse IP lors du chargement de ces ressources.</li></ul>
+<li>Google Fonts (polices d'écriture), jsDelivr (scripts), TCGdex et PikaQian (images des cartes) : ils reçoivent ton adresse IP lors du chargement de ces ressources.</li></ul>
 <h4>Tes droits</h4><p>Accès, rectification, effacement, limitation, opposition, portabilité, et directives post-mortem. Depuis la page <b>Compte</b> : « Télécharger mes données » et « Supprimer mon compte ». Pour tout le reste : ${L.email} (réponse sous 1 mois). Tu peux saisir la CNIL (cnil.fr).</p>`],
 
 ['cookies', 'Cookies et stockage local', `

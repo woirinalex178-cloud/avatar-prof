@@ -3,6 +3,7 @@
 // Tests : 1) couleurs et mise en page comparées à l'image officielle, 2) texte (nom et numéro) lu sur la carte,
 //         3) teinte du dos, 4) test de la lampe (les vraies cartes ont une couche noire qui bloque la lumière).
 import { SUPABASE_URL } from './config.js';
+import { cardImageUrl } from './card-image.js';
 
 const W = 252, H = 352; // format 63 x 88 mm
 const clamp = (v, a = 0, b = 100) => Math.max(a, Math.min(b, v));
@@ -55,7 +56,7 @@ async function testRecto(photo, card) {
   const d = await toCanvas(photo), out = { sharp: Math.round(sharp(d)) };
   if (out.sharp < 40) return { ...out, skip: 'Photo trop floue : recommence bien à plat, sans reflet.' };
   if (!card.image) return { ...out, skip: 'Pas d\'image officielle pour comparer.' };
-  const ref = await fetch(`${SUPABASE_URL}/functions/v1/img?u=${encodeURIComponent(card.image + '/high.webp')}`);
+  const ref = await fetch(`${SUPABASE_URL}/functions/v1/img?u=${encodeURIComponent(cardImageUrl(card, 'high'))}`);
   if (!ref.ok) return { ...out, skip: 'Image officielle indisponible.' };
   const r = await toCanvas(await ref.blob());
   const c = corr(gridVec(d), gridVec(r)), sr = satMean(d) / (satMean(r) || 1);

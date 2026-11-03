@@ -9,7 +9,8 @@ import { playIntro } from './intro.js';
 import { initCritters, critterSVG, CRITTER_NAMES, HUES } from './critters.js';
 import { renderGuide } from './guide.js';
 import { initFx, refreshFx } from './fx.js';
-playIntro();
+// L'introduction reste accessible depuis « Revoir l'intro » ; elle ne s'ouvre plus
+// automatiquement afin de ne jamais bloquer l'accès à l'application.
 
 const sb = createClient(SUPABASE_URL, SUPABASE_KEY);
 const S = { user: null, profile: null, sets: [], cards: {}, bySet: {}, set: null, lang: 'fr', coll: {}, fee: 0.0001, filter: 'all', pseudos: {}, prog: {} };
@@ -1165,7 +1166,13 @@ function realtime() {
       leads.delete(a.listing_id); saveLeads(); if (!a.closed) toast(`🔨 Tu as été surenchéri (${eur(a.current_bid)}) : retourne sur la table pour relancer !`, true); }).subscribe();
 }
 
-if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => { });
+if ('serviceWorker' in navigator) {
+  let refreshed = false;
+  navigator.serviceWorker.register('/sw.js?v=28', { updateViaCache: 'none' }).then(reg => reg.update()).catch(() => { });
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (!refreshed) { refreshed = true; location.reload(); }
+  });
+}
 window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); S.install = e; });
 sb.auth.onAuthStateChange((ev) => { if (ev === 'SIGNED_IN' && !S.user) loadSession().then(() => { realtime(); route(); }); });
 window.addEventListener('hashchange', route);

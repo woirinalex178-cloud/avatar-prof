@@ -61,11 +61,10 @@ function grouped<T>(rows: T[], key: (row: T) => string) {
 }
 
 Deno.serve(async req => {
-  // Même un JWT utilisateur ne suffit pas : seuls l'appel planifié (service role)
-  // et le second secret de tâche peuvent lancer une importation.
+  // Même un JWT utilisateur ne suffit pas : seul le service role peut lancer
+  // une importation. La clé PikaQian n'est donc jamais accessible au navigateur.
   const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
-  const taskSecret = Deno.env.get('PIKAQIAN_SYNC_SECRET');
-  if (!serviceKey || !taskSecret || req.headers.get('authorization') !== `Bearer ${serviceKey}` || req.headers.get('x-sync-token') !== taskSecret) {
+  if (!serviceKey || req.headers.get('authorization') !== `Bearer ${serviceKey}`) {
     return new Response('not found', { status: 404 });
   }
 

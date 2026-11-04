@@ -142,10 +142,25 @@ progression vivent dans le `localStorage` de ce navigateur ; le jeton Google
 dans le `sessionStorage`. Aucun serveur, aucun suivi.
 Paramètres → **Tout effacer** remet à zéro.
 
+## Quand ça ne marche pas
+
+Ouvre **Paramètres → Diagnostic** (ou `#/diag`). Cinq contrôles répondent en
+clair : relais serveur, appel à l'API, lecteur YouTube, mémoire du navigateur,
+source réellement utilisée. L'accueil affiche aussi un bandeau rouge quand
+l'application est retombée sur le catalogue de démonstration, **en disant
+pourquoi** — plutôt que d'afficher des vidéos factices sans prévenir.
+
+Panne la plus courante : le site publié est plus ancien que le code, donc
+`/api/yt` n'existe pas encore sur le serveur. Vérifie que le dernier
+déploiement de **production** est bien `READY` et qu'il vient de la branche de
+ce dossier. Dans Vercel → Settings → Git, la **Production Branch** doit être
+celle qui contient `celeste/`, sinon les mises à jour ne partent qu'en
+préversion et le site continue de servir l'ancienne.
+
 ## Vérification
 
 Une passe automatisée (Playwright headless, API Google, OAuth et lecteur
-simulés) couvre 65 parcours (plus 13 tests unitaires du classement) : les modes (serveur, compte, clé locale, liens, démo), la
+simulés) couvre 70 parcours (plus 13 tests unitaires du classement) : les modes (serveur, compte, clé locale, liens, démo), la
 connexion et la déconnexion, les abonnements et playlists du compte, le montage du lecteur, le
 filtrage des formats courts, la dose quotidienne et sa coupure, le code
 parent, le reclassement (l'appât à clic ne remonte jamais), les commentaires,

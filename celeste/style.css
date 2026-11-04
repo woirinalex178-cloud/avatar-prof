@@ -457,3 +457,13 @@ body.rail .main { margin-left: var(--rail-w); }
   .shorts-frame { width: min(100%, 360px); }
   .shorts-side { width: min(100%, 360px); }
 }
+
+
+/* ---------- Diagnostic ---------- */
+.diag-row { display: flex; gap: 12px; align-items: flex-start; padding: 12px 14px;
+            border: 1px solid var(--line); border-radius: var(--radius); background: var(--bg-elev); }
+.diag-row p { margin: 2px 0 0; }
+.diag-mark { font-size: 18px; line-height: 1.2; font-weight: 700; }
+.diag-row.ok .diag-mark { color: #2ecc71; }
+.diag-row.ko .diag-mark { color: #e74c3c; }
+.diag-row.wait .diag-mark { color: var(--text-dim); }

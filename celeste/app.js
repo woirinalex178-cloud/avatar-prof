@@ -204,12 +204,15 @@
 
   function onboardingHtml() {
     if (Catalog.mode() === 'yt') { return ''; }
-    return '<div class="banner"><strong>Mode ' +
-      (Catalog.mode() === 'links' ? 'liens' : 'démo') + '.</strong> ' +
-      'Pour parcourir et rechercher les vraies vidéos YouTube, ajoute une clé API gratuite ' +
-      '(YouTube Data v3) dans <a href="#/settings">Paramètres</a>. ' +
-      'Sans clé, tu peux déjà coller des liens YouTube : ' +
-      '<button class="pill solid" data-action="add-link">+ Ajouter une vidéo</button></div>';
+    var st = Ytb.serverStatus();
+    var why = st.error
+      ? 'Ces vidéos sont celles de la démonstration, pas YouTube : ' + esc(st.error) + '.'
+      : 'Aucune source YouTube active pour l’instant.';
+    return '<div class="banner error"><strong>Mode ' +
+      (Catalog.mode() === 'links' ? 'liens' : 'démonstration') + '.</strong> ' + why +
+      ' <a href="#/diag">Voir le diagnostic</a> · ' +
+      '<a href="#/settings">Paramètres</a>' +
+      '</div>';
   }
 
   /* ---------------- sidebar ---------------- */
@@ -715,6 +718,85 @@
     }).catch(function (err) { fail(token, err); });
   }
 
+  /* Diagnostic : dit en clair quel maillon casse, au lieu de retomber
+     silencieusement sur le catalogue de démonstration. */
+  function diagRow(label, state, detail) {
+    var mark = { ok: '✓', ko: '✗', wait: '…' }[state] || '…';
+    return '<div class="diag-row ' + state + '"><span class="diag-mark">' + mark + '</span>' +
+      '<div><strong>' + esc(label) + '</strong><p class="card-meta">' + detail + '</p></div></div>';
+  }
+
+  function viewDiag(token) {
+    var st = Store.state;
+    main.innerHTML = '<div class="page-head"><h1>Diagnostic</h1></div>' +
+      '<div class="rows" id="diag">' +
+      diagRow('Relais serveur (/api/yt)', 'wait', 'vérification…') +
+      diagRow('Appel à l’API YouTube', 'wait', 'vérification…') +
+      diagRow('Lecteur YouTube', 'wait', 'vérification…') +
+      diagRow('Mémoire du navigateur', 'wait', 'vérification…') +
+      diagRow('Source utilisée', 'wait', 'vérification…') +
+      '</div><p class="card-meta">Si le relais est absent, c’est le site publié qui est ' +
+      'd’une version trop ancienne : il faut le redéployer.</p>';
+
+    var rows = [];
+    function flush() {
+      if (token !== current.token) { return; }
+      var el = $('#diag');
+      if (el) { el.innerHTML = rows.join(''); }
+    }
+
+    Ytb.probeServer().then(function (hasKey) {
+      var s = Ytb.serverStatus();
+      rows[0] = hasKey
+        ? diagRow('Relais serveur (/api/yt)', 'ok', 'en place, clé présente côté serveur')
+        : diagRow('Relais serveur (/api/yt)', 'ko', esc(s.error || 'indisponible') +
+          ' — code ' + (s.status || 0));
+      flush();
+
+      return Ytb.video('dQw4w9WgXcQ').then(function () {
+        rows[1] = diagRow('Appel à l’API YouTube', 'ok', 'réponse reçue');
+      }).catch(function (err) {
+        var why = { quotaExceeded: 'quota quotidien atteint', keyInvalid: 'clé refusée',
+          forbidden: 'API non activée pour ce projet Google',
+          'no-key': 'aucune clé : ni serveur, ni appareil, ni compte connecté'
+        }[err.reason] || (err.message || 'erreur');
+        rows[1] = diagRow('Appel à l’API YouTube', 'ko', esc(why));
+      }).then(flush);
+    }).then(function () {
+      return new Promise(function (resolve) {
+        var s = document.createElement('script');
+        s.src = 'https://www.youtube.com/iframe_api';
+        s.onload = function () { resolve(true); };
+        s.onerror = function () { resolve(false); };
+        document.head.appendChild(s);
+        setTimeout(function () { resolve(!!window.YT); }, 4000);
+      }).then(function (ok2) {
+        rows[2] = ok2
+          ? diagRow('Lecteur YouTube', 'ok', 'script chargé')
+          : diagRow('Lecteur YouTube', 'ko', 'script bloqué (extension, filtrage réseau ?)');
+        flush();
+      });
+    }).then(function () {
+      var storageOk = false;
+      try {
+        localStorage.setItem('celeste.test', '1');
+        storageOk = localStorage.getItem('celeste.test') === '1';
+        localStorage.removeItem('celeste.test');
+      } catch (e) { storageOk = false; }
+      rows[3] = storageOk
+        ? diagRow('Mémoire du navigateur', 'ok', 'les réglages peuvent être enregistrés')
+        : diagRow('Mémoire du navigateur', 'ko',
+          'écriture refusée (navigation privée ?) : rien ne sera retenu');
+
+      var source = Auth.isSignedIn() ? 'compte Google connecté'
+        : (st.ytKey ? 'clé enregistrée sur cet appareil'
+          : (Ytb.hasServerKey() ? 'clé du serveur' : 'aucune — catalogue de démonstration'));
+      rows[4] = diagRow('Source utilisée', Catalog.mode() === 'yt' ? 'ok' : 'ko',
+        esc(source) + ' · mode « ' + esc(Catalog.mode()) + ' »');
+      flush();
+    });
+  }
+
   function viewSettings(token) {
     var st = Store.state;
     var modeLabel = { yt: 'YouTube (API officielle)', links: 'Liens ajoutés à la main', demo: 'Démo locale' };
@@ -822,6 +904,7 @@
       '<pre>' + st.history.length + ' vidéos vues • ' + st.subs.length + ' abonnements • ' +
       st.playlists.length + ' playlists • ' + st.liked.length + ' j’aime</pre>' +
       '<div class="modal-actions">' +
+      '<a class="pill" href="#/diag">Diagnostic</a>' +
       '<button class="pill" data-action="clear-cache">Vider le cache API</button>' +
       '<button class="pill" data-action="reset">Tout effacer</button></div></div></div>');
   }
@@ -925,6 +1008,7 @@
         break;
       }
       case 'shorts': viewShorts(token); break;
+      case 'diag': viewDiag(token); break;
       case 'settings':
         if (Store.state.pin && !current.unlocked) { viewLock(token); }
         else { viewSettings(token); }
@@ -1424,8 +1508,8 @@
   Auth.onChange(renderAccount);
   window.addEventListener('hashchange', render);
   render();
-  Ytb.probeServer().then(function (hasKey) {
-    if (hasKey && !Store.state.ytKey) { render(); }
+  Ytb.probeServer().then(function () {
+    if (parseHash().path.split('/')[0] !== 'diag') { render(); }
   });
   if (Auth.isSignedIn()) { Auth.loadProfile().then(renderAccount).then(syncAccount); }
 })();

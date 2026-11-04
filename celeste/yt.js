@@ -35,12 +35,30 @@
   /* Clé posée sur le serveur (variable YT_API_KEY) : rien à saisir sur chaque
      appareil, et la clé ne transite jamais par la page. */
   var serverKey = false;
+  var serverStatus = { checked: false, status: 0, key: false, error: '' };
 
   function probeServer() {
-    return fetch('/api/yt?path=health')
-      .then(function (r) { return r.ok ? r.json() : null; })
-      .then(function (j) { serverKey = !!(j && j.key); return serverKey; })
-      .catch(function () { serverKey = false; return false; });
+    return fetch('/api/yt?path=health').then(function (r) {
+      serverStatus.status = r.status;
+      if (!r.ok) {
+        serverStatus.error = r.status === 404
+          ? 'relais absent de cette version du site'
+          : 'le relais répond ' + r.status;
+        return null;
+      }
+      return r.json();
+    }).then(function (j) {
+      serverKey = !!(j && j.key);
+      serverStatus.key = serverKey;
+      serverStatus.checked = true;
+      if (j && !j.key) { serverStatus.error = 'relais présent, mais YT_API_KEY absente côté serveur'; }
+      return serverKey;
+    }).catch(function (err) {
+      serverKey = false;
+      serverStatus.checked = true;
+      serverStatus.error = 'relais injoignable (' + (err.message || 'réseau') + ')';
+      return false;
+    });
   }
 
   /* "PT1H2M3S" -> 3723 */
@@ -191,6 +209,7 @@
     mapChannel: mapChannel,
     hasKey: function () { return !!key(); },
     hasServerKey: function () { return serverKey; },
+    serverStatus: function () { return serverStatus; },
     probeServer: probeServer,
     clearCache: function () {
       cache = {};

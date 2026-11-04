@@ -152,3 +152,11 @@ select.hole.ok{border:2px solid var(--ok);background:var(--okbg)}select.hole.ko{
 .ordre-rep{min-height:46px;margin:0;padding:8px 8px 8px 34px;border:2px dashed var(--pri);border-radius:16px;background:var(--pri2);display:grid;gap:6px}
 .ordre-rep li{font-weight:800;padding:4px 8px;border-radius:10px;background:var(--card)}
 .ordre-rep li.ok{background:var(--okbg)}.ordre-rep li.ko{background:var(--kobg)}
+/* cartes d'atlas */
+.map.atlas{background:#bfe1f6;height:340px}
+.atlas .leaflet-tooltip.lbl{background:#fffffff2;border:0;box-shadow:0 1px 4px #0003;border-radius:8px;padding:2px 6px;font:800 12px var(--body);color:#231d4a}
+.atlas .leaflet-tooltip.lbl::before{display:none}
+.atlas .leaflet-tooltip.fleuve{color:#1f6fd1;font-style:italic}.atlas .leaflet-tooltip.mer{background:transparent;box-shadow:none;color:#1e5f99;font-style:italic}
+.atlas .leaflet-tooltip.num{width:26px;height:26px;padding:0;display:grid;place-items:center;border-radius:50%;background:#e9506b;color:#fff;border:2px solid #fff;font:700 14px var(--disp)}
+.atlas .leaflet-tooltip.num.fleuve{background:#1f6fd1}.atlas .leaflet-tooltip.num.mer{background:#1e5f99;box-shadow:0 1px 4px #0003}
+.reglages summary{font-weight:800;cursor:pointer}

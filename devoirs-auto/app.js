@@ -53,7 +53,7 @@ function merge(a = {}, b = {}) {
   const pick = (x = {}, y = {}, all) => Object.fromEntries([...new Set([...Object.keys(x), ...Object.keys(y)])]
     .filter(id => all || devoirs[id]).map(id => [id, later(x[id], y[id])]));
   return { devoirs: Object.values(devoirs).sort((p, q) => p.pour.localeCompare(q.pour)), packs: pick(a.packs, b.packs),
-    results: pick(a.results, b.results), deleted, fiches: pick(a.fiches, b.fiches, true),
+    results: pick(a.results, b.results), deleted, fiches: pick(a.fiches, b.fiches, true), profil: later(a.profil, b.profil),
     jours: [...new Set([...(a.jours || []), ...(b.jours || [])])].sort().slice(-60) };
 }
 
@@ -71,6 +71,7 @@ async function sync() {
     $('#cloud').className = 'pill cloud' + (r.off ? ' off' : '');
     $('#cloud').title = r.off ? 'Synchro non configurée' : 'Sauvegardé sur tous les appareils';
     if (!$('#v-home').hidden) render();
+    if (document.activeElement !== $('#commune')) $('#commune').value = S.profil?.commune || '';
     if (!$('#v-fiches').hidden) renderFiches();
     prepareAll();
   } catch { $('#cloud').className = 'pill cloud off'; $('#cloud').title = 'Hors ligne : sauvegardé sur cet appareil'; }
@@ -157,9 +158,9 @@ async function prepare(d) {
   if (busy.has(d.id) || S.packs[d.id]) return;
   busy.add(d.id); render();
   try {
-    const p = { ...(await api('generate', { action: 'make', devoir: d })), at: Date.now() };
+    const p = { ...(await api('generate', { action: 'make', devoir: d, profil: S.profil })), at: Date.now() };
     S.packs[d.id] = p;
-    S.fiches[d.id] = { matiere: d.matiere, consigne: d.consigne, titre: p.titre, type: p.type, fiche: ficheOf(p), date: today(), at: Date.now() };
+    S.fiches[d.id] = { matiere: d.matiere, consigne: d.consigne, titre: p.titre, type: p.type, fiche: { ...ficheOf(p), visuels: 2 }, date: today(), at: Date.now() };
     save();
   }
   catch (e) { status('⚠️ ' + e.message); }
@@ -244,7 +245,7 @@ function draw(p, n) {
 
 // Ajoute de nouvelles questions à la banque (jamais les mêmes).
 async function more(d, n = 12) {
-  const r = await api('generate', { action: 'more', devoir: d, deja: S.packs[d.id].questions.map(q => q.enonce), n });
+  const r = await api('generate', { action: 'more', profil: S.profil, devoir: d, deja: S.packs[d.id].questions.map(q => q.enonce), n });
   const p = S.packs[d.id];   // relu après l'attente : la synchro a pu remplacer l'objet
   if (!p) return;
   const seen = new Set(p.questions.map(q => norm(q.enonce)));
@@ -357,11 +358,13 @@ async function train(d, goal = false) {
       };
       box.append(el('p', 'small mut', '👆 Touche les étapes dans le bon ordre :'), rep, pool);
       const row = el('div', 'row'); row.append(reset, ok); box.append(row); draw();
-    } else if (q.type === 'carte' && q.lieux?.length) {
-      const pairs = q.lieux.map(l => ({ attendu: l.nom }));
-      holes(pairs, sels => {
-        const m = el('div', 'map'); box.append(m); drawMap(m, q.lieux, { numeros: true });
-        const ul = el('ol', 'map-legend'); sels.forEach(x => { const li = el('li'); li.append(x); ul.append(li); }); box.append(ul);
+    } else if (q.type === 'carte' && carteItems(carteOf(q)).length) {
+      const m = el('div', 'map'); box.append(m);
+      drawMap(m, q, { quiz: true }).then(items => {
+        if (!items.length) return finish(false, 'Carte indisponible : passe à la suite.');
+        holes(items.map(it => ({ attendu: it.nom })), sels => {
+          const ul = el('ol', 'map-legend'); sels.forEach(x => { const li = el('li'); li.append(x); ul.append(li); }); box.append(ul);
+        });
       });
     } else if (q.type === 'courte') {
       const fm = el('form', 'row'), inp = el('input'); inp.placeholder = 'Ta réponse'; inp.autocomplete = 'off';
@@ -409,7 +412,7 @@ async function train(d, goal = false) {
 const ficheOf = p => {
   const f = p.fiche || {};
   return { intro: f.intro || '', sections: f.sections || [], a_retenir: f.a_retenir || p.memo || [], astuce: f.astuce || '', pieges: f.pieges || [],
-    frise: f.frise || [], personnages: f.personnages || [], carte: f.carte || null, schema: f.schema || null, visuels: f.visuels };
+    frise: f.frise || [], personnages: f.personnages || [], carte: f.carte || null, cartes: f.cartes || [], schema: f.schema || null, visuels: f.visuels };
 };
 
 function ficheNode(meta) {
@@ -449,10 +452,13 @@ function ficheNode(meta) {
     const sct = el('section'); sct.append(el('h3', null, '👤 Les personnages importants'));
     const g = el('div', 'persos'); f.personnages.forEach(pp => g.append(persoCard(pp))); sct.append(g); body.append(sct);
   }
-  if (f.carte?.lieux?.length) {
+  for (const c of [...(f.cartes || []), ...(f.carte && !f.cartes?.length ? [f.carte] : [])]) {
+    if (!carteItems(carteOf(c)).length && !FONDS[c.fond]) continue;
     const sct = el('section'), m = el('div', 'map');
-    sct.append(el('h3', null, '🗺️ ' + (f.carte.titre || 'La carte'))); sct.append(m); body.append(sct);
-    requestAnimationFrame(() => drawMap(m, f.carte.lieux, { noms: true }));
+    sct.append(el('h3', null, '🗺️ ' + (c.titre || 'La carte'))); sct.append(m);
+    if (c.legende) sct.append(el('p', 'small mut', c.legende));
+    body.append(sct);
+    requestAnimationFrame(() => drawMap(m, c));
   }
   box('box-retenir', '⭐ À retenir', f.a_retenir);
   box('box-astuce', '🦉 L\'astuce de Plume', f.astuce ? [f.astuce] : []);
@@ -479,16 +485,20 @@ function openFiche(id, from = 'fiches') {
 // Anciennes fiches d'histoire / géographie / sciences : on demande les visuels une seule fois.
 async function enrichir(id, meta) {
   const f = meta.fiche || {}, cat = catOf(meta);
-  if (f.visuels || !['Histoire', 'Géographie', 'Sciences'].includes(cat) || f.frise?.length || f.carte || f.schema || (cat !== 'Sciences' && f.personnages?.length)) return;
+  const vieilleCarte = cat === 'Géographie' && f.visuels !== 2;   // cartes « atlas » (version 2)
+  if (!vieilleCarte && (f.visuels || !['Histoire', 'Géographie', 'Sciences'].includes(cat) || f.frise?.length || f.carte || f.schema || (cat !== 'Sciences' && f.personnages?.length))) return;
   const d = S.devoirs.find(x => x.id === id) || { matiere: meta.matiere, consigne: meta.consigne };
   status('');
   const note = el('p', 'status', '🦉 J\'ajoute une frise, un schéma, des personnages ou une carte à ta fiche…'); $('#fiche-box').prepend(note);
   try {
-    const v = await api('generate', { action: 'visuels', devoir: d, titre: meta.titre });
-    const plus = { frise: v.frise || [], personnages: v.personnages || [], carte: v.carte || null, schema: v.schema || null, visuels: true };
+    const v = await api('generate', { action: 'visuels', devoir: d, titre: meta.titre, profil: S.profil });
+    const plus = { frise: v.frise || [], personnages: v.personnages || [], carte: null, cartes: v.cartes || (v.carte ? [v.carte] : []), schema: v.schema || null, visuels: 2 };
     S.fiches[id] = { ...S.fiches[id], ...meta, fiche: { ...f, ...plus }, at: Date.now() };
     const p = S.packs[id];
-    if (p) { p.fiche = { ...(p.fiche || {}), ...plus }; p.questions.push(...(v.questions || [])); p.at = Date.now(); }
+    if (p) {
+      if (vieilleCarte) p.questions = p.questions.filter(q => q.type !== 'carte' || q.fond);   // anciennes cartes à points remplacées
+      p.fiche = { ...(p.fiche || {}), ...plus }; p.questions.push(...(v.questions || [])); p.at = Date.now();
+    }
     save();
     if (!$('#v-fiche').hidden) openFiche(id, ficheFrom);
   } catch { note.textContent = '⚠️ Visuels indisponibles pour le moment.'; }
@@ -556,7 +566,7 @@ async function openPerso(pp) {
 }
 
 let leafletP;
-function leaflet() {
+function loadLeaflet() {   // (pas « leaflet » : la bibliothèque écrase window.leaflet)
   return leafletP ||= new Promise((ok, ko) => {
     const base = 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/';
     document.head.append(Object.assign(document.createElement('link'), { rel: 'stylesheet', href: base + 'leaflet.min.css' }));
@@ -564,24 +574,113 @@ function leaflet() {
     sc.onload = () => ok(window.L); sc.onerror = ko; document.head.append(sc);
   });
 }
-// Fond de carte sans noms (carte à trous) ou avec noms (fiche).
-async function drawMap(div, lieux, { numeros = false, noms = false } = {}) {
+// ---------- Cartes d'atlas : vrais contours (régions, départements, pays), mers, fleuves, massifs ----------
+// Données libres intégrées à l'app (dossier geo/, voir tools/build-geo.py) : pas de clé, pas de service extérieur.
+const FONDS = { france_regions: 'fr-regions', france_departements: 'fr-departements', europe: 'europe', monde: 'monde' };
+const geoCache = {};
+const geo = n => geoCache[n] ||= fetch(`geo/${n}.json`).then(r => r.json());
+const CONTINENTS = { europe: 'Europe', afrique: 'Africa', asie: 'Asia', 'amerique du nord': 'North America', 'amerique du sud': 'South America',
+  oceanie: 'Oceania', antarctique: 'Antarctica', amerique: 'North America' };
+const CONT_LBL = { Europe: [52, 15], Africa: [5, 20], Asia: [45, 90], 'North America': [45, -100], 'South America': [-15, -60], Oceania: [-25, 135], Antarctica: [-80, 0] };
+const PALETTE = ['#ff8fab', '#ffc857', '#7bdff2', '#b8f2a6', '#c8b6ff', '#ffb38a', '#90e0ef', '#f4a7d3'];
+const nomGeo = s => norm(String(s || '').replace(/^(r[ée]gion|d[ée]partement|massif|mont[s]?|fleuve|mer|oc[ée]an)\s+(de\s+|du\s+|des\s+|d')?/i, '')).replace(/\bst\b/g, 'saint');
+const memeNom = (a, b) => { a = nomGeo(a); b = nomGeo(b); return a === b || (a.length > 3 && b.length > 3 && (a.startsWith(b) || b.startsWith(a))); };
+// Nom exact d'abord (« Alpes » ≠ « Alpes de Transylvanie »), sinon nom approchant.
+const exact = (fc, nom) => fc?.features.find(x => nomGeo(x.properties.nom) === nomGeo(nom));
+const trouve = (fc, nom) => exact(fc, nom) || fc?.features.find(x => memeNom(x.properties.nom, nom));
+
+// Anciennes cartes (que des points) : on choisit un fond adapté.
+function carteOf(c) {
+  if (!c) return null;
+  const k = { ...c, zones: c.zones || [], fleuves: c.fleuves || [], mers: c.mers || [], lieux: (c.lieux || []).filter(l => isFinite(l.lat) && isFinite(l.lon)) };
+  if (!FONDS[k.fond]) {
+    const inFr = k.lieux.every(l => l.lat > 41 && l.lat < 51.5 && l.lon > -5.5 && l.lon < 10);
+    const inEu = k.lieux.every(l => l.lat > 34 && l.lat < 72 && l.lon > -25 && l.lon < 45);
+    k.fond = inFr ? 'france_regions' : inEu ? 'europe' : 'monde';
+  }
+  return k;
+}
+// Éléments à nommer, dans l'ordre des numéros de la carte à trous.
+const carteItems = c => [...c.zones.map(x => ({ ...x, k: 'zone' })), ...c.fleuves.map(x => ({ ...x, k: 'fleuve' })),
+  ...c.mers.map(x => ({ ...x, k: 'mer' })), ...c.lieux.map(x => ({ ...x, k: 'lieu' }))];
+
+async function drawMap(div, carte, { quiz = false } = {}) {
+  const c = carteOf(carte);
   try {
-    const L = await leaflet();
-    const map = L.map(div, { scrollWheelZoom: false, attributionControl: true });
-    // Fonds gratuits sans clé (Esri) : gris clair sans noms, + calque des noms seulement pour les fiches.
-    const esri = n => `https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/${n}/MapServer/tile/{z}/{y}/{x}`;
-    const attribution = 'Fond © Esri, HERE, Garmin, © contributeurs OpenStreetMap';
-    L.tileLayer(esri('World_Light_Gray_Base'), { attribution, maxZoom: 16 }).addTo(map);
-    if (!numeros) L.tileLayer(esri('World_Light_Gray_Reference'), { maxZoom: 16 }).addTo(map);
-    const pts = lieux.filter(l => isFinite(l.lat) && isFinite(l.lon)).map((l, i) => {
-      const icon = L.divIcon({ className: 'pin', html: `<span>${numeros ? i + 1 : '●'}</span>${noms ? `<em>${l.nom.replace(/</g, '')}</em>` : ''}`, iconSize: null });
-      const m = L.marker([l.lat, l.lon], { icon }).addTo(map);
-      if (noms && l.info) m.bindPopup(`<b>${l.nom.replace(/</g, '')}</b><br>${String(l.info).replace(/</g, '')}`);
-      return [l.lat, l.lon];
+    const L = await loadLeaflet();
+    const [fond, pays, reliefs, fleuves, mers] = await Promise.all([geo(FONDS[c.fond]), geo(c.fond === 'monde' ? 'monde' : 'europe'),
+      c.fond === 'monde' ? null : geo('reliefs'), c.fleuves.length ? geo('fleuves') : null, geo('mers')]);
+    div.classList.add('atlas');
+    const map = L.map(div, { scrollWheelZoom: false, zoomSnap: 0.25, attributionControl: true }).setView([46.6, 2.4], 5);   // vue de départ (requise pour placer les points)
+    map.attributionControl.setPrefix('').addAttribution('Données © IGN/Etalab, Natural Earth');
+    const tags = [];
+    const tag = (layer, i, it) => {
+      tags.push({ layer, it, txt: quiz ? String(i + 1) : it.nom });
+      if (!quiz && it.info) layer.bindPopup(`<b>${String(it.nom).replace(/</g, '')}</b><br>${String(it.info).replace(/</g, '')}`);
+    };
+    // Étiquette posée sur la partie VISIBLE de l'élément (les Alpes ou une mer débordent de la France).
+    const poser = () => tags.forEach(({ layer, it, txt }) => {
+      const v = map.getBounds();
+      let pos;
+      if (it.pos) pos = L.latLng(it.pos);   // point d'étiquette officiel (pays) ou fixe (continent)
+      else if (it.k === 'lieu') pos = layer.getLatLng();
+      else if (it.k === 'fleuve') {
+        const pts = layer.getLayers().flatMap(l => l.getLatLngs().flat(3)).filter(p => v.contains(p));
+        pos = pts[Math.floor(pts.length / 2)];
+      } else {
+        // Plus grand morceau visible (évite la Guyane pour la France, les îles…).
+        const parts = layer.getLayers().flatMap(l => (l.getLatLngs ? (Array.isArray(l.getLatLngs()[0]?.[0]) ? l.getLatLngs() : [l.getLatLngs()]) : []))
+          .map(poly => L.latLngBounds(poly.flat(2))).filter(pb => pb.isValid() && pb.intersects(v));
+        const aire = pb => (pb.getNorth() - pb.getSouth()) * (pb.getEast() - pb.getWest());
+        const b = parts.sort((x, y) => aire(y) - aire(x))[0] || layer.getBounds(), s = Math.max(b.getSouth(), v.getSouth()), n = Math.min(b.getNorth(), v.getNorth());
+        const w = Math.max(b.getWest(), v.getWest()), e = Math.min(b.getEast(), v.getEast());
+        if (s < n && w < e) pos = L.latLng((s + n) / 2, (w + e) / 2);
+      }
+      if (pos) L.tooltip({ permanent: true, direction: it.k === 'lieu' ? 'right' : 'center', className: 'lbl ' + it.k + (quiz ? ' num' : ''), offset: it.k === 'lieu' ? [6, 0] : [0, 0] })
+        .setLatLng(pos).setContent(txt).addTo(map);
     });
-    if (pts.length > 1) map.fitBounds(pts, { padding: [30, 30], maxZoom: 9 }); else map.setView(pts[0] || [46.6, 2.4], pts.length ? 8 : 5);
-  } catch { div.replaceChildren(el('p', 'mut small', 'Carte indisponible hors connexion.')); }
+    const bounds = [];
+    // 1. Terres autour (gris) puis le fond de la leçon (régions / départements / pays) avec ses frontières.
+    if (c.fond.startsWith('france')) L.geoJSON(pays, { style: { color: '#b9b2a6', weight: .6, fillColor: '#efe9df', fillOpacity: 1 }, interactive: false }).addTo(map);
+    const fondL = L.geoJSON(fond, { style: { color: '#6d6a8f', weight: c.fond === 'france_departements' ? .6 : 1, fillColor: '#fffdf8', fillOpacity: 1 }, interactive: false }).addTo(map);
+    // 2. Éléments de la leçon : zones (régions, départements, pays, massifs) coloriées, fleuves, mers, villes.
+    let col = 0; const drawn = [];
+    carteItems(c).forEach(it => {
+      let layer;
+      if (it.k === 'zone') {
+        // Ordre : nom exact (région, pays, massif), puis continent (« Afrique » ≠ « Afrique du Sud »), puis nom approchant.
+        const cont = CONTINENTS[nomGeo(it.nom)];
+        const f = !cont && (exact(fond, it.nom) || exact(pays, it.nom) || (!exact(reliefs, it.nom) && (trouve(fond, it.nom) || trouve(pays, it.nom))));
+        const r = !cont && !f && trouve(reliefs, it.nom);
+        if (cont) {   // continent : tous ses pays coloriés ensemble
+          const fs = pays.features.filter(x => x.properties.continent === cont && x.properties.nom !== 'Russie');   // Russie : à cheval sur 2 continents
+          it.pos = CONT_LBL[cont];
+          if (fs.length) layer = L.geoJSON({ type: 'FeatureCollection', features: fs }, { style: { color: '#4b3fbf', weight: .8, fillColor: PALETTE[col++ % PALETTE.length], fillOpacity: .8 } });
+        } else if (f) { if (f.properties.lx != null) it.pos = [f.properties.ly, f.properties.lx]; }
+        if (f) layer = L.geoJSON(f, { style: { color: '#4b3fbf', weight: 1.5, fillColor: PALETTE[col++ % PALETTE.length], fillOpacity: .85 } });
+        else if (r) layer = L.geoJSON(r, { style: { color: '#8a5a2b', weight: 1, fillColor: '#c99a6b', fillOpacity: .75, dashArray: '3' } });
+      } else if (it.k === 'fleuve') {
+        const f = trouve(fleuves, it.nom);
+        if (f) layer = L.geoJSON(f, { style: { color: '#1f6fd1', weight: 3.5, opacity: .95 } });
+      } else if (it.k === 'mer') {
+        const f = trouve(mers, it.nom);
+        if (f) layer = L.geoJSON(f, { style: { color: '#5aa9e6', weight: 1, fillColor: '#8cc8f2', fillOpacity: .55 } });
+      } else {
+        layer = L.circleMarker([it.lat, it.lon], { radius: 6, color: '#fff', weight: 2, fillColor: '#e9506b', fillOpacity: 1 });
+      }
+      if (!layer) return;   // nom inconnu des données : on l'ignore plutôt que d'afficher faux
+      layer.addTo(map); tag(layer, drawn.length, it); drawn.push(it);
+      bounds.push(it.k === 'lieu' ? L.latLngBounds([[it.lat, it.lon], [it.lat, it.lon]]) : layer.getBounds());
+    });
+    // Cadrage : la France entière pour les fonds France, sinon les éléments de la leçon.
+    const EUROPE = L.latLngBounds([35, -11], [62, 32]);   // sans les îles lointaines (Canaries, outre-mer…)
+    const b = c.fond.startsWith('france') ? fondL.getBounds() : c.fond === 'europe' ? c.lieux.reduce((a, l) => a.extend([l.lat, l.lon]), EUROPE) : bounds.reduce((a, x) => a.extend(x), bounds[0] ? L.latLngBounds(bounds[0].getSouthWest(), bounds[0].getNorthEast()) : fondL.getBounds());
+    // Département(s) à situer : on zoome dessus, avec les voisins autour.
+    const zonesB = c.fond === 'france_departements' && bounds.length ? bounds.reduce((a, x) => a.extend(x), L.latLngBounds(bounds[0].getSouthWest(), bounds[0].getNorthEast())) : null;
+    map.fitBounds(zonesB ? zonesB.pad(1.2) : b, { padding: [12, 12] });
+    poser();
+    return drawn;   // pour la carte à trous : seuls les éléments réellement dessinés sont demandés
+  } catch (e) { console.warn('carte', e); div.replaceChildren(el('p', 'mut small', 'Carte indisponible hors connexion.')); return []; }
 }
 $('#fiche-back').onclick = () => (ficheFrom === 'fiches' ? showFiches() : ficheFrom === 'train' ? show('train') : home());
 
@@ -645,6 +744,10 @@ function confetti() {
 $('#stars').parentElement.onclick = () => { home(); status('⭐ Tes étoiles : une étoile par bonne réponse du premier coup (meilleur score de chaque mission).'); };
 $('#streak').parentElement.onclick = () => { home(); status('🔥 Ta série : le nombre de jours d\'affilée où tu t\'es entraînée. Entraîne-toi chaque jour pour la faire grandir ! Un jour sans entraînement et elle repart à zéro.'); };
 $('#cloud').onclick = () => { home(); status('☁️ ' + $('#cloud').title); };
+
+// Réglage : la commune de Céleste (cartes « mon lieu de vie » en géographie).
+$('#commune').value = S.profil?.commune || '';
+$('#commune').onchange = e => { S.profil = { commune: e.target.value.trim(), at: Date.now() }; save(); status('📍 Commune enregistrée : les prochaines cartes en tiendront compte.'); };
 
 function home() { show('home'); $('#tip').textContent = TIPS[Math.random() * TIPS.length | 0]; render(); }
 $('#back').onclick = home;

@@ -36,6 +36,7 @@ export function merge(a = {}, b = {}) {
     deleted,
     fiches: Object.fromEntries([...new Set([...Object.keys(a.fiches || {}), ...Object.keys(b.fiches || {})])]
       .filter(id => !deleted['fiche:' + id]).map(id => [id, later(a.fiches?.[id], b.fiches?.[id])])),
+    profil: later(a.profil, b.profil) || undefined,
     jours: [...new Set([...(a.jours || []), ...(b.jours || [])])].sort().slice(-60),
   };
 }

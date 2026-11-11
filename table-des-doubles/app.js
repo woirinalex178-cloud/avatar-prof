@@ -194,6 +194,7 @@ function guide() {
 const gtip = (k, t) => `<a class="gtip" href="#/guide/${k}">📖 ${t}</a>`;
 async function route() {
   const r = location.hash.replace(/^#\/?/, '').split('/')[0];
+  if (r !== 'classeur' && typeof binder !== 'undefined') binder.opened = false;
   document.querySelectorAll('#nav a').forEach(a => a.classList.toggle('on', a.dataset.r === r));
   close(); window.scrollTo(0, 0);
   try { await (routes[r] || home)(); } catch (e) { console.error(e); view.innerHTML = `<div class="empty">Erreur de chargement. ${esc(e.message)}</div>`; }
@@ -238,7 +239,75 @@ function setPicker() {
     <label class="f">Extension<select id="pset">${Object.entries(groups).map(([g, ss]) => `<optgroup label="${esc(g)}">${ss.map(s => `<option value="${s.id}" ${s.id === S.set ? 'selected' : ''}>${s.lang === 'ja' ? s.code + ' · ' : ''}${esc(setName(s))}${s.released ? ' · ' + s.released.slice(0, 4) : ''}${S.prog[s.id] ? ` · ${setPct(s)}%` : ''}</option>`).join('')}</optgroup>`).join('')}</select></label>
   </div>`;
 }
+const binder = { mode: 'owned', size: 9, cinema: false, playing: false, current: 0, opened: false };
+let binderTimer;
 async function classeur() {
+  clearTimeout(binderTimer);
+  if (binder.mode === 'catalog') {
+    await catalogClasseur();
+    view.insertAdjacentHTML('afterbegin', '<button class="btn ghost binder-back" id="binder-back">← Revenir à mes cartes</button>');
+    $('#binder-back').onclick = () => { binder.mode = 'owned'; classeur(); };
+    return;
+  }
+  view.innerHTML = '<div class="empty" role="status">Ouverture de ton classeur…</div>';
+  const ids = Object.keys(S.coll).filter(id => S.coll[id] > 0);
+  const missing = ids.filter(id => !S.cards[id]);
+  try {
+    for (let i = 0; i < missing.length; i += 100) {
+      const { data, error } = await sb.from('cards').select('*').in('id', missing.slice(i, i + 100));
+      if (error) throw error;
+      remember(data);
+    }
+    if (ids.some(id => !S.cards[id])) throw new Error('Carte indisponible');
+  } catch {
+    view.innerHTML = '<div class="empty"><h2>Ton classeur est bien conservé</h2><p>Impossible de charger les cartes pour le moment. Vérifie ta connexion.</p><button class="btn" id="binder-retry">Réessayer</button></div>';
+    $('#binder-retry').onclick = classeur; return;
+  }
+  if (!location.hash.startsWith('#/classeur')) return;
+  const rows = ids.map(id => S.cards[id]).filter(Boolean);
+  const setFor = c => S.sets.find(s => s.id === c.set_id);
+  // Les identifiants TCGdex portent un préfixe de langue : fr:sv01, en:sv01…
+  const groupKey = c => String(c.set_id || c.id.split(':')[1]?.replace(/-[^-]+$/, '') || '').replace(/^[a-z]{2}:/, '');
+  const groups = new Map();
+  for (const c of rows) {
+    const key = groupKey(c), set = setFor(c);
+    if (!groups.has(key)) groups.set(key, { key, name: setName(set) || c.set_name || key, rows: [] });
+    const g = groups.get(key); g.rows.push(c);
+    if (c.lang === 'fr') g.name = setName(set) || c.set_name || g.name;
+  }
+  const collections = [...groups.values()].sort((a, b) => a.name.localeCompare(b.name, 'fr'));
+  const languages = Object.keys(LANGS);
+  const cards = collections.flatMap(g => [...g.rows].sort((a,b) => String(a.local_id ?? a.num ?? '').localeCompare(String(b.local_id ?? b.num ?? ''), 'fr', { numeric: true }) || languages.indexOf(a.lang) - languages.indexOf(b.lang)));
+  const qty = ids.reduce((n,id) => n + S.coll[id], 0), doubles = ids.reduce((n,id) => n + Math.max(0,S.coll[id]-1),0);
+  const card = (c, n) => { const q = S.coll[c.id]; return `<article class="binder-pocket binder-reveal" style="--reveal:${Math.min(n * .045, 1.8)}s" data-id="${esc(c.id)}"><button class="binder-art" data-binder-card="${esc(c.id)}" aria-label="Agrandir ${esc(nm(c))}, ${LANGS[c.lang] || c.lang}">${img(c)}<span class="binder-count ${q > 1 ? 'is-double' : ''}">×${q}${q > 1 ? (q === 2 ? ' · Double' : q === 3 ? ' · Triple' : ' · Exemplaires') : ''}</span></button><div class="binder-card-info"><b>${esc(nm(c))}</b><span>N° ${esc(c.local_id ?? c.num)} · ${flag(c.lang)}</span></div><div class="stepper"><button data-dq="${esc(c.id)}" aria-label="Retirer un exemplaire de ${esc(nm(c))}">−</button><span>${q} ex.</span><button data-iq="${esc(c.id)}" aria-label="Ajouter un exemplaire de ${esc(nm(c))}">+</button></div>${q > 1 ? `<button class="btn ghost sm binder-trade" data-put="${esc(c.id)}">⇄ Échanger mes doubles</button>` : ''}</article>`; };
+  const sections = collections.map((g, gi) => { const ordered = g.rows.sort((a,b) => String(a.local_id ?? a.num ?? '').localeCompare(String(b.local_id ?? b.num ?? ''), 'fr', { numeric: true }) || languages.indexOf(a.lang) - languages.indexOf(b.lang)); return `<section class="binder-collection"><header><span class="binder-eyebrow">COLLECTION ${gi + 1}</span><h2>${esc(g.name)}</h2><span>${g.rows.length} carte${g.rows.length > 1 ? 's' : ''}</span></header><div class="binder-pockets" style="--binder-cols:${binder.size === 4 ? 2 : binder.size === 16 ? 4 : 3}">${ordered.map((c, i) => card(c, cards.indexOf(c))).join('')}</div></section>`; }).join('');
+  const opening = binder.opened ? '' : '<section class="binder-opening" aria-hidden="true"><div class="binder-cover"><img src="img/logo.webp" alt=""><span>Sharing Cards</span><b>Mon classeur</b></div></section>';
+  binder.opened = true;
+  view.innerHTML = `${opening}<section class="binder-intro"><div><span class="binder-eyebrow">TA COLLECTION PREND VIE</span><h1>Mon classeur</h1><p class="mut">Toutes tes cartes, collection après collection.</p></div><div class="binder-actions"><button class="btn" data-scan>＋ Scanner une carte</button><button class="btn ghost" id="binder-add">Ajouter depuis le catalogue</button></div></section>
+    <div class="binder-stats"><span><b>${qty}</b> exemplaires</span><span><b>${ids.length}</b> cartes différentes</span><span><b>${collections.length}</b> collections</span><span><b>${doubles}</b> doubles à échanger</span></div>
+    ${S.profile ? '' : '<p class="small mut">Mode invité · enregistré sur cet appareil. <a href="#/compte">Créer un compte pour sauvegarder ma collection</a></p>'}
+    ${ids.length ? `<div class="binder-toolbar"><label>Pochettes par page<select id="binder-size">${[[4,'2 × 2'],[9,'3 × 3'],[12,'3 × 4'],[16,'4 × 4']].map(([n,label]) => `<option value="${n}" ${binder.size === n ? 'selected' : ''}>${label}</option>`).join('')}</select></label><button class="btn ghost" id="binder-slide">▷ Lancer le diaporama</button></div><section class="binder-book" aria-label="Classeur ouvert"><div class="binder-spine" aria-hidden="true"><i></i><i></i><i></i></div><div class="binder-sheet">${sections}</div></section><p class="small mut binder-tip">Les cartes sont rangées par collection, numéro puis langue. Clique sur une carte pour l’admirer.</p>` : `<div class="binder-empty"><img src="img/logo.webp" alt="" width="84" height="84"><h2>La première page de ton aventure</h2><p>Ajoute tes premières cartes : elles apparaîtront ici, rangées par collection et par langue.</p><button class="btn" data-scan>📷 Scanner ma première carte</button><button class="btn ghost" id="binder-empty-add">Parcourir le catalogue</button></div>`}`;
+  const catalogue = () => { binder.cinema = false; binder.mode = 'catalog'; classeur(); };
+  $('#binder-add').onclick = catalogue;
+  if (!ids.length) { $('#binder-empty-add').onclick = catalogue; return; }
+  $('#binder-size').onchange = e => { binder.size = Number(e.target.value); classeur(); };
+  // L'édition japonaise partage généralement l'illustration des autres langues.
+  // Quand TCGdex ne fournit pas son fichier image, on montre cette illustration de référence.
+  view.querySelectorAll('.binder-pocket[data-id]').forEach(el => {
+    const c = S.cards[el.dataset.id]; if (!c || c.image) return;
+    cardRef(c).then(ref => {
+      if (!el.isConnected || !ref?.img?.image) return;
+      const art = $('.binder-art', el);
+      if (art) art.innerHTML = '<img class="cimg" loading="lazy" src="' + ref.img.image + '/low.webp" alt="' + esc(nm(c)) + '"><span class="binder-count ' + (S.coll[c.id] > 1 ? 'is-double' : '') + '">×' + S.coll[c.id] + '</span>';
+    });
+  });
+  const cinema = () => { const c = cards[binder.current]; const g = collections.find(x => x.rows.includes(c)); return `<div class="binder-cinema" role="dialog" aria-modal="true" aria-label="Diaporama"><button class="binder-cinema-close" aria-label="Fermer">×</button><div class="binder-cinema-copy"><span>${esc(g?.name || '')}</span><h2>${esc(nm(c))}</h2><p>N° ${esc(c.local_id ?? c.num)} · ${flag(c.lang)} · ×${S.coll[c.id]}</p></div><div class="binder-cinema-card">${img(c,true)}</div><div class="binder-cinema-controls"><button data-cinema="prev" aria-label="Carte précédente">←</button><button data-cinema="play" class="binder-cinema-play" aria-label="${binder.playing ? 'Mettre en pause' : 'Lire'}">${binder.playing ? 'Ⅱ' : '▶'}</button><button data-cinema="next" aria-label="Carte suivante">→</button></div><div class="binder-cinema-count">${binder.current + 1} / ${cards.length}</div></div>`; };
+  const drawCinema = () => { clearTimeout(binderTimer); view.querySelector('.binder-cinema')?.remove(); view.insertAdjacentHTML('beforeend', cinema()); const el = $('.binder-cinema'); $('.binder-cinema-close', el).onclick = () => { binder.cinema = binder.playing = false; clearTimeout(binderTimer); el.remove(); }; el.querySelectorAll('[data-cinema]').forEach(b => b.onclick = () => { if (b.dataset.cinema === 'play') binder.playing = !binder.playing; else binder.current = (binder.current + (b.dataset.cinema === 'next' ? 1 : cards.length - 1)) % cards.length; drawCinema(); }); if (binder.playing) binderTimer = setTimeout(() => { binder.current = (binder.current + 1) % cards.length; drawCinema(); }, 3500); };
+  $('#binder-slide').onclick = () => { binder.current = 0; binder.playing = true; drawCinema(); };
+  view.querySelectorAll('[data-binder-card]').forEach(el => el.onclick = () => { binder.current = cards.findIndex(c => c.id === el.dataset.binderCard); binder.playing = false; drawCinema(); });
+}
+
+async function catalogClasseur() {
   if (!S.set) { view.innerHTML = '<div class="empty">Catalogue en cours d\'import, reviens dans quelques minutes.</div>'; return; }
   await loadSet(S.set);
   Game.visit();
@@ -814,7 +883,7 @@ const setScanLang = l => { scanLang = l; try { localStorage.setItem('sc_lang', l
 async function langVersions(c) {
   const k = artKey(c.id);
   if (!langCache.has(k)) langCache.set(k, (async () => {
-    const { data } = await sb.from('cards').select('id,name,name_fr,lang,local_id,image,price_eur,set_id,set:sets(name,name_fr)').in('id', ALL_LANGS.map(l => `${l}:${k}`));
+    const { data } = await sb.from('cards').select('id,name,name_fr,lang,local_id,image,price_eur,tcg_id,set_id,set:sets(name,name_fr)').in('id', ALL_LANGS.map(l => `${l}:${k}`));
     return (data || []).map(x => ({ ...x, set_name: x.set?.name_fr || x.set?.name || '', alt: true }));
   })().catch(() => []));
   return langCache.get(k);
@@ -901,6 +970,8 @@ function sheet(html, cls = '') {
 document.addEventListener('click', e => { const i = e.target.closest('.sr-img img, .split > div:first-child > img.cimg, .ns-img img'); if (!i) return;
   e.preventDefault(); e.stopPropagation(); sheet(`<img src="${i.src.replace('/low.webp', '/high.webp')}" alt="${esc(i.alt)}">`, 'zoom'); }, true);
 document.addEventListener('click', e => { const b = e.target.closest('[data-cote]'); if (!b) return; e.preventDefault(); e.stopPropagation(); coteModal(S.cards[b.dataset.cote]); }, true);
+// Dans le classeur, le clic ouvre la fiche ; le diaporama reste sur son bouton dédié.
+document.addEventListener('click', e => { const b = e.target.closest('[data-binder-card]'); if (!b) return; e.preventDefault(); e.stopImmediatePropagation(); cardInfoModal(S.cards[b.dataset.binderCard]); }, true);
 const condTable = (p, cur) => p == null ? '' : `<table class="condtab"><tbody>${Object.entries(COND).map(([k, v]) => `<tr${cur === k ? ' class="on"' : ''}><th><span class="pill p-${k}">${k}</span> ${esc(v[0])}</th><td>${eur(condPrice(p, k))}</td><td class="small mut">${esc(v[1])}</td></tr>`).join('')}</tbody></table>`;
 // Carte de référence : quand la cote ou le visuel manquent (surtout en japonais), on regarde les autres langues.
 async function cardRef(c) {
@@ -909,6 +980,29 @@ async function cardRef(c) {
   const im = c.image ? null : vs.find(v => v.image && v.id !== c.id);
   const px = c.price_eur != null ? null : [...vs].filter(v => v.price_eur != null).sort((a, b) => (b.lang === 'en') - (a.lang === 'en'))[0];
   return im || px ? { img: im, px } : null;
+}
+const rarityMark = rarity => {
+  const r = String(rarity || '').toLowerCase();
+  if (/(common|commune)/.test(r) && !/(uncommon|peu)/.test(r)) return '●';
+  if (/(uncommon|peu commune)/.test(r)) return '◆';
+  return r ? '★' : '—';
+};
+async function cardInfoModal(c) {
+  if (!c) return;
+  const set = S.sets.find(s => s.id === c.set_id), total = set?.total || c.set_total || '?';
+  const ref = await cardRef(c), quote = c.price_eur != null ? c : ref?.px;
+  const history = quote?.tcg_id ? await priceHist(quote.tcg_id) : [], rarity = c.rarity || 'Rareté non renseignée';
+  const z = sheet(`<div class="cardinfo"><div class="cardinfo-art">${img(c, true)}</div><div class="cardinfo-main">
+    <p class="small mut" style="margin:0">${flag(c.lang)} ${esc(LANGS[c.lang] || c.lang || '')}</p><h2>${esc(nm(c))}</h2>${jp(c)}
+    <dl class="kv"><dt>Collection</dt><dd>${esc(setName(set) || c.set_name || 'Non renseignée')}</dd><dt>Numéro</dt><dd><b>${esc(c.local_id ?? c.num ?? '?')}/${esc(total)}</b></dd><dt>Rareté</dt><dd><span class="rarity-mark" aria-label="${esc(rarity)}">${rarityMark(rarity)}</span> ${esc(rarity)}</dd><dt>Illustrateur</dt><dd>${esc(c.illustrator || 'Non renseigné')}</dd></dl>
+    <section class="cardinfo-price"><h3>Cote</h3>${quote ? `<p class="cotebig">${eur(quote.price_eur)}${trend(quote)}</p>${quote !== c ? `<p class="small mut">Cote indicative de la version ${flag(quote.lang)} de la même carte.</p>` : ''}<h4>Selon l'état</h4>${condTable(quote.price_eur)}<button type="button" class="btn ghost sm" id="info-price">Voir l'historique complet</button>` : '<p class="mut">Aucune cote connue pour cette carte actuellement.</p>'}</section>
+    <section class="cardinfo-history"><h3>Historique</h3>${history.length >= 2 ? `<p><b>${history.length}</b> relevés · de ${eur(Math.min(...history.map(x => +x.price)))} à ${eur(Math.max(...history.map(x => +x.price)))}</p><div class="spark" id="info-spark"></div>` : '<p class="small mut">Historique en construction : la courbe apparaît après plusieurs relevés.</p>'}</section>
+  </div></div>`, 'cotedlg cardinfodlg');
+  if (quote) $('#info-price', z).onclick = () => coteModal(quote);
+  if (history.length >= 2) {
+    const { line, up } = curve(history, 280, 70, 4), box = $('#info-spark', z);
+    box.innerHTML = `<svg viewBox="0 0 280 70" class="${up ? 'up' : 'dn'}" role="img" aria-label="Historique de la cote"><polyline points="${line}"/></svg><p class="small mut">${fmtD(history[0].d)} → ${fmtD(history.at(-1).d)}</p>`;
+  }
 }
 const histCache = new Map();
 const priceHist = id => { if (!histCache.has(id)) histCache.set(id, sb.from('price_history').select('d,price').eq('tcg_id', id).gte('d', new Date(Date.now() - 365 * 864e5).toISOString().slice(0, 10)).order('d').then(r => r.data || [])); return histCache.get(id); };

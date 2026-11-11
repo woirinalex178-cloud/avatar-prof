@@ -233,10 +233,46 @@ const norm = s => String(s ?? '').toLowerCase().normalize('NFD').replace(/[̀-ͯ
   .replace(/(\d),(\d)/g, '$1.$2').replace(/[^a-z0-9.]+/g, ' ').replace(/\b(le|la|les|l|un|une|des)\b/g, '').replace(/\s+/g, ' ').trim();
 const BRAVO = ['Bravo ! ', 'Super ! ', 'Génial ! ', 'Exactement ! ', 'Tu gères ! '];
 
+// Distance d'édition (lettres oubliées, en trop ou inversées).
+function lev(a, b) {
+  const d = Array.from({ length: a.length + 1 }, (_, i) => [i, ...Array(b.length).fill(0)]);
+  for (let j = 1; j <= b.length; j++) d[0][j] = j;
+  for (let i = 1; i <= a.length; i++) for (let j = 1; j <= b.length; j++)
+    d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+  return d[a.length][b.length];
+}
+const brut = s => String(s ?? '').toLowerCase().replace(/[’']/g, "'").replace(/[.!?;:,]+$/g, '').replace(/\s+/g, ' ').trim();
+// Verdict d'une réponse écrite : juste, juste avec un conseil d'orthographe, presque (dictée), ou faux.
+function verdict(given, q) {
+  const cands = [q.reponse, ...(q.accepte || [])].filter(Boolean);
+  if (cands.some(c => brut(c) === brut(given))) return { etat: 'ok' };
+  const proche = cands.find(c => norm(c) === norm(given));
+  if (proche) return /[^\x00-\x7f]/.test(proche) && brut(proche).normalize('NFD').replace(/[\u0300-\u036f]/g, '') === brut(given).normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    ? (q.type === 'dictee' ? { etat: 'presque', note: `Attention aux accents : on écrit « ${proche} ».` } : { etat: 'ok', note: `Attention aux accents : on écrit « ${proche} ».` })
+    : { etat: 'ok' };
+  if (/^[\d.,\s]+$/.test(String(given).trim())) return { etat: 'ko' };   // un nombre : pas d'à-peu-près
+  const g = norm(given), c = cands.map(x => ({ x, d: lev(g, norm(x)), n: norm(x).length })).sort((a, b) => a.d - b.d)[0];
+  const tol = c.n >= 8 ? 2 : c.n >= 4 ? 1 : 0;
+  if (c.d > 0 && c.d <= tol) return q.type === 'dictee'
+    ? { etat: 'presque', note: `Presque ! Une petite erreur d'orthographe : on écrit « ${c.x} ».` }
+    : { etat: 'ok', note: `Ta réponse est juste, mais attention à l'orthographe : on écrit « ${c.x} ».` };
+  return { etat: 'ko' };
+}
+// Question qui donne sa réponse dans l'énoncé (« bonne orthographe du mot "savant" ? ») : écartée.
+const fuite = q => {
+  if (['vraifaux', 'frise', 'carte', 'schema', 'ordre', 'associer', 'classer'].includes(q.type)) return false;
+  const r = norm(q.reponse);
+  return r.length >= 3 && !/^\d+$/.test(r) && (' ' + norm(`${q.enonce} ${q.texte || ''}`) + ' ').includes(' ' + r + ' ');
+};
+// Lecture à voix haute (dictée), gratuite, intégrée au téléphone.
+function dire(txt) {
+  try { speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(txt); u.lang = 'fr-FR'; u.rate = .85; speechSynthesis.speak(u); } catch {}
+}
+
 // Tire des questions variées : d'abord les moins vues, ordre progressif, propositions mélangées.
 function draw(p, n) {
   p.vus ||= {};
-  const idx = shuffle(p.questions.map((_, i) => i)).sort((a, b) => (p.vus[a] || 0) - (p.vus[b] || 0)).slice(0, n);
+  const idx = shuffle(p.questions.map((_, i) => i)).filter(i => !fuite(p.questions[i])).sort((a, b) => (p.vus[a] || 0) - (p.vus[b] || 0)).slice(0, n);
   idx.forEach(i => p.vus[i] = (p.vus[i] || 0) + 1);
   p.at = Date.now();
   return idx.map(i => ({ ...p.questions[i], choix: shuffle(p.questions[i].choix || []) }))
@@ -252,21 +288,22 @@ async function more(d, n = 12) {
   for (const q of r.questions || []) if (q.enonce && !seen.has(norm(q.enonce))) { seen.add(norm(q.enonce)); p.questions.push(q); }
   p.vus ||= {}; p.at = Date.now(); save();
 }
-const unseen = p => p.questions.filter((_, i) => !(p.vus || {})[i]).length;
+const unseen = p => p.questions.filter((q, i) => !(p.vus || {})[i] && !fuite(q)).length;
 
 async function train(d, goal = false) {
   let p = S.packs[d.id];
-  const n = goal ? 20 : Math.min(SIZE[p.type] || 8, p.questions.length);
+  let n = goal ? 20 : Math.min(SIZE[p.type] || 8, p.questions.length);
   if (goal && p.questions.length < 20) {
     status('🦉 Je prépare 20 questions pour ton objectif 20/20…');
     try { await more(d, 20 - p.questions.length + 4); p = S.packs[d.id]; } catch (e) { return status('⚠️ ' + e.message); }
     status('');
   }
   const qs = draw(p, n);
+  n = qs.length;   // des questions écartées (réponse dans l'énoncé) : le total suit ce qui est vraiment posé
   if (unseen(p) < n) more(d).catch(() => {});   // en arrière-plan : de quoi varier la prochaine fois
   save();
 
-  let k = 0, score = 0, tries = 0;
+  let k = 0, score = 0, tries = 0, combo = 0;
   const queue = qs.map(q => ({ ...q, first: true }));
   show('train'); status('');
   $('#t-kind').textContent = goal ? '🎯 Objectif 20/20' : KIND[p.type] || 'Entraînement';
@@ -288,24 +325,40 @@ async function train(d, goal = false) {
     fill.style.width = rocket.style.left = (Math.min(k, n) / Math.max(queue.length, n) * 100) + '%'; bar.append(fill, rocket);
     box.append(head, bar, el('p', 'q-text', q.enonce));
 
-    const finish = (good, correction) => {
-      if (good && q.first) score++;
-      tries++;
+    // good : true (juste), 'presque' (dictée avec une petite faute : pas de point, mais pas « faux »), false.
+    const finish = (good, correction, note) => {
+      const juste = good === true;
+      if (juste && q.first) score++;
+      tries++; combo = juste ? combo + 1 : 0;
       // Objectif 20/20 : une question ratée revient à la fin jusqu'à ce qu'elle soit réussie.
-      if (!good && goal) queue.push({ ...q, first: false, choix: shuffle(q.choix || []) });
+      if (!juste && goal) queue.push({ ...q, first: false, choix: shuffle(q.choix || []) });
       box.querySelectorAll('button,input,select').forEach(x => x.disabled = true);
-      const fb = el('div', 'fb ' + (good ? 'ok' : 'ko'));
-      fb.append(el('strong', null, good ? BRAVO[tries % BRAVO.length] : `Presque ! ${correction} `), document.createTextNode(q.explication || ''));
+      const fb = el('div', 'fb ' + (juste ? (note ? 'mid' : 'ok') : good === 'presque' ? 'mid' : 'ko'));
+      fb.append(el('strong', null, juste ? BRAVO[tries % BRAVO.length] : good === 'presque' ? '' : `Presque ! ${correction} `));
+      if (note) fb.append(el('div', 'note', '✏️ ' + note));
+      fb.append(document.createTextNode(q.explication || ''));
+      if (combo >= 3) fb.prepend(el('div', 'combo', `🔥 Combo x${combo} !`));
       if (!good && goal) fb.append(el('div', 'small', '🔁 Cette question reviendra à la fin.'));
       const next = el('button', 'btn', k + 1 < queue.length ? 'Suivant →' : 'Voir mon score 🎉');
       next.onclick = () => { k++; k < queue.length ? step() : end(); };
       box.append(fb, next); next.focus();
     };
     const answer = (given, btn) => {
-      const good = [q.reponse, ...(q.accepte || [])].some(a => norm(a) === norm(given));
-      box.querySelectorAll('.choice').forEach(c => { if (norm(c.textContent) === norm(q.reponse)) c.classList.add('ok'); });
-      if (btn && !good) btn.classList.add('ko');
-      finish(good, `La réponse : ${q.reponse}.`);
+      if (btn) {   // bouton : c'est juste ou faux
+        const good = norm(given) === norm(q.reponse) || (q.accepte || []).some(a => norm(a) === norm(given));
+        box.querySelectorAll('.choice').forEach(c => { if (norm(c.textContent) === norm(q.reponse)) c.classList.add('ok'); });
+        if (!good) btn.classList.add('ko');
+        return finish(good, `La réponse : ${q.reponse}.`);
+      }
+      const v = verdict(given, q);   // réponse écrite : un peu d'indulgence sur l'orthographe
+      finish(v.etat === 'ok' ? true : v.etat, `La réponse : ${q.reponse}.`, v.note);
+    };
+    const ecrire = (placeholder = 'Ta réponse') => {
+      const fm = el('form', 'row'), inp = el('input'); inp.placeholder = placeholder; inp.autocomplete = 'off';
+      inp.setAttribute('autocapitalize', 'off'); inp.spellcheck = false;   // pas de correcteur du téléphone : c'est Céleste qui écrit
+      fm.append(inp, el('button', 'btn', 'Valider'));
+      fm.onsubmit = e => { e.preventDefault(); if (inp.value.trim()) answer(inp.value); };
+      box.append(fm); inp.focus();
     };
     // Frise / carte à trous : une liste déroulante par trou, on valide quand tout est rempli.
     const holes = (pairs, render) => {
@@ -366,12 +419,64 @@ async function train(d, goal = false) {
           const ul = el('ol', 'map-legend'); sels.forEach(x => { const li = el('li'); li.append(x); ul.append(li); }); box.append(ul);
         });
       });
+    } else if (q.type === 'dictee' && q.reponse) {
+      // Dictée : la phrase puis le mot sont lus à voix haute.
+      const lire = () => dire(q.phrase ? `${q.phrase}. ... ${q.reponse}` : q.reponse);
+      const ecoute = el('button', 'btn alt ecoute', '🔊 Écouter'); ecoute.type = 'button'; ecoute.onclick = lire;
+      const lent = el('button', 'btn alt', '🐢 Le mot seul'); lent.type = 'button'; lent.onclick = () => dire(q.reponse);
+      const row = el('div', 'row'); row.append(ecoute, lent); box.append(row);
+      ecrire('Écris le mot ici'); setTimeout(lire, 300);
+    } else if (q.type === 'trou' && q.texte) {
+      const t = el('p', 'trou'), [avant, apres = ''] = q.texte.split(/_{2,}/);
+      const blanc = el('span', 'blanc', ' ? '); t.append(avant, blanc, apres); box.append(t);
+      if (q.choix?.length) {
+        const c = el('div', 'choices');
+        q.choix.forEach(ch => { const b = el('button', 'choice', ch); b.onclick = () => { blanc.textContent = ` ${q.reponse} `; answer(ch, b); }; c.append(b); });
+        box.append(c);
+      } else ecrire('Le mot qui manque');
+    } else if (q.type === 'associer' && q.paires?.length > 1) {
+      // Relier : toucher un élément à gauche puis son partenaire à droite.
+      const G = shuffle(q.paires), D = shuffle(q.paires), lien = new Map(), couleurs = ['#ffd6e0', '#fff1b8', '#cdf5e6', '#d9e4ff', '#f1dcff'];
+      let sel = null;
+      const grille = el('div', 'assoc'), colG = el('div'), colD = el('div'), ok = el('button', 'btn', 'Valider'); ok.disabled = true;
+      const peindre = () => {
+        [...colG.children].forEach((b, i) => { const n = [...lien.keys()].indexOf(G[i]); b.style.background = n >= 0 ? couleurs[n % 5] : ''; b.classList.toggle('sel', sel === G[i]); });
+        [...colD.children].forEach((b, i) => { const n = [...lien.values()].indexOf(D[i]); b.style.background = n >= 0 ? couleurs[[...lien.keys()].findIndex(k => lien.get(k) === D[i]) % 5] : ''; });
+        ok.disabled = lien.size < q.paires.length;
+      };
+      G.forEach(pr => { const b = el('button', 'choice', pr.a); b.onclick = () => { lien.delete(pr); sel = pr; peindre(); }; colG.append(b); });
+      D.forEach(pr => { const b = el('button', 'choice', pr.b); b.onclick = () => {
+        if (!sel) return; for (const [k, v] of lien) if (v === pr) lien.delete(k);
+        lien.set(sel, pr); sel = null; peindre(); }; colD.append(b); });
+      ok.onclick = () => {
+        let all = true;
+        [...colG.children].forEach((b, i) => { const bon = lien.get(G[i]) === G[i]; all &&= bon; b.classList.add(bon ? 'ok' : 'ko'); });
+        finish(all, 'Les bonnes paires : ' + q.paires.map(x => `${x.a} → ${x.b}`).join(' ; ') + '.');
+      };
+      grille.append(colG, colD);
+      box.append(el('p', 'small mut', '👆 Touche un élément à gauche, puis son partenaire à droite.'), grille, ok);
+    } else if (q.type === 'classer' && q.categories?.length > 1 && q.elements?.length) {
+      // Trier : chaque élément dans sa catégorie.
+      const choisi = new Map(), ok = el('button', 'btn', 'Valider'); ok.disabled = true;
+      const liste = el('div', 'classer');
+      shuffle(q.elements).forEach(it => {
+        const ligne = el('div', 'ligne'); ligne.append(el('b', null, it.nom));
+        const btns = el('div', 'cats');
+        q.categories.forEach(c => { const b = el('button', 'cat', c); b.onclick = () => {
+          choisi.set(it, c); [...btns.children].forEach(x => x.classList.toggle('on', x === b)); ok.disabled = choisi.size < q.elements.length; }; btns.append(b); });
+        ligne.append(btns); liste.append(ligne);
+      });
+      ok.onclick = () => {
+        let all = true;
+        [...liste.children].forEach(l => { const it = q.elements.find(e => e.nom === l.firstChild.textContent); const bon = choisi.get(it) === it.cat; all &&= bon;
+          l.classList.add(bon ? 'ok' : 'ko'); if (!bon) l.append(el('span', 'fix', '→ ' + it.cat)); });
+        finish(all, 'Regarde les corrections ci-dessus.');
+      };
+      box.append(liste, ok);
     } else if (q.type === 'courte') {
-      const fm = el('form', 'row'), inp = el('input'); inp.placeholder = 'Ta réponse'; inp.autocomplete = 'off';
-      fm.append(inp, el('button', 'btn', 'Valider'));
-      fm.onsubmit = e => { e.preventDefault(); if (inp.value.trim()) answer(inp.value); };
-      box.append(fm); inp.focus();
+      ecrire();
     } else {
+      if (q.type === 'intrus') box.append(el('p', 'small mut', '🕵️ Un de ces éléments ne va pas avec les autres : lequel ?'));
       const c = el('div', 'choices');
       for (const ch of q.type === 'vraifaux' ? ['Vrai', 'Faux'] : q.choix || []) {
         const b = el('button', 'choice', ch); b.onclick = () => answer(ch, b); c.append(b);

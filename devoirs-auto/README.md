@@ -35,4 +35,6 @@ Chaque nouveau devoir est préparé tout seul : **fiche pédagogique** (cours, e
 - Offre gratuite Gemini : largement suffisante pour quelques devoirs par jour.
 
 
+**Jeux** : QCM, vrai/faux, réponse écrite, texte à trous, intrus, relier, classer, dictée lue à voix haute (français), frises, cartes, schémas, remettre dans l'ordre ; combos 🔥. Réponse écrite avec une petite faute d'orthographe : comptée juste avec un conseil (en dictée : « presque »). Les questions qui contiennent leur réponse sont écartées.
+
 **Réglage « 📍 Ma commune »** (en bas de l'accueil) : sert aux cartes « mon lieu de vie » (commune → département → région → France → Europe → monde).

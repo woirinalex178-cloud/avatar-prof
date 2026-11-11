@@ -10,7 +10,7 @@ const READ = `Tu reçois les devoirs d'une élève de ${NIVEAU} : une photo ou u
 Le texte est prioritaire : il précise ou corrige la photo ou le document. Extrais chaque devoir séparément, reformulé clairement. Date du jour : {TODAY} ({JOUR}). Si une date est "lundi", "demain"... convertis en AAAA-MM-JJ (le prochain jour correspondant).
 Réponds en JSON : {"devoirs":[{"matiere":"","consigne":"consigne claire et complète","pour":"AAAA-MM-JJ ou vide"}]}`;
 
-const FORMAT_Q = `{"type":"qcm|vraifaux|courte|frise|carte|schema|ordre","niveau":1,"enonce":"","choix":[],"reponse":"","accepte":[],"items":[],"trous":[],"lieux":[],"etapes":[],"forme":"chaine","explication":""}`;
+const FORMAT_Q = `{"type":"qcm|vraifaux|courte|trou|intrus|associer|classer|dictee|frise|carte|schema|ordre","niveau":1,"enonce":"","choix":[],"reponse":"","accepte":[],"items":[],"trous":[],"lieux":[],"etapes":[],"forme":"chaine","texte":"","phrase":"","paires":[],"categories":[],"elements":[],"explication":""}`;
 const REGLES_Q = `Types de questions :
  - "qcm" : "choix" (3-4 propositions), "reponse" = texte exact d'un choix
  - "vraifaux" : "reponse" = "Vrai" ou "Faux"
@@ -22,6 +22,18 @@ const REGLES_Q = `Types de questions :
  - "schema" (SCIENCES) : schéma à trous. "forme" = "chaine" ou "cycle", "etapes" = 4 à 7 {"nom":"mot court","icone":"un emoji","desc":"courte"}
    dans l'ordre, "trous" = indices (2 ou 3) des noms à retrouver
  - "ordre" (SCIENCES ou HISTOIRE) : remettre dans l'ordre. "etapes" = 4 à 6 {"nom":"","icone":"emoji"} dans le BON ordre (l'app les mélange)
+ - "trou" : phrase à compléter. "texte" = la phrase avec ___ à la place du mot manquant, "reponse" = le mot, "choix" = 3-4 propositions OU [] pour écrire
+ - "intrus" : trouve l'intrus. "choix" = 4 éléments dont un ne va pas avec les autres, "reponse" = l'intrus, "explication" dit pourquoi
+ - "associer" : relier deux à deux. "paires" = 3 à 5 {"a":"","b":""} (mot ↔ définition, date ↔ événement, calcul ↔ résultat, mot ↔ nature…)
+ - "classer" : trier. "categories" = 2 ou 3 noms courts, "elements" = 5 à 8 {"nom":"","cat":"une des catégories"}
+ - "dictee" (FRANÇAIS : orthographe, dictée, mots à apprendre) : l'app LIT À VOIX HAUTE et l'élève écrit.
+   "reponse" = le mot (ou un groupe de 2-4 mots) à écrire, "phrase" = une courte phrase qui contient ce mot (lue à voix haute),
+   "enonce" = "Écoute et écris le mot que tu entends" (sans jamais écrire le mot)
+RÈGLE ABSOLUE : la réponse ne doit JAMAIS apparaître dans "enonce" ni dans "texte" (ni le mot bien écrit, ni recopié).
+ Exemple INTERDIT : « Quelle est la bonne orthographe du mot "savant" ? ». À la place : une "dictee", une définition
+ (« Comment s'écrit le nom de la personne qui sait beaucoup de choses ? »), une phrase "trou", ou un "qcm" dont l'énoncé ne contient pas le mot.
+DIVERSITÉ : la banque doit mélanger AU MOINS 5 types différents (qcm, vraifaux, courte, trou, intrus, associer, classer, dictee en français,
+ et les types visuels de la matière). Pas plus d'un tiers de qcm. Ton ludique : petites mises en situation, défis, devinettes.
 "niveau" : 1 facile, 2 moyen, 3 difficile. Varie vraiment les questions : autres exemples, autres nombres, autres angles,
 jamais deux fois la même question reformulée. Explications courtes, encourageantes, sans jargon.
 Reste strictement dans le programme de CM2 et le thème du devoir.`;
@@ -86,6 +98,15 @@ Ajoute aussi 3 questions visuelles ("frise"/"ordre" en histoire, "carte" en géo
 ${REGLES_Q}
 JSON strict : {"frise":[],"personnages":[],"cartes":[],"schema":null,"questions":[${FORMAT_Q}]}`;
 
+// Filet de sécurité : retire les questions qui donnent leur réponse dans l'énoncé (« bonne orthographe de "savant" ? »).
+const plat = s => ' ' + String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, ' ').trim() + ' ';
+export const fuite = q => {
+  if (!q || ['vraifaux', 'frise', 'carte', 'schema', 'ordre', 'associer', 'classer'].includes(q.type)) return false;
+  const r = plat(q.reponse).trim();
+  return r.length >= 3 && !/^\d+$/.test(r) && plat(`${q.enonce} ${q.texte || ''}`).includes(' ' + r + ' ');
+};
+const propre = out => (out?.questions ? { ...out, questions: out.questions.filter(q => !fuite(q)) } : out);
+
 // Fiche + banque de questions pour un devoir (utilisé aussi par la tâche automatique).
 // Lieu de vie de l'élève (réglage de l'app), pour les cartes « mon lieu de vie ».
 const lieu = profil => profil?.commune ? `L'élève habite à ${String(profil.commune).slice(0, 80)} (France) : utilise-le pour situer son lieu de vie.` : '';
@@ -93,7 +114,7 @@ const lieu = profil => profil?.commune ? `L'élève habite à ${String(profil.co
 export async function makePack(devoir, today = new Date().toISOString().slice(0, 10), profil) {
   const p = MAKE.replace('{LIEU}', lieu(profil)).replace('{MAT}', devoir.matiere || '?').replace('{TXT}', devoir.consigne.slice(0, 1500))
     .replace('{POUR}', devoir.pour || 'bientôt').replace('{TODAY}', today);
-  return gemini([{ text: p }]);
+  return propre(await gemini([{ text: p }]));
 }
 
 export default async function handler(req, res) {
@@ -118,11 +139,11 @@ export default async function handler(req, res) {
       const p = MORE.replace('{LIEU}', lieu(req.body.profil)).replace('{MAT}', devoir.matiere || '?').replace('{TXT}', devoir.consigne.slice(0, 1500))
         .replace('{DEJA}', (req.body.deja || []).slice(-60).map(q => '- ' + String(q).slice(0, 160)).join('\n') || '(aucune)')
         .replace('{N}', Math.min(Number(req.body.n) || 12, 20));
-      return res.json(await gemini([{ text: p }], { temperature: 0.9 }));
+      return res.json(propre(await gemini([{ text: p }], { temperature: 0.9 })));
     }
     if (action === 'visuels' && devoir?.consigne) {
       const p = PLUS.replace('{LIEU}', lieu(req.body.profil)).replace('{MAT}', devoir.matiere || '?').replace('{TXT}', devoir.consigne.slice(0, 1500)).replace('{TITRE}', String(req.body.titre || ''));
-      return res.json(await gemini([{ text: p }], { temperature: 0.4 }));
+      return res.json(propre(await gemini([{ text: p }], { temperature: 0.4 })));
     }
     res.status(400).json({ error: 'Requête invalide' });
   } catch (e) {

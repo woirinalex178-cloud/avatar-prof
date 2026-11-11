@@ -160,3 +160,23 @@ select.hole.ok{border:2px solid var(--ok);background:var(--okbg)}select.hole.ko{
 .atlas .leaflet-tooltip.num{width:26px;height:26px;padding:0;display:grid;place-items:center;border-radius:50%;background:#e9506b;color:#fff;border:2px solid #fff;font:700 14px var(--disp)}
 .atlas .leaflet-tooltip.num.fleuve{background:#1f6fd1}.atlas .leaflet-tooltip.num.mer{background:#1e5f99;box-shadow:0 1px 4px #0003}
 .reglages summary{font-weight:800;cursor:pointer}
+/* retours : juste avec conseil d'orthographe / presque */
+.fb.mid{background:#fff1d6}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .fb.mid{background:#47360f}}
+.fb .note{font-weight:800;color:#a15c00;margin:4px 0}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .fb .note{color:#ffcf7a}}
+.combo{display:inline-block;background:linear-gradient(90deg,var(--sun),var(--pink));color:#fff;font:700 15px var(--disp);padding:3px 12px;border-radius:99px;margin-bottom:6px;animation:pop .4s both}
+/* texte à trous */
+.trou{font-size:19px;font-weight:700;line-height:1.6;margin:4px 0}
+.blanc{display:inline-block;min-width:70px;text-align:center;border-bottom:3px dashed var(--pri);color:var(--pri);font-weight:800}
+/* relier */
+.assoc{display:grid;grid-template-columns:1fr 1fr;gap:10px}.assoc>div{display:grid;gap:8px;align-content:start}
+.assoc .choice{min-height:52px;font-size:15px}.assoc .choice.sel{border-color:var(--pri);box-shadow:0 0 0 3px var(--pri2)}
+/* classer */
+.classer{display:grid;gap:8px}
+.classer .ligne{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px;padding:8px 10px;border:2px solid var(--line);border-radius:14px;background:var(--card)}
+.classer .ligne.ok{border-color:var(--ok);background:var(--okbg)}.classer .ligne.ko{border-color:var(--ko);background:var(--kobg)}
+.cats{display:flex;gap:6px;flex-wrap:wrap}
+.cat{border:2px solid var(--line);background:var(--card);border-radius:99px;padding:5px 12px;font-weight:800;font-size:14px;cursor:pointer}
+.cat.on{background:var(--pri);border-color:var(--pri);color:#fff}
+.ecoute{font-size:18px}

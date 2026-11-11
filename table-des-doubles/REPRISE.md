@@ -83,6 +83,12 @@
 - **Avertissements** : objet `DISC` + `disc(...)` (cote, etat, deal, auth, ship, ja), placés sur la fiche de cote, l'annonce, l'achat et le guide. Guide : 6 sections « bien utiliser » (état, cote, pièges, réception, bonnes manières, données).
 - **Photos d'annonce** : `listings.photos text[]`, `photo_quota` (3 par défaut), `photos_paid_at`, `photos_session` ; trigger `listings_photos` (quota gelé hors déblocage, `photo_path` = première photo) ; `photos_unlocked(listing, session)` via le webhook Stripe (route `payments/photos`, `settings.extra_photos_price` 0,99 € / `extra_photos_count` 5) ; `photos_free_unlock(listing)` pour la modération. Front : galerie sur l'annonce, `photosModal()` depuis Compte (ajout / retrait / achat).
 
+## Scanner : temps maîtrisé et vraies mesures (ajout 11/11)
+- **Budget de temps** (`app.js`) : `SCAN_BUDGET` 40 s par carte, `AI_BUDGET` 22 s pour l'IA, `race()` sur chaque étape. Au-delà : `how.t = 'stop'`, on rend la main (« Abandon au bout de X s ») au lieu de bloquer. L'OCR (le plus lent) n'est tenté que s'il reste 10 s.
+- **Page de classeur** : 3 cases traitées en parallèle (3 `worker()`), compteur `done/total` avec chrono, durée affichée sur chaque case.
+- **Échelle de modèles IA** (`supabase/functions/identify`) : meilleur d'abord — `gemini-2.5-pro`, puis `2.5-flash`, `flash-latest`, `2.5-flash-lite`, `flash-lite-latest`, puis Groq, puis Mistral. Mémoire des modèles fatigués (`cool` Map) : 429 → 10 min de repos, 404/400 → 12 h, panne/lenteur → 1 min. `AI_CALL_MS` (11 s) par tentative, `AI_TOTAL_MS` (26 s) au total, via `AbortController`. La réponse renvoie `model` et `ms`.
+- **Mesures réelles** : table `scan_stats(user_id, src, ms, ok, model, lang)` remplie à chaque scan d'un membre connecté, RPC `scan_perf()` (médiane, p90, max, modèle le plus fréquent sur 14 jours) et onglet **Scanner** dans la modération. Les durées s'affichent aussi sur la fiche de scan.
+
 ## Prochaines tâches techniques
 1. Régler les seuils d'authenticité (attendre les scores de l'utilisateur, étape 4 d'A-FAIRE).
 2. Remplir `LEGAL` en haut de `legal.js` (nom, SIRET, adresse, e-mail, médiateur).

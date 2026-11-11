@@ -565,3 +565,5 @@ details>summary{cursor:pointer}
 .galstrip img{display:block;width:100%;aspect-ratio:63/88;object-fit:cover}
 .galedit{display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:10px;margin:8px 0}
 .galedit img{width:100%;aspect-ratio:63/88;object-fit:cover;border-radius:8px;display:block;margin-bottom:4px}
+
+.pcell .ms{position:absolute;left:3px;bottom:3px;font:500 9px var(--mono);background:#000a;color:#cfe3da;border-radius:4px;padding:0 3px}

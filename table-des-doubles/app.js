@@ -470,9 +470,20 @@ const beep = () => { try { actx ||= new (window.AudioContext || window.webkitAud
 // photo cadrée -> cartes candidates classées ; sure = une seule carte possible
 // 1) reconnaissance visuelle (empreinte de l'illustration comparée aux ~24 000 officielles), 2) secours : lecture du numéro
 const ALL_LANGS = ['fr', 'en', 'ja', 'de', 'it', 'es', 'pt'];
-async function identify(cv) {
+// Budget de temps : une carte ne doit jamais bloquer le scanner. Au-delà, on rend la main.
+const SCAN_BUDGET = 40000, AI_BUDGET = 22000;
+const race = (p, ms, tag) => Promise.race([p, new Promise((_, rj) => setTimeout(() => rj(new Error(tag || 'délai dépassé')), ms))]);
+// Mesures réelles (plutôt que des suppositions) : durée et moteur gagnant, par scan.
+function logScan(src, ms, ok, model) {
+  S.perf = { src, ms: Math.round(ms), ok, model };
+  if (S.profile) sb.from('scan_stats').insert({ user_id: S.user.id, src, ms: Math.round(ms), ok, model: model || null, lang: S.lang }).then(() => {}, () => {});
+}
+const secs = ms => (ms / 1000).toFixed(1).replace('.', ',') + ' s';
+async function identify(cv, budget = SCAN_BUDGET) {
+  const t0 = performance.now(), left = () => budget - (performance.now() - t0);
   let vis = null;
-  try { vis = await recognize(cv, 8); } catch (e) { console.warn('reco visuelle indisponible', e); }
+  try { vis = await race(recognize(cv, 8), Math.max(6000, left()), 'moteur local trop lent'); }
+  catch (e) { console.warn('reco visuelle indisponible', e); }
   if (vis?.length && vis[0].score >= .45) {
     const ids = vis.flatMap(v => ALL_LANGS.map(l => `${l}:${v.key}`));
     const { data } = await sb.from('cards').select('id,name,name_fr,lang,local_id,image,price_eur,set_id,set:sets(name,name_fr)').in('id', ids);
@@ -486,16 +497,30 @@ async function identify(cv) {
     }
     if (list.length) {
       const main = list.filter(c => !c.alt), rival = vis.slice(1).find(v => !(v.ja && !vis[0].ja)), sure = vis[0].score >= .6 && (!rival || vis[0].score - rival.score >= .04);
-      if (sure) { remember(list); return { list: [...main, ...list.filter(c => c.alt)], sure, nums: [], how: { t: 'vis', s: vis[0].score } }; }
+      if (sure) { remember(list); logScan('local', performance.now() - t0, true);
+        return { list: [...main, ...list.filter(c => c.alt)], sure, nums: [], how: { t: 'vis', s: vis[0].score, ms: performance.now() - t0 } }; }
       vis.list = [...main, ...list.filter(c => c.alt)];
     }
   }
   // le moteur local hésite : l'IA lit la carte (nom, numéro, langue, série) et la base trouve la carte exacte
-  const ai = await identifyAI(cv);
-  if (ai?.cards?.length) return fromAI(ai, vis?.list);
+  let ai = null;
+  if (left() > 6000) {
+    try { ai = await race(identifyAI(cv), Math.min(AI_BUDGET, left()), 'IA trop lente'); }
+    catch (e) { S.aiErr = e.message; }
+  } else S.aiErr = 'temps écoulé avant l\'IA';
+  if (ai?.cards?.length) {
+    const r = fromAI(ai, vis?.list); logScan('ia', performance.now() - t0, true, ai.model);
+    return { ...r, how: { ...r.how, ms: performance.now() - t0 } };
+  }
   const aiErr = ai?.read?.is_card === false ? 'pas de carte reconnue sur la photo' : S.aiErr;
-  if (vis?.list?.length) { remember(vis.list); return { list: vis.list, sure: false, nums: [], how: { t: 'vis', s: vis[0].score, aiErr } }; }
-  return { ...(await identifyOCR(cv)), how: { t: 'ocr', aiErr } };
+  if (vis?.list?.length) { remember(vis.list); logScan('local-doute', performance.now() - t0, true);
+    return { list: vis.list, sure: false, nums: [], how: { t: 'vis', s: vis[0].score, aiErr, ms: performance.now() - t0 } }; }
+  // dernier filet : lecture du numéro (lente) — seulement s'il reste du temps
+  if (left() < 10000) { logScan('abandon', performance.now() - t0, false);
+    return { list: [], sure: false, nums: [], how: { t: 'stop', aiErr, ms: performance.now() - t0 } }; }
+  const ocr = await identifyOCR(cv).catch(() => ({ list: [], sure: false, nums: [] }));
+  logScan('ocr', performance.now() - t0, !!ocr.list.length);
+  return { ...ocr, how: { t: 'ocr', aiErr, ms: performance.now() - t0 } };
 }
 // résultat de l'IA : cartes trouvées dans la base d'après ce qu'elle a lu, puis les propositions du dessin
 function fromAI(ai, extra = []) {
@@ -572,13 +597,16 @@ function setIntent(k) {
 }
 async function analyse(cv) {
   scanState.cv = cv; scanState.photo = await toBlob(cv); scanState.shown = null;
-  $('#scr').innerHTML = `<div class="scanwait"><img src="${URL.createObjectURL(scanState.photo)}" alt=""><span>Lecture de la carte…<br><small class="mut">la première fois peut prendre 10 secondes</small></span></div>`; $('#scs').textContent = '';
+  const tA = performance.now();
+  $('#scr').innerHTML = `<div class="scanwait"><img src="${URL.createObjectURL(scanState.photo)}" alt=""><span>Lecture de la carte…<br><small class="mut" id="scwt">0,0 s · abandon au bout de ${SCAN_BUDGET / 1000} s</small></span></div>`; $('#scs').textContent = '';
+  clearInterval(analyse.t); analyse.t = setInterval(() => { const e = $('#scwt'); if (!e) return clearInterval(analyse.t); e.textContent = `${secs(performance.now() - tA)} · abandon au bout de ${SCAN_BUDGET / 1000} s`; }, 200);
   try {
     const r = await identify(cv);
     if (r.nums[0]) { $('#scn').value = r.nums[0].num; $('#sct').value = r.nums[0].total; Game.track('scan'); }
-    if (!r.list.length) { $('#scr').innerHTML = ''; $('#scman').open = true; return $('#scs').innerHTML = '😕 Carte non reconnue. Rapproche-toi pour que le <b>numéro en bas</b> soit net, évite les reflets, ou saisis le numéro ci-dessous.'; }
+    clearInterval(analyse.t);
+    if (!r.list.length) { $('#scr').innerHTML = ''; $('#scman').open = true; return $('#scs').innerHTML = `😕 Carte non reconnue en ${secs(r.how?.ms || performance.now() - tA)}. Rapproche-toi pour que le <b>numéro en bas</b> soit net, évite les reflets, ou saisis le numéro ci-dessous.`; }
     showRanked(r);
-  } catch (err) { $('#scr').innerHTML = ''; $('#scs').textContent = err.message; }
+  } catch (err) { clearInterval(analyse.t); $('#scr').innerHTML = ''; $('#scs').textContent = err.message; }
 }
 
 // ---------- rafale : la caméra reste ouverte, chaque carte reconnue est ajoutée ----------
@@ -683,7 +711,7 @@ async function scanPage(file) {
   const draw = () => {
     const n = res.filter(r => r.on && r.pick).length;
     $('#scr').innerHTML = `<div class="langsw" id="pglang"><span class="small mut">Langue de la page :</span>${ALL_LANGS.map(l => `<button type="button" class="chip lg${wantLang() === l ? ' on' : ''}" data-pl="${l}" aria-pressed="${wantLang() === l}">${l === 'ja' ? 'JP' : l.toUpperCase()}</button>`).join('')}</div>
-      <div class="pagegrid" style="--cols:${cols}">${res.map((r, i) => `<button type="button" class="pcell ${r.st}${r.on ? ' on' : ''}" data-pc="${i}">${r.pick ? img(r.pick) + ownBadge(r.pick) : `<span>${{ wait: '…', blank: 'vide', none: '✖', run: '🔎' }[r.st] || '?'}</span>`}${r.st === 'unsure' ? '<i>?</i>' : r.on ? '<i>✓</i>' : ''}</button>`).join('')}</div>
+      <div class="pagegrid" style="--cols:${cols}">${res.map((r, i) => `<button type="button" class="pcell ${r.st}${r.on ? ' on' : ''}" data-pc="${i}">${r.pick ? img(r.pick) + ownBadge(r.pick) : `<span>${{ wait: '…', blank: 'vide', none: '✖', run: '🔎' }[r.st] || '?'}</span>`}${r.st === 'unsure' ? '<i>?</i>' : r.on ? '<i>✓</i>' : ''}${r.ms ? `<small class="ms">${secs(r.ms)}</small>` : ''}</button>`).join('')}</div>
       <div id="pcpick"></div><button type="button" class="btn" id="pcadd" ${n ? '' : 'disabled'}>➕ Ajouter ${n} carte${n > 1 ? 's' : ''} au classeur</button>`;
     $('#pcadd').onclick = async () => { const m = {}; res.forEach(r => { if (r.on && r.pick) m[r.pick.id] = (m[r.pick.id] || 0) + 1; }); await addMany(m); toast(`${n} carte${n > 1 ? 's' : ''} ajoutée${n > 1 ? 's' : ''} au classeur`); $('#scr').innerHTML = '<p class="okline">✅ Page ajoutée ! Photographie la suivante.</p>'; };
   };
@@ -716,18 +744,29 @@ async function scanPage(file) {
     const b = e.target.closest('[data-pc]'); if (b) cellPick(+b.dataset.pc);
   };
   draw();
-  for (let i = 0; i < cells.length; i++) {
-    $('#scs').textContent = `Lecture de la case ${i + 1}/${cells.length}…`;
-    if (isBlank(thumb(cells[i]))) { res[i].st = 'blank'; draw(); continue; }
-    res[i].st = 'run'; draw();
-    try { const r = await identify(cells[i]); Object.assign(res[i], { list: r.list, pick: r.list[0] || null, st: !r.list.length ? 'none' : r.sure ? 'sure' : 'unsure', on: r.sure });
-      if (res[i].pick) { const v = await toLang(res[i].pick, wantLang());
-        if (v !== res[i].pick) { res[i].pick = v; if (!res[i].list.some(x => x.id === v.id)) res[i].list.unshift(v); } } }
-    catch { res[i].st = 'none'; }
-    if (scanState.page !== res || !$('#scr')) return; draw();
-  }
-  const ok = res.filter(r => r.st === 'sure').length, doubt = res.filter(r => r.st === 'unsure').length;
-  $('#scs').innerHTML = `${ok} carte${ok > 1 ? 's' : ''} reconnue${ok > 1 ? 's' : ''}${doubt ? `, <b>${doubt} à vérifier</b> (touche les cases « ? »)` : ''}. <span class="mut">Mauvaise langue ? Touche une case, ou change la langue de toute la page en haut.</span>`;
+  // 3 cases à la fois : pendant qu'une attend l'IA, les suivantes avancent
+  const t0 = performance.now(), todo = [...cells.keys()].filter(i => { if (isBlank(thumb(cells[i]))) { res[i].st = 'blank'; return false; } return true; });
+  let done = 0, next = 0;
+  const tick = () => { const s = $('#scs'); if (s) s.textContent = `Lecture des cases… ${done}/${todo.length} (${secs(performance.now() - t0)})`; };
+  draw(); tick();
+  const worker = async () => {
+    while (next < todo.length) {
+      const i = todo[next++];
+      if (scanState.page !== res || !$('#scr')) return;
+      res[i].st = 'run'; draw();
+      try {
+        const r = await identify(cells[i], SCAN_BUDGET);
+        Object.assign(res[i], { list: r.list, pick: r.list[0] || null, st: !r.list.length ? 'none' : r.sure ? 'sure' : 'unsure', on: r.sure, ms: r.how?.ms });
+        if (res[i].pick) { const v = await toLang(res[i].pick, wantLang());
+          if (v !== res[i].pick) { res[i].pick = v; if (!res[i].list.some(x => x.id === v.id)) res[i].list.unshift(v); } }
+      } catch { res[i].st = 'none'; }
+      done++; if (scanState.page !== res || !$('#scr')) return; draw(); tick();
+    }
+  };
+  await Promise.all([worker(), worker(), worker()]);
+  if (scanState.page !== res || !$('#scr')) return;
+  const ok = res.filter(r => r.st === 'sure').length, doubt = res.filter(r => r.st === 'unsure').length, none = res.filter(r => r.st === 'none').length;
+  $('#scs').innerHTML = `${ok} carte${ok > 1 ? 's' : ''} reconnue${ok > 1 ? 's' : ''}${doubt ? `, <b>${doubt} à vérifier</b> (touche les cases « ? »)` : ''}${none ? `, ${none} non trouvée(s)` : ''} en ${secs(performance.now() - t0)}. <span class="mut">Mauvaise langue ? Touche une case, ou change la langue de toute la page en haut.</span>`;
 }
 
 async function manualSearch() {
@@ -741,10 +780,11 @@ async function manualSearch() {
 // comment la carte a été reconnue : affiché sur chaque résultat (et bouton pour demander l'avis de l'IA)
 const howLine = h => {
   if (!h) return '';
-  const r = h.read, err = h.aiErr ? ` <span class="err">· ⚠️ ${esc(h.aiErr)}</span>` : '';
-  if (h.t === 'ai') return `<p class="small mut readline">🤖 <b>Lu par l'IA</b> : ${esc(r?.name || '?')}${r?.number ? ` · ${esc(r.number)}${r.total ? '/' + esc(r.total) : ''}` : ''}${r?.language ? ` · ${esc(String(r.language).toUpperCase())}` : ''}${r?.set_name_en ? ` · ${esc(r.set_name_en)}` : ''}</p>`;
-  if (h.t === 'vis') return `<p class="small mut readline">🖼️ <b>Reconnue par le dessin</b> (ressemblance ${Math.round(h.s * 100)} %)${err}</p>`;
-  return `<p class="small mut readline">🔢 <b>Reconnue par le numéro lu</b>${err}</p>`;
+  const r = h.read, err = h.aiErr ? ` <span class="err">· ⚠️ ${esc(h.aiErr)}</span>` : '', t = h.ms ? ` <span class="mut">· ${secs(h.ms)}</span>` : '';
+  if (h.t === 'stop') return `<p class="small mut readline">⏱️ <b>Abandon au bout de ${secs(h.ms || SCAN_BUDGET)}</b>${err}</p>`;
+  if (h.t === 'ai') return `<p class="small mut readline">🤖 <b>Lu par l'IA</b>${h.model ? ` (${esc(String(h.model).split('/').pop())})` : ''} : ${esc(r?.name || '?')}${r?.number ? ` · ${esc(r.number)}${r.total ? '/' + esc(r.total) : ''}` : ''}${r?.language ? ` · ${esc(String(r.language).toUpperCase())}` : ''}${r?.set_name_en ? ` · ${esc(r.set_name_en)}` : ''}${t}</p>`;
+  if (h.t === 'vis') return `<p class="small mut readline">🖼️ <b>Reconnue par le dessin</b> (ressemblance ${Math.round(h.s * 100)} %)${t}${err}</p>`;
+  return `<p class="small mut readline">🔢 <b>Reconnue par le numéro lu</b>${t}${err}</p>`;
 };
 const askAI = h => h && h.t !== 'ai' && scanState.cv ? `<button type="button" class="btn sm ghost" id="askai">🤖 Pas la bonne ? Demander à l'IA</button>` : '';
 async function runAskAI() {
@@ -1491,12 +1531,13 @@ async function moderation() {
   if (error) { view.innerHTML = `<div class="empty">${esc(errMsg(error))}</div>`; return; }
   view.innerHTML = `<h2>🛡️ Modération</h2>
   <div class="kpis">${[['membres', 'membres'], ['annonces', 'annonces actives'], ['offres_en_cours', 'offres en cours'], ['signalements_ouverts', 'signalements'], ['litiges', 'litiges'], ['suspendus', 'suspendus']].map(([k, n]) => `<div><b>${ov[k] ?? 0}</b><span>${n}</span></div>`).join('')}</div>
-  <div class="seg wrapseg" style="margin:14px 0">${[['rep', 'Signalements'], ['dis', 'Litiges & remboursements'], ['blog', 'Blog'], ['shops', 'Boutiques'], ['rgpd', 'RGPD & données']].map(([k, n]) => `<button data-mt="${k}" aria-pressed="${tab === k}">${n}</button>`).join('')}</div>
+  <div class="seg wrapseg" style="margin:14px 0">${[['rep', 'Signalements'], ['dis', 'Litiges & remboursements'], ['blog', 'Blog'], ['shops', 'Boutiques'], ['scan', 'Scanner'], ['rgpd', 'RGPD & données']].map(([k, n]) => `<button data-mt="${k}" aria-pressed="${tab === k}">${n}</button>`).join('')}</div>
   <div id="mbody"><div class="skel"><div class="sk sk-card"></div></div></div>`;
   if (tab === 'rep') return modReports();
   if (tab === 'dis') return modDisputes();
   if (tab === 'blog') return modBlog();
   if (tab === 'shops') return modShops();
+  if (tab === 'scan') return modScan();
   modRgpd(ov);
 }
 async function modReports() {
@@ -1546,6 +1587,18 @@ async function modBlog() {
     <div class="acts"><a class="btn sm ghost" href="#/blog/${esc(a.slug)}">Aperçu</a>
     ${a.status === 'published' ? `<button class="btn sm ghost" data-bact="${a.id}:unpublish">Dépublier</button>` : `<button class="btn sm" data-bact="${a.id}:publish">Publier</button>`}
     <button class="btn sm ghost" data-bedit="${a.id}">Modifier</button><button class="btn sm ghost" data-bact="${a.id}:trash">Corbeille</button></div></div>`).join('') || '<div class="empty">Aucun article pour l\'instant : touche « Générer un article maintenant ».</div>'}`;
+}
+// vraies mesures du scanner, pas des estimations
+async function modScan() {
+  const { data, error } = await sb.rpc('scan_perf');
+  if (error) return $('#mbody').innerHTML = `<div class="empty">${esc(errMsg(error))}</div>`;
+  const noms = { local: '🖼️ Moteur local (dessin)', ia: '🤖 IA de lecture', 'local-doute': '🖼️ Local, sans certitude', ocr: '🔢 Lecture du numéro', abandon: '⏱️ Abandon (temps écoulé)' };
+  $('#mbody').innerHTML = `<div class="panel"><h3 style="margin-top:0">Temps réels du scanner (14 derniers jours)</h3>
+  <p class="small mut">Mesuré sur les scans des membres connectés, du déclic au résultat. « Médiane » = la moitié des scans sont plus rapides.</p>
+  ${(data || []).length ? `<table class="condtab"><tbody><tr><th>Moteur</th><td>Scans</td><td>Médiane</td><td>90 %</td><td>Pire</td><td class="small">Modèle</td></tr>
+    ${data.map(r => `<tr><th>${esc(noms[r.source] || r.source)}</th><td>${r.scans}</td><td>${String(r.median_s).replace('.', ',')} s</td><td>${String(r.p90_s).replace('.', ',')} s</td><td>${String(r.max_s).replace('.', ',')} s</td><td class="small mut">${esc(r.modele || '—')}</td></tr>`).join('')}</tbody></table>`
+  : '<p class="small mut">Aucun scan enregistré pour l\'instant : fais quelques scans connecté, les chiffres apparaîtront ici.</p>'}
+  <p class="small mut">Garde-fous actuels : une carte est abandonnée au bout de <b>40 s</b>, l'IA au bout de <b>22 s</b>, et une page est traitée <b>3 cases à la fois</b>.</p></div>`;
 }
 async function modShops() {
   const { data, error } = await sb.rpc('admin_shops', { p_action: 'list' });

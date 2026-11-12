@@ -97,6 +97,11 @@
 - **Cote partout** : `cardInfoModal` (fiche carte) donne cote, fourchette par état et historique ; accessible depuis le classeur, le diaporama (bouton « Fiche et cote détaillées ») et la recherche par nom (bouton de cote sur chaque vignette).
 - **Langue systématique** : `langChipsAll()` affiche les 9 langues partout (scan et fiche carte) ; celles absentes du catalogue sont grisées. Sur la fiche, choisir une langue ouvre directement cette version.
 
+## Mémoire du scanner de page (ajout 12/11)
+- Avant : `splitPage` fabriquait les 9 cases en 900×1257 d'un coup (~160 Mo de toiles) + la photo d'origine → plantages « mémoire insuffisante » sur mobile.
+- Maintenant : `splitPage` renvoie un objet **paresseux** (`cell(i)`, `peek(i)`, `close()`), la photo est réduite à la décompression (2600 px, 1800 px si `deviceMemory < 4`), les cases font 700×978 (520 sur petit appareil) et sont **libérées après usage** (`freeCanvas`). 2 fils au lieu de 3 sur les appareils serrés, image d'IA libérée dès l'envoi.
+- Si une case échoue quand même faute de mémoire, le message propose un format 2×2 / 2×3. `scan_stats` enregistre aussi le pic mémoire quand le navigateur le donne.
+
 ## Prochaines tâches techniques
 1. Régler les seuils d'authenticité (attendre les scores de l'utilisateur, étape 4 d'A-FAIRE).
 2. Remplir `LEGAL` en haut de `legal.js` (nom, SIRET, adresse, e-mail, médiateur).

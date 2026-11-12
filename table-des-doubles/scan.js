@@ -147,12 +147,36 @@ export const frameDiff = (a, b) => { if (!a || !b) return 255; let s = 0; for (l
 export const isBlank = g => { let m = 0; for (const v of g) m += v; m /= g.length; let s = 0; for (const v of g) s += (v - m) ** 2; return Math.sqrt(s / g.length) < 14; };
 
 // ---------- page de classeur 3 x 3 ----------
+// Page de classeur : on ne fabrique JAMAIS les 9 cases en même temps.
+// Neuf toiles en 900 x 1257 occupent environ 160 Mo : de quoi faire tomber un téléphone.
+// On garde seulement la photo (réduite à la décompression) et on découpe une case à la demande.
+export function freeCanvas(cv) { if (!cv) return; try { cv.raw && freeCanvas(cv.raw); cv.width = cv.height = 0; } catch { } }
 export async function splitPage(file, cols = 3, rows = 3) {
-  const bmp = await createImageBitmap(file), cells = [], cw = bmp.width / cols, ch = bmp.height / rows, mx = cw * .04, my = ch * .03;
-  for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
-    const cv = Object.assign(document.createElement('canvas'), { width: CW, height: CH });
-    cv.getContext('2d').drawImage(bmp, c * cw + mx, r * ch + my, cw - 2 * mx, ch - 2 * my, 0, 0, CW, CH);
-    cells.push(cv);
+  // Une case fait au mieux 1/cols de la largeur : inutile de viser plus grand que la source.
+  const small = (navigator.deviceMemory || 4) < 4, maxSide = small ? 1800 : 2600;
+  let bmp = await createImageBitmap(file);
+  if (Math.max(bmp.width, bmp.height) > maxSide) {
+    const k = maxSide / Math.max(bmp.width, bmp.height);
+    const re = await createImageBitmap(bmp, { resizeWidth: Math.round(bmp.width * k), resizeHeight: Math.round(bmp.height * k), resizeQuality: 'high' });
+    bmp.close?.(); bmp = re;
   }
-  return cells;
+  const cw = bmp.width / cols, ch = bmp.height / rows, mx = cw * .04, my = ch * .03;
+  const W = Math.min(CW, small ? 520 : 700), H = Math.round(W * CH / CW);
+  const at = (i, w, h) => {
+    const r = Math.floor(i / cols), c = i % cols;
+    const cv = Object.assign(document.createElement('canvas'), { width: w, height: h });
+    cv.getContext('2d', { willReadFrequently: true }).drawImage(bmp, c * cw + mx, r * ch + my, cw - 2 * mx, ch - 2 * my, 0, 0, w, h);
+    return cv;
+  };
+  return {
+    cols, rows, n: cols * rows,
+    cell: i => at(i, W, H),               // la case, à utiliser puis libérer
+    peek: i => { const t = at(i, 24, 34); const g = grey(t); freeCanvas(t); return g; }, // juste de quoi voir si la case est vide
+    close: () => { bmp.close?.(); bmp = null; }
+  };
+}
+function grey(t) {
+  const d = t.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, t.width, t.height).data, g = new Float32Array(t.width * t.height);
+  for (let i = 0; i < g.length; i++) g[i] = (d[i * 4] + d[i * 4 + 1] + d[i * 4 + 2]) / 3;
+  return g;
 }

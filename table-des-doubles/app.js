@@ -2,7 +2,7 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 import { SUPABASE_URL, SUPABASE_KEY } from './config.js';
 import { openAuth } from './auth.js';
 import { recognize, loadRecog } from './recog.js';
-import { startCam, fileToCard, toBlob, readCard, rank, thumb, frameDiff, isBlank, splitPage } from './scan.js';
+import { startCam, fileToCard, toBlob, readCard, rank, thumb, frameDiff, isBlank, splitPage, freeCanvas } from './scan.js';
 import * as Game from './game.js';
 import { renderLegal } from './legal.js';
 import { playIntro } from './intro.js';
@@ -560,7 +560,7 @@ const SCAN_BUDGET = 40000, AI_BUDGET = 22000;
 const race = (p, ms, tag) => Promise.race([p, new Promise((_, rj) => setTimeout(() => rj(new Error(tag || 'délai dépassé')), ms))]);
 // Mesures réelles (plutôt que des suppositions) : durée et moteur gagnant, par scan.
 function logScan(src, ms, ok, model) {
-  S.perf = { src, ms: Math.round(ms), ok, model };
+  S.perf = { src, ms: Math.round(ms), ok, model, mo: performance.memory ? Math.round(performance.memory.usedJSHeapSize / 1048576) : null };
   if (S.profile) sb.from('scan_stats').insert({ user_id: S.user.id, src, ms: Math.round(ms), ok, model: model || null, lang: S.lang }).then(() => {}, () => {});
 }
 const secs = ms => (ms / 1000).toFixed(1).replace('.', ',') + ' s';
@@ -621,8 +621,11 @@ async function identifyAI(cv) {
   const src = cv.raw || cv, k = Math.min(1, 1400 / Math.max(src.width, src.height)); // grande image : le petit numéro reste lisible
   const c = Object.assign(document.createElement('canvas'), { width: Math.round(src.width * k), height: Math.round(src.height * k) });
   c.getContext('2d').drawImage(src, 0, 0, c.width, c.height);
+  let jpeg = c.toDataURL('image/jpeg', .85);
+  freeCanvas(c); // la copie part au serveur : la toile n'a plus de raison d'occuper la mémoire
   try {
-    const { data, error } = await sb.functions.invoke('identify', { body: { image: c.toDataURL('image/jpeg', .85) } });
+    const { data, error } = await sb.functions.invoke('identify', { body: { image: jpeg } });
+    jpeg = null;
     if (error) { const b = await error.context?.json?.().catch(() => null); if (b?.error === 'ia_off') S.aiOff = true;
       S.aiErr = b?.error === 'quota' ? 'IA saturée, réessaie dans une minute' : b?.error === 'ia_off' ? 'IA non configurée' : 'IA indisponible pour le moment'; return null; }
     return data;
@@ -791,7 +794,8 @@ async function toLang(c, lang) {
 }
 const langChips = (c, attr) => ALL_LANGS.map(l => `<button type="button" class="chip lg${c.lang === l ? ' on' : ''}" data-${attr}="${l}" aria-pressed="${c.lang === l}">${lcode(l)}</button>`).join('');
 async function scanPage(file) {
-  const [cols, rows] = pageFmt().split('x').map(Number), cells = await splitPage(file, cols, rows), res = cells.map(() => ({ st: 'wait' }));
+  const [cols, rows] = pageFmt().split('x').map(Number), page = await splitPage(file, cols, rows);
+  const res = Array.from({ length: page.n }, () => ({ st: 'wait' }));
   scanState.page = res;
   const draw = () => {
     const n = res.filter(r => r.on && r.pick).length;
@@ -829,8 +833,9 @@ async function scanPage(file) {
     const b = e.target.closest('[data-pc]'); if (b) cellPick(+b.dataset.pc);
   };
   draw();
-  // 3 cases à la fois : pendant qu'une attend l'IA, les suivantes avancent
-  const t0 = performance.now(), todo = [...cells.keys()].filter(i => { if (isBlank(thumb(cells[i]))) { res[i].st = 'blank'; return false; } return true; });
+  // 3 cases à la fois : pendant qu'une attend l'IA, les suivantes avancent.
+  // Une seule case existe à la fois par fil : on la libère tout de suite (mémoire des téléphones).
+  const t0 = performance.now(), todo = [...Array(page.n).keys()].filter(i => { if (isBlank(page.peek(i))) { res[i].st = 'blank'; return false; } return true; });
   let done = 0, next = 0;
   const tick = () => { const s = $('#scs'); if (s) s.textContent = `Lecture des cases… ${done}/${todo.length} (${secs(performance.now() - t0)})`; };
   draw(); tick();
@@ -839,19 +844,23 @@ async function scanPage(file) {
       const i = todo[next++];
       if (scanState.page !== res || !$('#scr')) return;
       res[i].st = 'run'; draw();
+      const cv = page.cell(i);
       try {
-        const r = await identify(cells[i], SCAN_BUDGET);
+        const r = await identify(cv, SCAN_BUDGET);
         Object.assign(res[i], { list: r.list, pick: r.list[0] || null, st: !r.list.length ? 'none' : r.sure ? 'sure' : 'unsure', on: r.sure, ms: r.how?.ms });
         if (res[i].pick) { const v = await toLang(res[i].pick, wantLang());
           if (v !== res[i].pick) { res[i].pick = v; if (!res[i].list.some(x => x.id === v.id)) res[i].list.unshift(v); } }
-      } catch { res[i].st = 'none'; }
+      } catch (e) { res[i].st = 'none'; if (/mémoire|memory|allocation/i.test(e?.message || '')) res[i].err = 'mémoire'; }
+      finally { freeCanvas(cv); }
       done++; if (scanState.page !== res || !$('#scr')) return; draw(); tick();
     }
   };
-  await Promise.all([worker(), worker(), worker()]);
+  const fils = (navigator.deviceMemory || 4) < 4 ? 2 : 3; // téléphone serré : on calme le jeu
+  await Promise.all(Array.from({ length: fils }, worker));
+  page.close();
   if (scanState.page !== res || !$('#scr')) return;
   const ok = res.filter(r => r.st === 'sure').length, doubt = res.filter(r => r.st === 'unsure').length, none = res.filter(r => r.st === 'none').length;
-  $('#scs').innerHTML = `${ok} carte${ok > 1 ? 's' : ''} reconnue${ok > 1 ? 's' : ''}${doubt ? `, <b>${doubt} à vérifier</b> (touche les cases « ? »)` : ''}${none ? `, ${none} non trouvée(s)` : ''} en ${secs(performance.now() - t0)}. <span class="mut">Mauvaise langue ? Touche une case, ou change la langue de toute la page en haut.</span>`;
+  $('#scs').innerHTML = `${ok} carte${ok > 1 ? 's' : ''} reconnue${ok > 1 ? 's' : ''}${doubt ? `, <b>${doubt} à vérifier</b> (touche les cases « ? »)` : ''}${none ? `, ${none} non trouvée(s)` : ''} en ${secs(performance.now() - t0)}.${res.some(r => r.err === 'mémoire') ? ' <b>Mémoire courte sur cet appareil</b> : choisis un format 2×2 ou 2×3, ou photographie une demi-page.' : ''} <span class="mut">Mauvaise langue ? Touche une case, ou change la langue de toute la page en haut.</span>`;
 }
 
 async function manualSearch() {

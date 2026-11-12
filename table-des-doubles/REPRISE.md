@@ -89,6 +89,14 @@
 - **Échelle de modèles IA** (`supabase/functions/identify`) : meilleur d'abord — `gemini-2.5-pro`, puis `2.5-flash`, `flash-latest`, `2.5-flash-lite`, `flash-lite-latest`, puis Groq, puis Mistral. Mémoire des modèles fatigués (`cool` Map) : 429 → 10 min de repos, 404/400 → 12 h, panne/lenteur → 1 min. `AI_CALL_MS` (11 s) par tentative, `AI_TOTAL_MS` (26 s) au total, via `AbortController`. La réponse renvoie `model` et `ms`.
 - **Mesures réelles** : table `scan_stats(user_id, src, ms, ok, model, lang)` remplie à chaque scan d'un membre connecté, RPC `scan_perf()` (médiane, p90, max, modèle le plus fréquent sur 14 jours) et onglet **Scanner** dans la modération. Les durées s'affichent aussi sur la fiche de scan.
 
+## Visuels JP/CN, classeur et langues (ajout 12/11)
+- **Chinois** : le catalogue a déjà `zh-cn` (877 cartes) et `zh-tw` (7 436) ; le front connaît 9 langues (`LANGS`, `ALL_LANGS`, `lcode()` → JP/TW/CN) et les préfixes d'identifiant à deux segments (`/^[a-z]{2}(?:-[a-z]{2})?:/`).
+- **Visuels manquants** : TCGdex n'a aucune image pour une bonne partie des séries JP/CN (mesuré : 9 110 JP, 6 167 CN). Les illustrations viennent désormais de la page publique de chaque série sur Limitless : `cards.image_url` (adresse complète) lue par `artUrl(c, big)` côté front. Edge function **`art-fill`** (`art_todo` / `art_apply`), cron `art-fill` toutes les 10 min, 8 séries par passage, re-vérification au bout de 30 jours. 1 981 visuels récupérés au premier passage ; `sets.art_filled_at` / `art_found` tracent le travail.
+  ⚠️ Ces images sont servies par le CDN de Limitless : à surveiller (politesse + fragilité). Voir A-FAIRE pour la demande d'autorisation.
+- **Ouverture du classeur** : `playBinderOpening()` pose la couverture animée (logo + anneaux) sur `<body>` à chaque entrée dans le classeur, donc elle couvre aussi le temps de chargement.
+- **Cote partout** : `cardInfoModal` (fiche carte) donne cote, fourchette par état et historique ; accessible depuis le classeur, le diaporama (bouton « Fiche et cote détaillées ») et la recherche par nom (bouton de cote sur chaque vignette).
+- **Langue systématique** : `langChipsAll()` affiche les 9 langues partout (scan et fiche carte) ; celles absentes du catalogue sont grisées. Sur la fiche, choisir une langue ouvre directement cette version.
+
 ## Prochaines tâches techniques
 1. Régler les seuils d'authenticité (attendre les scores de l'utilisateur, étape 4 d'A-FAIRE).
 2. Remplir `LEGAL` en haut de `legal.js` (nom, SIRET, adresse, e-mail, médiateur).

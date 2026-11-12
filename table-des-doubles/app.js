@@ -13,8 +13,10 @@ playIntro();
 
 const sb = createClient(SUPABASE_URL, SUPABASE_KEY);
 const S = { user: null, profile: null, sets: [], cards: {}, bySet: {}, set: null, lang: 'fr', coll: {}, fee: 0.0001, filter: 'all', pseudos: {}, prog: {}, wish: new Set() };
-const LANGS = { fr: 'Français', en: 'Anglais (US/UK)', ja: 'Japonais', de: 'Allemand', it: 'Italien', es: 'Espagnol', pt: 'Portugais' };
-const flag = l => `<span class="lang">${l === 'ja' ? 'JP' : l.toUpperCase()}</span>`;
+const LANGS = { fr: 'Français', en: 'Anglais (US/UK)', ja: 'Japonais', 'zh-tw': 'Chinois traditionnel', 'zh-cn': 'Chinois simplifié', de: 'Allemand', it: 'Italien', es: 'Espagnol', pt: 'Portugais' };
+const LCODE = { ja: 'JP', 'zh-tw': 'TW', 'zh-cn': 'CN' };
+const lcode = l => LCODE[l] || String(l || '').toUpperCase();
+const flag = l => `<span class="lang">${lcode(l)}</span>`;
 const COND = { NM: ['Near Mint', 'Comme neuve, aucun défaut visible', 1], EX: ['Excellent', 'Micro-défauts (léger blanchiment)', .85], GD: ['Bon', 'Usure visible, coins/bords marqués', .65], PL: ['Joué', 'Pliure, rayure ou usure forte', .4] };
 const STEPS = ['Offre', 'Acceptée', 'Payée', 'Expédiée', 'Reçue', 'Terminée'];
 // La cote publiée décrit une carte Near Mint : on en déduit une fourchette par état.
@@ -43,7 +45,8 @@ const errMsg = e => { const m = e?.message || String(e);
   if (/posts_title/.test(m)) return 'Le titre est trop long (90 caractères maximum).';
   if (/duplicate key/.test(m)) return 'C\'est déjà enregistré.';
   return m.replace(/^.*?Interdit/, 'Interdit'); };
-const img = (c, big) => c?.image ? `<img class="cimg" loading="lazy" src="${c.image}/${big ? 'high' : 'low'}.webp" alt="${esc(nm(c))}">` : `<div class="ph"><span>${esc(c?.name || '?')}</span></div>`;
+const artUrl = (c, big) => c?.image_url || (c?.image ? `${c.image}/${big ? 'high' : 'low'}.webp` : null);
+const img = (c, big) => artUrl(c, big) ? `<img class="cimg" loading="lazy" src="${artUrl(c, big)}" alt="${esc(nm(c))}">` : `<div class="ph"><span>${esc(c?.name || '?')}</span></div>`;
 const nm = c => c?.name_fr || c?.name || '?';
 const jp = c => c?.name_fr ? `<small class="jp">${esc(c.name)}</small>` : '';
 const setName = s => s ? (s.name_fr || s.name) : '';
@@ -214,7 +217,7 @@ async function home() {
     <p class="lead">Coche les cartes que tu possèdes, suis la cote de ta collection, puis pose tes doubles sur la table pour les échanger ou les vendre en toute sécurité.</p>
     <div class="seg"><a class="btn" href="#/classeur">Remplir mon classeur</a><a class="btn ghost" href="#/table">Voir la table</a><a class="btn ghost" href="#/guide">📖 Guide des échanges</a><button class="btn ghost" data-scan>📷 Scanner une carte</button><button class="btn ghost" data-scan="auth">🔍 Authentifier</button></div>
     <div class="stats"><div><b>${nbCards}</b><span class="mut small">cartes · ${S.sets.length} sets · ${Object.keys(LANGS).length} langues</span></div><div><b>${count ?? 0}</b><span class="mut small">doubles sur la table</span></div><div><b>0 %</b><span class="mut small">de frais vendeur</span></div></div></div>
-    <div class="fan">${top.map((c, i) => `<img src="${c.image}/low.webp" alt="${esc(nm(c))}" style="--r:${(i - 2) * 11}deg">`).join('')}</div>
+    <div class="fan">${top.map((c, i) => `<img src="${artUrl(c)}" alt="${esc(nm(c))}" style="--r:${(i - 2) * 11}deg">`).join('')}</div>
   </section>
   <section class="panel manifeste"><h2>Un espace réservé aux passionnés</h2><ul>
     <li><b>🃏 Pas de revendeurs pros ni de spéculateurs.</b> Ici, des passionnés qui complètent leurs classeurs : on ne pose que ses doubles (30 annonces max).</li>
@@ -241,8 +244,20 @@ function setPicker() {
 }
 const binder = { mode: 'owned', size: 9, cinema: false, playing: false, current: 0, opened: false };
 let binderTimer;
+// Le classeur s'ouvre comme un vrai classeur : couverture au logo, puis les pages.
+// Posée sur <body>, l'animation survit au rechargement du contenu et couvre le temps de chargement.
+function playBinderOpening() {
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  document.querySelector('.binder-opening')?.remove();
+  const el = document.createElement('section');
+  el.className = 'binder-opening'; el.setAttribute('aria-hidden', 'true');
+  el.innerHTML = `<div class="binder-cover"><span class="binder-cover-rings" aria-hidden="true"><i></i><i></i><i></i></span><img src="img/logo.webp" alt="" width="92" height="92"><span>Sharing Cards</span><b>Mon classeur</b></div>`;
+  document.body.append(el);
+  setTimeout(() => el.remove(), 1600);
+}
 async function classeur() {
   clearTimeout(binderTimer);
+  if (binder.mode !== 'catalog' && !binder.cinema) playBinderOpening();
   if (binder.mode === 'catalog') {
     await catalogClasseur();
     view.insertAdjacentHTML('afterbegin', '<button class="btn ghost binder-back" id="binder-back">← Revenir à mes cartes</button>');
@@ -267,7 +282,7 @@ async function classeur() {
   const rows = ids.map(id => S.cards[id]).filter(Boolean);
   const setFor = c => S.sets.find(s => s.id === c.set_id);
   // Les identifiants TCGdex portent un préfixe de langue : fr:sv01, en:sv01…
-  const groupKey = c => String(c.set_id || c.id.split(':')[1]?.replace(/-[^-]+$/, '') || '').replace(/^[a-z]{2}:/, '');
+  const groupKey = c => String(c.set_id || c.id.split(':')[1]?.replace(/-[^-]+$/, '') || '').replace(/^[a-z]{2}(?:-[a-z]{2})?:/, '');
   const groups = new Map();
   for (const c of rows) {
     const key = groupKey(c), set = setFor(c);
@@ -281,8 +296,7 @@ async function classeur() {
   const qty = ids.reduce((n,id) => n + S.coll[id], 0), doubles = ids.reduce((n,id) => n + Math.max(0,S.coll[id]-1),0);
   const card = (c, n) => { const q = S.coll[c.id]; return `<article class="binder-pocket binder-reveal" style="--reveal:${Math.min(n * .045, 1.8)}s" data-id="${esc(c.id)}"><button class="binder-art" data-binder-card="${esc(c.id)}" aria-label="Agrandir ${esc(nm(c))}, ${LANGS[c.lang] || c.lang}">${img(c)}<span class="binder-count ${q > 1 ? 'is-double' : ''}">×${q}${q > 1 ? (q === 2 ? ' · Double' : q === 3 ? ' · Triple' : ' · Exemplaires') : ''}</span></button><div class="binder-card-info"><b>${esc(nm(c))}</b><span>N° ${esc(c.local_id ?? c.num)} · ${flag(c.lang)}</span></div><div class="stepper"><button data-dq="${esc(c.id)}" aria-label="Retirer un exemplaire de ${esc(nm(c))}">−</button><span>${q} ex.</span><button data-iq="${esc(c.id)}" aria-label="Ajouter un exemplaire de ${esc(nm(c))}">+</button></div>${q > 1 ? `<button class="btn ghost sm binder-trade" data-put="${esc(c.id)}">⇄ Échanger mes doubles</button>` : ''}</article>`; };
   const sections = collections.map((g, gi) => { const ordered = g.rows.sort((a,b) => String(a.local_id ?? a.num ?? '').localeCompare(String(b.local_id ?? b.num ?? ''), 'fr', { numeric: true }) || languages.indexOf(a.lang) - languages.indexOf(b.lang)); return `<section class="binder-collection"><header><span class="binder-eyebrow">COLLECTION ${gi + 1}</span><h2>${esc(g.name)}</h2><span>${g.rows.length} carte${g.rows.length > 1 ? 's' : ''}</span></header><div class="binder-pockets" style="--binder-cols:${binder.size === 4 ? 2 : binder.size === 16 ? 4 : 3}">${ordered.map((c, i) => card(c, cards.indexOf(c))).join('')}</div></section>`; }).join('');
-  const opening = binder.opened ? '' : '<section class="binder-opening" aria-hidden="true"><div class="binder-cover"><img src="img/logo.webp" alt=""><span>Sharing Cards</span><b>Mon classeur</b></div></section>';
-  binder.opened = true;
+  const opening = '';
   view.innerHTML = `${opening}<section class="binder-intro"><div><span class="binder-eyebrow">TA COLLECTION PREND VIE</span><h1>Mon classeur</h1><p class="mut">Toutes tes cartes, collection après collection.</p></div><div class="binder-actions"><button class="btn" data-scan>＋ Scanner une carte</button><button class="btn ghost" id="binder-add">Ajouter depuis le catalogue</button></div></section>
     <div class="binder-stats"><span><b>${qty}</b> exemplaires</span><span><b>${ids.length}</b> cartes différentes</span><span><b>${collections.length}</b> collections</span><span><b>${doubles}</b> doubles à échanger</span></div>
     ${S.profile ? '' : '<p class="small mut">Mode invité · enregistré sur cet appareil. <a href="#/compte">Créer un compte pour sauvegarder ma collection</a></p>'}
@@ -301,7 +315,9 @@ async function classeur() {
       if (art) art.innerHTML = '<img class="cimg" loading="lazy" src="' + ref.img.image + '/low.webp" alt="' + esc(nm(c)) + '"><span class="binder-count ' + (S.coll[c.id] > 1 ? 'is-double' : '') + '">×' + S.coll[c.id] + '</span>';
     });
   });
-  const cinema = () => { const c = cards[binder.current]; const g = collections.find(x => x.rows.includes(c)); return `<div class="binder-cinema" role="dialog" aria-modal="true" aria-label="Diaporama"><button class="binder-cinema-close" aria-label="Fermer">×</button><div class="binder-cinema-copy"><span>${esc(g?.name || '')}</span><h2>${esc(nm(c))}</h2><p>N° ${esc(c.local_id ?? c.num)} · ${flag(c.lang)} · ×${S.coll[c.id]}</p></div><div class="binder-cinema-card">${img(c,true)}</div><div class="binder-cinema-controls"><button data-cinema="prev" aria-label="Carte précédente">←</button><button data-cinema="play" class="binder-cinema-play" aria-label="${binder.playing ? 'Mettre en pause' : 'Lire'}">${binder.playing ? 'Ⅱ' : '▶'}</button><button data-cinema="next" aria-label="Carte suivante">→</button></div><div class="binder-cinema-count">${binder.current + 1} / ${cards.length}</div></div>`; };
+  const cinema = () => { const c = cards[binder.current]; const g = collections.find(x => x.rows.includes(c)); return `<div class="binder-cinema" role="dialog" aria-modal="true" aria-label="Diaporama"><button class="binder-cinema-close" aria-label="Fermer">×</button><div class="binder-cinema-copy"><span>${esc(g?.name || '')}</span><h2>${esc(nm(c))}</h2><p>N° ${esc(c.local_id ?? c.num)} · ${flag(c.lang)} · ×${S.coll[c.id]}</p>
+    <p class="cotebig" style="font-size:20px">${eur(c.price_eur)}${trend(c)}</p>
+    <button type="button" class="btn ghost sm" data-binder-card="${esc(c.id)}">Fiche et cote détaillées</button></div><div class="binder-cinema-card">${img(c,true)}</div><div class="binder-cinema-controls"><button data-cinema="prev" aria-label="Carte précédente">←</button><button data-cinema="play" class="binder-cinema-play" aria-label="${binder.playing ? 'Mettre en pause' : 'Lire'}">${binder.playing ? 'Ⅱ' : '▶'}</button><button data-cinema="next" aria-label="Carte suivante">→</button></div><div class="binder-cinema-count">${binder.current + 1} / ${cards.length}</div></div>`; };
   const drawCinema = () => { clearTimeout(binderTimer); view.querySelector('.binder-cinema')?.remove(); view.insertAdjacentHTML('beforeend', cinema()); const el = $('.binder-cinema'); $('.binder-cinema-close', el).onclick = () => { binder.cinema = binder.playing = false; clearTimeout(binderTimer); el.remove(); }; el.querySelectorAll('[data-cinema]').forEach(b => b.onclick = () => { if (b.dataset.cinema === 'play') binder.playing = !binder.playing; else binder.current = (binder.current + (b.dataset.cinema === 'next' ? 1 : cards.length - 1)) % cards.length; drawCinema(); }); if (binder.playing) binderTimer = setTimeout(() => { binder.current = (binder.current + 1) % cards.length; drawCinema(); }, 3500); };
   $('#binder-slide').onclick = () => { binder.current = 0; binder.playing = true; drawCinema(); };
   view.querySelectorAll('[data-binder-card]').forEach(el => el.onclick = () => { binder.current = cards.findIndex(c => c.id === el.dataset.binderCard); binder.playing = false; drawCinema(); });
@@ -352,7 +368,7 @@ async function fetchListings(filter = {}) {
 }
 async function table() {
   view.innerHTML = `<div class="felt"><div class="bar">
-    <div class="seg" id="tset"><button data-ts="" aria-pressed="${!S.tset}">Toutes langues</button>${Object.keys(LANGS).map(k => `<button data-ts="${k}" aria-pressed="${S.tset === k}">${k === 'ja' ? 'JP' : k.toUpperCase()}</button>`).join('')}</div>
+    <div class="seg" id="tset"><button data-ts="" aria-pressed="${!S.tset}">Toutes langues</button>${Object.keys(LANGS).map(k => `<button data-ts="${k}" aria-pressed="${S.tset === k}">${lcode(k)}</button>`).join('')}</div>
     <input class="grow" id="tq" placeholder="Chercher une carte…" aria-label="Chercher" value="${esc(S.tq || '')}">
     <select id="tsort" aria-label="Trier" style="width:auto"><option value="new">Plus récentes</option><option value="cheap">Prix ↑</option><option value="deal">Meilleure affaire</option><option value="miss">Il me manque</option><option value="auc">🔨 Enchères</option><option value="wish">⭐ Ma liste de souhaits</option></select>
   </div><div class="grid" id="lgrid">${'<div class="skel"></div>'.repeat(6)}</div></div>`;
@@ -385,7 +401,7 @@ function listingModal(l) {
   const ph = (l.photos || []).filter(Boolean);
   modal(`<div class="split"><div>${ph.length ? `<img class="cimg" id="galmain" src="${photoUrl(ph[0])}" alt="Photo du vendeur">
     ${ph.length > 1 ? `<div class="galstrip">${ph.map((x, i) => `<button type="button" data-gal="${esc(photoUrl(x))}" aria-label="Photo ${i + 1}"><img src="${photoUrl(x)}" alt=""></button>`).join('')}</div>` : ''}
-    <p class="small mut">${ph.length} photo(s) du vendeur · <a href="${c.image}/high.webp" target="_blank" rel="noopener">voir la carte officielle</a></p>` : img(c, true)}</div>
+    <p class="small mut">${ph.length} photo(s) du vendeur · <a href="${artUrl(c, true)}" target="_blank" rel="noopener">voir la carte officielle</a></p>` : img(c, true)}</div>
   <div><p class="mut small">${flag(c.lang)} ${LANGS[c.lang]} · ${esc(setName(S.sets.find(x => x.id === c.set_id)))} · ${c.local_id} · ${esc(c.rarity || '')}</p><h2 style="margin:4px 0 12px">${esc(nm(c))}</h2>${jp(c)}
   <dl class="kv">${l.auc ? '' : `<dt>Prix</dt><dd>${l.price ? eur(l.price) : 'Échange uniquement'}</dd>`}<dt>Cote Cardmarket</dt><dd><button type="button" class="cote" data-cote="${c.id}">${eur(c.price_eur)}${trend(c)} 📈</button>${c.price_updated ? ` <span class="small mut">du ${new Date(c.price_updated).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })}</span>` : ''}<div class="spark" data-spark="${esc(c.tcg_id || '')}"></div></dd><dt>État</dt><dd><span class="pill p-${l.condition}">${l.condition}</span> ${COND[l.condition][0]}</dd><dt>Échange</dt><dd>${l.trade_ok ? 'accepté' : 'non'}</dd><dt>Vendeur</dt><dd>${who(l.user_id, s)} · ${stars(s)} · ${s.trades_done || 0} transaction(s)${s.verified ? ' · ✔ identité vérifiée' : ''}${s.passionne ? '<span class="badge-coll">🏅 Collectionneur passionné</span>' : ''} · ${esc(s.region || '')}</dd></dl>
   ${l.note ? `<p class="panel small" style="margin-top:12px">${esc(l.note)}</p>` : ''}
@@ -538,7 +554,7 @@ const beep = () => { try { actx ||= new (window.AudioContext || window.webkitAud
   o.frequency.value = 880; g.gain.setValueAtTime(.18, t); g.gain.exponentialRampToValueAtTime(.001, t + .15); o.connect(g).connect(actx.destination); o.start(); o.stop(t + .16); } catch { } navigator.vibrate?.(60); };
 // photo cadrée -> cartes candidates classées ; sure = une seule carte possible
 // 1) reconnaissance visuelle (empreinte de l'illustration comparée aux ~24 000 officielles), 2) secours : lecture du numéro
-const ALL_LANGS = ['fr', 'en', 'ja', 'de', 'it', 'es', 'pt'];
+const ALL_LANGS = ['fr', 'en', 'ja', 'zh-tw', 'zh-cn', 'de', 'it', 'es', 'pt'];
 // Budget de temps : une carte ne doit jamais bloquer le scanner. Au-delà, on rend la main.
 const SCAN_BUDGET = 40000, AI_BUDGET = 22000;
 const race = (p, ms, tag) => Promise.race([p, new Promise((_, rj) => setTimeout(() => rj(new Error(tag || 'délai dépassé')), ms))]);
@@ -555,13 +571,13 @@ async function identify(cv, budget = SCAN_BUDGET) {
   catch (e) { console.warn('reco visuelle indisponible', e); }
   if (vis?.length && vis[0].score >= .45) {
     const ids = vis.flatMap(v => ALL_LANGS.map(l => `${l}:${v.key}`));
-    const { data } = await sb.from('cards').select('id,name,name_fr,lang,local_id,image,price_eur,set_id,set:sets(name,name_fr)').in('id', ids);
+    const { data } = await sb.from('cards').select('id,name,name_fr,lang,local_id,image,image_url,price_eur,set_id,set:sets(name,name_fr)').in('id', ids);
     // l'édition japonaise partage souvent l'illustration : sauf si tu collectionnes en japonais, elle passe après
     const jaOnly = k => (data || []).some(c => c.id.endsWith(':' + k)) && (data || []).filter(c => c.id.endsWith(':' + k)).every(c => c.lang === 'ja');
     if (S.lang !== 'ja') { vis.forEach(v => { v.ja = jaOnly(v.key); v.adj = v.score - (v.ja ? .03 : 0); }); vis.sort((a, b) => b.adj - a.adj); }
     const list = [];
     for (const v of vis) { // par illustration : la langue de l'utilisateur d'abord, puis anglais, puis les autres
-      const vs = (data || []).filter(c => c.id.replace(/^[a-z]{2}:/, '') === v.key).sort((a, b) => (a.lang === S.lang ? -2 : a.lang === 'en' ? -1 : 0) - (b.lang === S.lang ? -2 : b.lang === 'en' ? -1 : 0));
+      const vs = (data || []).filter(c => c.id.replace(/^[a-z]{2}(?:-[a-z]{2})?:/, '') === v.key).sort((a, b) => (a.lang === S.lang ? -2 : a.lang === 'en' ? -1 : 0) - (b.lang === S.lang ? -2 : b.lang === 'en' ? -1 : 0));
       vs.forEach((c, i) => list.push({ ...c, set_name: c.set?.name_fr || c.set?.name || '', art: v.key, sim: v.score, alt: i > 0 }));
     }
     if (list.length) {
@@ -712,7 +728,7 @@ async function tickBurst() {
 async function burstAdd(c, g) {
   c = await toLang(c, wantLang()); // rafale : on respecte la langue choisie
   const had = owned(c); burst.last = g; burst.cleared = false; burst.added.unshift({ ...c, had: had.length > 0 }); beep();
-  camtip(`✅ ${nm(c)} ajoutée${had.length ? ` (tu l'avais déjà : ${had.map(x => `×${x.q} ${x.lang === 'ja' ? 'JP' : x.lang.toUpperCase()}`).join(', ')})` : ''}`);
+  camtip(`✅ ${nm(c)} ajoutée${had.length ? ` (tu l'avais déjà : ${had.map(x => `×${x.q} ${lcode(x.lang)}`).join(', ')})` : ''}`);
   await addMany({ [c.id]: 1 }); drawBurst();
 }
 function burstAsk(list, g) {
@@ -773,13 +789,13 @@ async function toLang(c, lang) {
   if (v) remember([v]);
   return v || c;
 }
-const langChips = (c, attr) => ALL_LANGS.map(l => `<button type="button" class="chip lg${c.lang === l ? ' on' : ''}" data-${attr}="${l}" aria-pressed="${c.lang === l}">${l === 'ja' ? 'JP' : l.toUpperCase()}</button>`).join('');
+const langChips = (c, attr) => ALL_LANGS.map(l => `<button type="button" class="chip lg${c.lang === l ? ' on' : ''}" data-${attr}="${l}" aria-pressed="${c.lang === l}">${lcode(l)}</button>`).join('');
 async function scanPage(file) {
   const [cols, rows] = pageFmt().split('x').map(Number), cells = await splitPage(file, cols, rows), res = cells.map(() => ({ st: 'wait' }));
   scanState.page = res;
   const draw = () => {
     const n = res.filter(r => r.on && r.pick).length;
-    $('#scr').innerHTML = `<div class="langsw" id="pglang"><span class="small mut">Langue de la page :</span>${ALL_LANGS.map(l => `<button type="button" class="chip lg${wantLang() === l ? ' on' : ''}" data-pl="${l}" aria-pressed="${wantLang() === l}">${l === 'ja' ? 'JP' : l.toUpperCase()}</button>`).join('')}</div>
+    $('#scr').innerHTML = `<div class="langsw" id="pglang"><span class="small mut">Langue de la page :</span>${ALL_LANGS.map(l => `<button type="button" class="chip lg${wantLang() === l ? ' on' : ''}" data-pl="${l}" aria-pressed="${wantLang() === l}">${lcode(l)}</button>`).join('')}</div>
       <div class="pagegrid" style="--cols:${cols}">${res.map((r, i) => `<button type="button" class="pcell ${r.st}${r.on ? ' on' : ''}" data-pc="${i}">${r.pick ? img(r.pick) + ownBadge(r.pick) : `<span>${{ wait: '…', blank: 'vide', none: '✖', run: '🔎' }[r.st] || '?'}</span>`}${r.st === 'unsure' ? '<i>?</i>' : r.on ? '<i>✓</i>' : ''}${r.ms ? `<small class="ms">${secs(r.ms)}</small>` : ''}</button>`).join('')}</div>
       <div id="pcpick"></div><button type="button" class="btn" id="pcadd" ${n ? '' : 'disabled'}>➕ Ajouter ${n} carte${n > 1 ? 's' : ''} au classeur</button>`;
     $('#pcadd').onclick = async () => { const m = {}; res.forEach(r => { if (r.on && r.pick) m[r.pick.id] = (m[r.pick.id] || 0) + 1; }); await addMany(m); toast(`${n} carte${n > 1 ? 's' : ''} ajoutée${n > 1 ? 's' : ''} au classeur`); $('#scr').innerHTML = '<p class="okline">✅ Page ajoutée ! Photographie la suivante.</p>'; };
@@ -797,7 +813,7 @@ async function scanPage(file) {
     const vs = r.pick ? await langVersions(r.pick) : [];
     $('#pcpick').innerHTML = `<p class="small" style="margin:8px 0 4px"><b>Case ${i + 1}</b> : laquelle ?</p>
       <div class="alts">${r.list.slice(0, 6).map((c, j) => `<button type="button" data-pp="${j}">${img(c)}<small>${flag(c.lang)} ${esc(nm(c))}<br>${esc(c.local_id)}</small></button>`).join('')}<button type="button" data-pp="-1"><small>Ne pas ajouter</small></button></div>
-      ${r.pick && vs.length > 1 ? `<div class="langsw"><span class="small mut">Langue de cette carte :</span>${vs.sort((a, b) => ALL_LANGS.indexOf(a.lang) - ALL_LANGS.indexOf(b.lang)).map(v => `<button type="button" class="chip lg${v.id === r.pick.id ? ' on' : ''}" data-pcl="${esc(v.lang)}" aria-pressed="${v.id === r.pick.id}">${v.lang === 'ja' ? 'JP' : v.lang.toUpperCase()}${S.coll[v.id] ? ` <small>✓${S.coll[v.id]}</small>` : ''}</button>`).join('')}</div>` : ''}`;
+      ${r.pick && vs.length > 1 ? `<div class="langsw"><span class="small mut">Langue de cette carte :</span>${vs.sort((a, b) => ALL_LANGS.indexOf(a.lang) - ALL_LANGS.indexOf(b.lang)).map(v => `<button type="button" class="chip lg${v.id === r.pick.id ? ' on' : ''}" data-pcl="${esc(v.lang)}" aria-pressed="${v.id === r.pick.id}">${lcode(v.lang)}${S.coll[v.id] ? ` <small>✓${S.coll[v.id]}</small>` : ''}</button>`).join('')}</div>` : ''}`;
     $('#pcpick').onclick = async ev => {
       const l = ev.target.closest('[data-pcl]');
       if (l) { ev.stopPropagation(); r.pick = await toLang(r.pick, l.dataset.pcl); r.on = true; r.st = 'sure';
@@ -871,11 +887,20 @@ function showRanked({ list, sure, how }) {
   $('#scr').insertAdjacentHTML('beforeend', askAI(how));
   $('#scr').onclick = e => { if (e.target.closest('#askai')) return runAskAI(); const b = e.target.closest('[data-alt]'); if (b) showScan(list[+b.dataset.alt]); };
 }
-const artKey = id => id.replace(/^[a-z]{2}:/, ''), langCache = new Map();
+const artKey = id => id.replace(/^[a-z]{2}(?:-[a-z]{2})?:/, ''), langCache = new Map();
+// Toutes les langues, toujours : celles qui n'existent pas au catalogue restent visibles mais inactives.
+function langChipsAll(c, vs, attr = 'tw') {
+  const have = new Map((vs || []).map(v => [v.lang, v]));
+  return `<div class="langsw"><span class="small mut">Langue :</span>${ALL_LANGS.map(l => {
+    const v = have.get(l), on = v && v.id === c.id;
+    return v ? `<button type="button" class="chip lg${on ? ' on' : ''}" data-${attr}="${esc(v.id)}" aria-pressed="${!!on}" title="${esc(LANGS[l] || l)}">${lcode(l)}${S.coll[v.id] ? ` <small>✓${S.coll[v.id]}</small>` : ''}</button>`
+      : `<button type="button" class="chip lg off" disabled title="Pas de version ${esc(LANGS[l] || l)} dans le catalogue">${lcode(l)}</button>`;
+  }).join('')}</div>`;
+}
 // exemplaires déjà dans le classeur, toutes langues de la même carte : [{ lang, q }]
 const owned = c => c ? ALL_LANGS.map(l => ({ lang: l, q: S.coll[`${l}:${artKey(c.id)}`] || 0 })).filter(x => x.q) : [];
 const ownedLine = c => { const o = owned(c); return o.length ? `<p class="owned">📒 Tu l'as déjà : ${o.map(x => `<b>×${x.q}</b> ${flag(x.lang)}`).join(' · ')}</p>` : ''; };
-const ownBadge = c => { const q = S.coll[c?.id] || 0, o = owned(c); return q ? `<span class="own">×${q}</span>` : o.length ? `<span class="own alt">✓ ${o.map(x => x.lang === 'ja' ? 'JP' : x.lang.toUpperCase()).join(' ')}</span>` : ''; };
+const ownBadge = c => { const q = S.coll[c?.id] || 0, o = owned(c); return q ? `<span class="own">×${q}</span>` : o.length ? `<span class="own alt">✓ ${o.map(x => lcode(x.lang)).join(' ')}</span>` : ''; };
 // dernière langue choisie au scan : proposée en premier ensuite
 let scanLang = null; try { scanLang = localStorage.getItem('sc_lang'); } catch { }
 const setScanLang = l => { scanLang = l; try { localStorage.setItem('sc_lang', l); } catch { } };
@@ -883,7 +908,7 @@ const setScanLang = l => { scanLang = l; try { localStorage.setItem('sc_lang', l
 async function langVersions(c) {
   const k = artKey(c.id);
   if (!langCache.has(k)) langCache.set(k, (async () => {
-    const { data } = await sb.from('cards').select('id,name,name_fr,lang,local_id,image,price_eur,tcg_id,set_id,set:sets(name,name_fr)').in('id', ALL_LANGS.map(l => `${l}:${k}`));
+    const { data } = await sb.from('cards').select('id,name,name_fr,lang,local_id,image,image_url,price_eur,tcg_id,rarity,set_id,set:sets(name,name_fr)').in('id', ALL_LANGS.map(l => `${l}:${k}`));
     return (data || []).map(x => ({ ...x, set_name: x.set?.name_fr || x.set?.name || '', alt: true }));
   })().catch(() => []));
   return langCache.get(k);
@@ -904,7 +929,7 @@ function showScan(c) {
   if (!c.image) cardRef(c).then(r => {
     const b = $('#scr .sr-img'); if (!b || scanState.shown !== c) return;
     b.innerHTML = r?.img
-      ? `<img class="cimg" src="${r.img.image}/high.webp" alt="${esc(nm(c))}"><p class="small mut" style="margin:4px 0 0">Visuel de la version ${r.img.lang === 'ja' ? 'JP' : r.img.lang.toUpperCase()} : la base communautaire n'a pas encore l'image de cette version.</p>`
+      ? `<img class="cimg" src="${artUrl(r.img, true)}" alt="${esc(nm(c))}"><p class="small mut" style="margin:4px 0 0">Visuel de la version ${lcode(r.img.lang)} : la base communautaire n'a pas encore l'image de cette version.</p>`
       : `<div class="ph"><span>${esc(nm(c))}</span></div><p class="small mut" style="margin:4px 0 0">Visuel non disponible dans la base (fréquent pour les éditions japonaises).</p>`;
   });
   langVersions(c).then(vs => {
@@ -914,7 +939,7 @@ function showScan(c) {
     // bonne langue d'office : celle lue par l'IA, sinon la dernière choisie, sinon celle du classeur
     if (!scanState.autoLang) { scanState.autoLang = true; const h = scanState.how, want = (h?.t === 'ai' && h.read?.language) || scanLang || S.lang, v = vs.find(x => x.lang === want);
       if (v && v.id !== c.id) return showScan(list.find(x => x.id === v.id) || v); }
-    if (vs.length > 1) $('#langsw').innerHTML = '<span class="small mut">Langue de ta carte :</span> ' + vs.sort((a, b) => ALL_LANGS.indexOf(a.lang) - ALL_LANGS.indexOf(b.lang)).map(x => `<button type="button" class="chip lg${x.id === c.id ? ' on' : ''}" data-tw="${x.id}" aria-pressed="${x.id === c.id}">${x.lang === 'ja' ? 'JP' : x.lang.toUpperCase()}${S.coll[x.id] ? ` <small>✓${S.coll[x.id]}</small>` : ''}</button>`).join('');
+    $('#langsw').innerHTML = langChipsAll(c, [c, ...vs.filter(v => v.id !== c.id)]);
   });
   $('#scr').onclick = async e => {
     if (e.target.closest('#askai')) return runAskAI();
@@ -930,14 +955,14 @@ function showScan(c) {
 
 // ---------- recherche par nom, plusieurs à la suite : « dracau, pika, bibi » ----------
 const nsCache = new Map();
-const nsTile = c => `<div class="nst"><span class="ns-img">${img(c)}${ownBadge(c)}</span><small>${flag(c.lang)} ${esc(nm(c))}<br><span class="mut">${esc(c.set_name)} · ${esc(c.local_id)}</span></small>
+const nsTile = c => `<div class="nst"><span class="ns-img">${img(c)}${ownBadge(c)}</span><small>${flag(c.lang)} ${esc(nm(c))}<br><span class="mut">${esc(c.set_name)} · ${esc(c.local_id)}</span><br><button type="button" class="cote" data-cote="${esc(c.id)}">${eur(c.price_eur)}${trend(c)} 📈</button></small>
   <span class="nsq">${S.coll[c.id] ? `<button type="button" class="btn sm ghost" data-nsm="${c.id}" aria-label="Retirer un">−</button>` : ''}<button type="button" class="btn sm" data-nsp="${c.id}">+1</button></span></div>`;
 async function nameSearch() {
   let lang = S.nsLang ?? S.lang, tm, seq = 0;
   modal(`<div class="form names"><h2 style="margin:0">🔎 Ajouter par nom</h2>
   <p class="small mut" style="margin:0">Tape le début des noms, séparés par des virgules : <b>dracau, pika, bibi</b>. Touche <b>+1</b> pour ajouter, l'image pour l'agrandir.</p>
   <input id="nsin" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="search" placeholder="dracau, pika, bibi…" aria-label="Noms des cartes" value="${esc(S.nsq || '')}">
-  <div class="seg" id="nslang"><button type="button" data-nl="" aria-pressed="${!lang}">Toutes</button>${ALL_LANGS.map(l => `<button type="button" data-nl="${l}" aria-pressed="${lang === l}">${l === 'ja' ? 'JP' : l.toUpperCase()}</button>`).join('')}</div>
+  <div class="seg" id="nslang"><button type="button" data-nl="" aria-pressed="${!lang}">Toutes</button>${ALL_LANGS.map(l => `<button type="button" data-nl="${l}" aria-pressed="${lang === l}">${lcode(l)}</button>`).join('')}</div>
   <div id="nsres" role="status"></div></div>`);
   const inp = $('#nsin'), box = $('#nsres');
   const run = async () => {
@@ -956,7 +981,7 @@ async function nameSearch() {
     $('#nslang').querySelectorAll('button').forEach(x => x.setAttribute('aria-pressed', x === b)); run(); };
   box.onclick = async e => { const b = e.target.closest('[data-nsp],[data-nsm]'); if (!b) return;
     const id = b.dataset.nsp || b.dataset.nsm, c = S.cards[id], had = owned(c); await addMany({ [id]: b.dataset.nsp ? 1 : -1 });
-    if (b.dataset.nsp) { beep(); toast(had.length ? `${nm(c)} : déjà ${had.map(x => `×${x.q} ${x.lang === 'ja' ? 'JP' : x.lang.toUpperCase()}`).join(', ')} → maintenant ×${S.coll[id]} en ${c.lang === 'ja' ? 'JP' : c.lang.toUpperCase()}` : `${nm(c)} ajoutée au classeur`); }
+    if (b.dataset.nsp) { beep(); toast(had.length ? `${nm(c)} : déjà ${had.map(x => `×${x.q} ${lcode(x.lang)}`).join(', ')} → maintenant ×${S.coll[id]} en ${lcode(c.lang)}` : `${nm(c)} ajoutée au classeur`); }
     box.querySelectorAll('.nst').forEach(t => { const x = t.querySelector('[data-nsp]'); if (x && artKey(x.dataset.nsp) === artKey(id)) t.outerHTML = nsTile(S.cards[x.dataset.nsp]); }); };
   if (inp.value) run(); inp.focus();
 }
@@ -975,9 +1000,9 @@ document.addEventListener('click', e => { const b = e.target.closest('[data-bind
 const condTable = (p, cur) => p == null ? '' : `<table class="condtab"><tbody>${Object.entries(COND).map(([k, v]) => `<tr${cur === k ? ' class="on"' : ''}><th><span class="pill p-${k}">${k}</span> ${esc(v[0])}</th><td>${eur(condPrice(p, k))}</td><td class="small mut">${esc(v[1])}</td></tr>`).join('')}</tbody></table>`;
 // Carte de référence : quand la cote ou le visuel manquent (surtout en japonais), on regarde les autres langues.
 async function cardRef(c) {
-  if (!c || (c.image && c.price_eur != null)) return null;
+  if (!c || (artUrl(c) && c.price_eur != null)) return null;
   const vs = await langVersions(c).catch(() => []);
-  const im = c.image ? null : vs.find(v => v.image && v.id !== c.id);
+  const im = artUrl(c) ? null : vs.find(v => artUrl(v) && v.id !== c.id);
   const px = c.price_eur != null ? null : [...vs].filter(v => v.price_eur != null).sort((a, b) => (b.lang === 'en') - (a.lang === 'en'))[0];
   return im || px ? { img: im, px } : null;
 }
@@ -994,11 +1019,20 @@ async function cardInfoModal(c) {
   const history = quote?.tcg_id ? await priceHist(quote.tcg_id) : [], rarity = c.rarity || 'Rareté non renseignée';
   const z = sheet(`<div class="cardinfo"><div class="cardinfo-art">${img(c, true)}</div><div class="cardinfo-main">
     <p class="small mut" style="margin:0">${flag(c.lang)} ${esc(LANGS[c.lang] || c.lang || '')}</p><h2>${esc(nm(c))}</h2>${jp(c)}
+    <div id="info-langs"></div>
     <dl class="kv"><dt>Collection</dt><dd>${esc(setName(set) || c.set_name || 'Non renseignée')}</dd><dt>Numéro</dt><dd><b>${esc(c.local_id ?? c.num ?? '?')}/${esc(total)}</b></dd><dt>Rareté</dt><dd><span class="rarity-mark" aria-label="${esc(rarity)}">${rarityMark(rarity)}</span> ${esc(rarity)}</dd><dt>Illustrateur</dt><dd>${esc(c.illustrator || 'Non renseigné')}</dd></dl>
     <section class="cardinfo-price"><h3>Cote</h3>${quote ? `<p class="cotebig">${eur(quote.price_eur)}${trend(quote)}</p>${quote !== c ? `<p class="small mut">Cote indicative de la version ${flag(quote.lang)} de la même carte.</p>` : ''}<h4>Selon l'état</h4>${condTable(quote.price_eur)}<button type="button" class="btn ghost sm" id="info-price">Voir l'historique complet</button>` : '<p class="mut">Aucune cote connue pour cette carte actuellement.</p>'}</section>
     <section class="cardinfo-history"><h3>Historique</h3>${history.length >= 2 ? `<p><b>${history.length}</b> relevés · de ${eur(Math.min(...history.map(x => +x.price)))} à ${eur(Math.max(...history.map(x => +x.price)))}</p><div class="spark" id="info-spark"></div>` : '<p class="small mut">Historique en construction : la courbe apparaît après plusieurs relevés.</p>'}</section>
   </div></div>`, 'cotedlg cardinfodlg');
   if (quote) $('#info-price', z).onclick = () => coteModal(quote);
+  // toutes les langues de cette carte, sans re-scanner : un clic ouvre la fiche de la version choisie
+  langVersions(c).then(vs => {
+    const box = $('#info-langs', z); if (!box || !box.isConnected) return;
+    box.innerHTML = langChipsAll(c, [c, ...vs.filter(v => v.id !== c.id)], 'cardlang');
+    box.onclick = e => { const b = e.target.closest('[data-cardlang]'); if (!b) return;
+      const v = vs.find(x => x.id === b.dataset.cardlang) || (b.dataset.cardlang === c.id ? c : null);
+      if (v && v.id !== c.id) { remember([v]); cardInfoModal(S.cards[v.id] || v); } };
+  });
   if (history.length >= 2) {
     const { line, up } = curve(history, 280, 70, 4), box = $('#info-spark', z);
     box.innerHTML = `<svg viewBox="0 0 280 70" class="${up ? 'up' : 'dn'}" role="img" aria-label="Historique de la cote"><polyline points="${line}"/></svg><p class="small mut">${fmtD(history[0].d)} → ${fmtD(history.at(-1).d)}</p>`;
@@ -1885,7 +1919,7 @@ async function membre() {
       ${mine ? '<a class="btn sm ghost" href="#/compte">Modifier mon profil</a>' : ''}</div></section>
   <h2>Collection</h2>${!col || col.private ? '<div class="panel small mut">🔒 Collection privée.</div>' : `<div class="panel"><div class="stats" style="margin:0"><div><b>${col.cards}</b><span class="mut small">cartes différentes</span></div><div><b>${col.qty}</b><span class="mut small">cartes au total</span></div></div>
     ${col.sets.length ? `<div class="setbars">${col.sets.map(x => `<div><span class="small">${flag(x.lang)} ${esc(x.name)}</span><div class="bar2"><i style="width:${Math.min(100, x.pct || 0)}%"></i></div><span class="small mono">${x.own}/${x.total}</span></div>`).join('')}</div>` : ''}</div>`}
-  ${wl && !wl.private && wl.cards?.length ? `<h2>⭐ Ses cartes recherchées</h2><div class="grid">${wl.cards.map(c => `<div class="tile">${c.image ? `<img class="cimg" loading="lazy" src="${c.image}/low.webp" alt="${esc(c.name)}">` : ''}<div class="meta"><span class="nm">${esc(c.local_id)} · ${esc(c.name)}</span><span class="v">${eur(c.price)}</span></div><div class="seller"><span>${flag(c.lang)} ${esc(c.set || '')}</span>${S.coll[c.card_id] > 1 ? '<span class="pill p-tr">tu l\'as en double</span>' : ''}</div></div>`).join('')}</div>` : ''}
+  ${wl && !wl.private && wl.cards?.length ? `<h2>⭐ Ses cartes recherchées</h2><div class="grid">${wl.cards.map(c => `<div class="tile">${c.image_url || c.image ? `<img class="cimg" loading="lazy" src="${c.image_url || c.image + '/low.webp'}" alt="${esc(c.name)}">` : ''}<div class="meta"><span class="nm">${esc(c.local_id)} · ${esc(c.name)}</span><span class="v">${eur(c.price)}</span></div><div class="seller"><span>${flag(c.lang)} ${esc(c.set || '')}</span>${S.coll[c.card_id] > 1 ? '<span class="pill p-tr">tu l\'as en double</span>' : ''}</div></div>`).join('')}</div>` : ''}
   <h2>Trophées</h2>${!p.show_badges ? '<div class="panel small mut">🔒 Trophées privés.</div>' : bdg.length ? `<div class="bdgs">${bdg.map(b => `<span class="bdg t${b.tier}" title="${esc(b.desc || '')}">${b.ic} ${esc(b.name)}</span>`).join('')}</div>` : '<div class="panel small mut">Pas encore de trophée.</div>'}
   <h2>Ses doubles sur la table</h2><div class="grid">${(ls || []).map(l => `<button class="tile" data-l="${l.id}">${img(l.card)}<div class="meta"><span class="nm">${esc(nm(l.card))}</span><span class="v">${l.price ? eur(l.price) : '⇄'}</span></div></button>`).join('') || '<p class="mut">Aucun double posé pour le moment.</p>'}</div>`;
   S.listings = [...(S.listings || []).filter(x => !ls?.some(y => y.id === x.id)), ...(ls || [])];

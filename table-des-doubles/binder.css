@@ -1,2 +1,9 @@
 .binder-cinema{z-index:1000}
 .cardinfodlg{max-width:min(850px,calc(100% - 24px))}.cardinfo{display:grid;grid-template-columns:minmax(180px,280px) 1fr;gap:24px}.cardinfo-art .cimg{width:100%;max-height:58vh;object-fit:contain}.cardinfo-main h2{margin:4px 0}.cardinfo-main h3{margin:18px 0 6px}.cardinfo-main h4{margin:10px 0 4px}.rarity-mark{display:inline-grid;place-items:center;width:22px;height:22px;border-radius:50%;background:var(--gold);color:#1b160a;font-weight:900}.cardinfo-price,.cardinfo-history{border-top:1px solid var(--line);margin-top:14px;padding-top:4px}.cardinfo-history svg{display:block;width:100%;height:70px;fill:none;stroke:var(--gold);stroke-width:2.5}@media(max-width:600px){.cardinfo{grid-template-columns:1fr;gap:12px}.cardinfo-art .cimg{width:min(210px,65vw);margin:auto}.cardinfo-main{min-width:0}}
+
+/* L'ouverture est jouée à chaque visite du classeur, par-dessus la page (voir playBinderOpening). */
+.binder-opening{animation:binder-fade-away .25s 1.25s forwards}
+.binder-cover{animation:binder-cover-open .75s .5s ease-in forwards;position:relative}
+.binder-cover-rings{position:absolute;left:-6px;top:12%;bottom:12%;width:18px;display:flex;flex-direction:column;justify-content:space-around}
+.binder-cover-rings i{height:16px;border-radius:9px;background:linear-gradient(#f4f1e6,#9c9684 60%,#4c4639);box-shadow:0 3px 5px #0009}
+@media(prefers-reduced-motion:reduce){.binder-opening{display:none}}

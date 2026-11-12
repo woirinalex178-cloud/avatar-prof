@@ -124,7 +124,7 @@ function refVec(c) {
     .then(async r => r.ok ? gridVec(await toCanvas(await r.blob())) : null).catch(() => null));
   return refs.get(c.image);
 }
-const art = id => id.replace(/^[a-z]{2}:/, '').toLowerCase(); // même illustration dans toutes les langues
+const art = id => id.replace(/^[a-z]{2}(?:-[a-z]{2})?:/, '').toLowerCase(); // même illustration dans toutes les langues
 export async function rank(cards, cv, lang) {
   const me = gridVec(await toCanvas(cv));
   const sims = await Promise.all(cards.map(async c => { const v = await refVec(c); return v ? corr(me, v) : -1; }));

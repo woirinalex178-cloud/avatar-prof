@@ -804,6 +804,21 @@ async function expressModal() {
 // ---------- page de classeur : 9 cartes d'une photo ----------
 // langue souhaitée pour la page (mémorisée d'un scan à l'autre)
 const wantLang = () => scanLang || S.lang;
+// Choisir n'importe quelle langue, toujours : les séries japonaises et chinoises ont leurs propres
+// numéros, donc la même carte n'y porte pas le même identifiant. On la retrouve par son nom.
+async function pickLang(c, lang) {
+  const label = LANGS[lang] || lang;
+  $('#scs').textContent = `Recherche de la version ${label}\u2026`;
+  const { data, error } = await sb.rpc('card_in_lang', { p_card: c.id, p_lang: lang });
+  const list = data || [];
+  if (error || !list.length) { $('#scs').textContent = ''; return toast(`Pas de version ${label} de cette carte dans le catalogue.`, true); }
+  setScanLang(lang); remember(list);
+  const best = list.find(x => x.same_num) || (list.length === 1 ? list[0] : null);
+  scanState.list = [...list, ...(scanState.list || []).filter(x => !list.some(v => v.id === x.id))];
+  if (best) { $('#scs').textContent = ''; return showScan(best); }
+  showRanked({ list, sure: false, how: scanState.how });
+  $('#scs').innerHTML = `Versions <b>${esc(label)}</b> de cette carte : touche la bonne (le num\u00e9ro change d'une langue \u00e0 l'autre).`;
+}
 async function toLang(c, lang) {
   if (!c || c.lang === lang) return c;
   const v = (await langVersions(c)).find(x => x.lang === lang);
@@ -835,8 +850,24 @@ async function scanPage(file) {
     const vs = r.pick ? await langVersions(r.pick) : [];
     $('#pcpick').innerHTML = `<p class="small" style="margin:8px 0 4px"><b>Case ${i + 1}</b> : laquelle ?</p>
       <div class="alts">${r.list.slice(0, 6).map((c, j) => `<button type="button" data-pp="${j}">${img(c)}<small>${flag(c.lang)} ${esc(nm(c))}<br>${esc(c.local_id)}</small></button>`).join('')}<button type="button" data-pp="-1"><small>Ne pas ajouter</small></button></div>
-      ${r.pick && vs.length > 1 ? `<div class="langsw"><span class="small mut">Langue de cette carte :</span>${vs.sort((a, b) => ALL_LANGS.indexOf(a.lang) - ALL_LANGS.indexOf(b.lang)).map(v => `<button type="button" class="chip lg${v.id === r.pick.id ? ' on' : ''}" data-pcl="${esc(v.lang)}" aria-pressed="${v.id === r.pick.id}">${lcode(v.lang)}${S.coll[v.id] ? ` <small>✓${S.coll[v.id]}</small>` : ''}</button>`).join('')}</div>` : ''}`;
+      ${r.pick ? `<div class="langsw"><span class="small mut">Langue de cette carte :</span>${ALL_LANGS.map(l => {
+        const v = r.pick.lang === l ? r.pick : vs.find(x => x.lang === l);
+        return v ? `<button type="button" class="chip lg${v.id === r.pick.id ? ' on' : ''}" data-pcl="${esc(l)}" aria-pressed="${v.id === r.pick.id}">${lcode(l)}${S.coll[v.id] ? ` <small>✓${S.coll[v.id]}</small>` : ''}</button>`
+          : `<button type="button" class="chip lg off" data-pxl="${esc(l)}" title="Chercher la version ${esc(LANGS[l] || l)} de cette carte">${lcode(l)}</button>`;
+      }).join('')}</div>` : ''}`;
     $('#pcpick').onclick = async ev => {
+      // langue absente de cette illustration : on va la chercher par le nom (numérotation différente)
+      const x = ev.target.closest('[data-pxl]');
+      if (x) { ev.stopPropagation(); const lg = x.dataset.pxl, label = LANGS[lg] || lg;
+        $('#scs').textContent = `Recherche de la version ${label}…`;
+        const { data } = await sb.rpc('card_in_lang', { p_card: r.pick.id, p_lang: lg }).catch(() => ({}));
+        const got = data || []; $('#scs').textContent = '';
+        if (!got.length) return toast(`Pas de version ${label} de cette carte au catalogue.`, true);
+        remember(got); setScanLang(lg);
+        r.list = [...got, ...r.list.filter(y => !got.some(g => g.id === y.id))];
+        const best = got.find(g => g.same_num) || (got.length === 1 ? got[0] : null);
+        if (best) { r.pick = best; r.on = true; r.st = 'sure'; } else toast(`Plusieurs versions ${label} : touche la bonne.`);
+        draw(); return cellPick(i); }
       const l = ev.target.closest('[data-pcl]');
       if (l) { ev.stopPropagation(); r.pick = await toLang(r.pick, l.dataset.pcl); r.on = true; r.st = 'sure';
         if (!r.list.some(x => x.id === r.pick.id)) r.list.unshift(r.pick); draw(); cellPick(i); return; }
@@ -898,6 +929,26 @@ const howLine = h => {
   if (h.t === 'vis') return `<p class="small mut readline">🖼️ <b>Reconnue par le dessin</b> (ressemblance ${Math.round(h.s * 100)} %)${t}${err}</p>`;
   return `<p class="small mut readline">🔢 <b>Reconnue par le numéro lu</b>${t}${err}</p>`;
 };
+// L'IA lit souvent la bonne carte alors que le catalogue ne la retrouve pas (s\u00e9rie absente,
+// nom en cor\u00e9en ou en chinois). On propose toujours de chercher ce qu'elle a lu, partout.
+const widenBtn = h => { const r = h?.read, n = r && (r.name_en || r.name);
+  return n ? `<button type="button" class="btn sm ghost" id="scwide">\u{1F50E} Aucune ne correspond : chercher \u00ab\u00a0${esc(String(n).slice(0, 22))}\u00a0\u00bb</button>` : ''; };
+async function runWiden() {
+  const r = scanState.how?.read || {}, b = $('#scwide');
+  if (b) { b.disabled = true; b.textContent = '\u{1F50E} Recherche dans tout le catalogue\u2026'; }
+  const name = String(r.name_en || r.name || '').trim(), words = name.split(/\s+/).filter(w => w.length >= 4);
+  const got = new Map(), add = d => { for (const c of d || []) got.set(c.id, c); };
+  if (words.length) add((await sb.rpc('scan_match', { p_num: null, p_total: null, p_words: words, p_lang: r.language || S.lang }).catch(() => ({}))).data);
+  const num = r.number ? String(r.number).replace(/\s/g, '') : null;
+  if (num && got.size < 6) add((await sb.rpc('scan_match', { p_num: num, p_total: null, p_words: words, p_lang: r.language || S.lang }).catch(() => ({}))).data);
+  const list = [...got.values()];
+  if (!list.length) { if (b) { b.disabled = false; b.textContent = '\u{1F50E} R\u00e9essayer la recherche'; }
+    $('#scw').value = name; $('#scman').open = true;
+    return $('#scs').innerHTML = `Rien au catalogue pour \u00ab\u00a0${esc(name)}\u00a0\u00bb. ${/^(ko|zh)/.test(r.language || '') ? 'Les cartes cor\u00e9ennes ne sont pas encore au catalogue : cherche la version japonaise ou anglaise.' : 'Corrige le nom ci-dessous et relance la recherche.'}`;
+  }
+  showRanked({ list, sure: false, how: scanState.how });
+  $('#scs').innerHTML = `Toutes les cartes nomm\u00e9es \u00ab\u00a0<b>${esc(name)}</b>\u00a0\u00bb : touche la bonne.`;
+}
 const askAI = h => h && h.t !== 'ai' && scanState.cv ? `<button type="button" class="btn sm ghost" id="askai">🤖 Pas la bonne ? Demander à l'IA</button>` : '';
 async function runAskAI() {
   const b = $('#askai'); if (b) { b.disabled = true; b.textContent = '🤖 L\'IA lit la carte… (quelques secondes)'; }
@@ -911,8 +962,9 @@ function showRanked({ list, sure, how }) {
   if (sure) return showScan(list[0]);
   $('#scs').textContent = list.length > 1 ? 'Plusieurs cartes possibles : touche la bonne.' : '';
   $('#scr').innerHTML = howLine(how) + `<div class="alts big">${list.map((c, i) => c.alt ? '' : `<button type="button" data-alt="${i}">${img(c)}${ownBadge(c)}<small>${flag(c.lang)} ${esc(nm(c))}<br>${esc(c.set_name)} · ${esc(c.local_id)}</small></button>`).join('')}</div>`;
-  $('#scr').insertAdjacentHTML('beforeend', askAI(how));
-  $('#scr').onclick = e => { if (e.target.closest('#askai')) return runAskAI(); const b = e.target.closest('[data-alt]'); if (b) showScan(list[+b.dataset.alt]); };
+  $('#scr').insertAdjacentHTML('beforeend', askAI(how) + widenBtn(how));
+  $('#scr').onclick = e => { if (e.target.closest('#askai')) return runAskAI(); if (e.target.closest('#scwide')) return runWiden();
+    const b = e.target.closest('[data-alt]'); if (b) showScan(list[+b.dataset.alt]); };
 }
 const artKey = id => id.replace(/^[a-z]{2}(?:-[a-z]{2})?:/, ''), langCache = new Map();
 // Toutes les langues, toujours : celles qui n'existent pas au catalogue restent visibles mais inactives.
@@ -921,7 +973,7 @@ function langChipsAll(c, vs, attr = 'tw') {
   return `<div class="langsw"><span class="small mut">Langue :</span>${ALL_LANGS.map(l => {
     const v = have.get(l), on = v && v.id === c.id;
     return v ? `<button type="button" class="chip lg${on ? ' on' : ''}" data-${attr}="${esc(v.id)}" aria-pressed="${!!on}" title="${esc(LANGS[l] || l)}">${lcode(l)}${S.coll[v.id] ? ` <small>✓${S.coll[v.id]}</small>` : ''}</button>`
-      : `<button type="button" class="chip lg off" disabled title="Pas de version ${esc(LANGS[l] || l)} dans le catalogue">${lcode(l)}</button>`;
+      : `<button type="button" class="chip lg off" data-xl="${l}" title="Chercher la version ${esc(LANGS[l] || l)} de cette carte">${lcode(l)}</button>`;
   }).join('')}</div>`;
 }
 // exemplaires déjà dans le classeur, toutes langues de la même carte : [{ lang, q }]
@@ -950,7 +1002,7 @@ function showScan(c) {
   $('#scr').innerHTML = `<div class="scanres panel"><div class="sr-img">${img(c, true)}</div><div class="sr-txt">
     <p class="small" style="margin:0"><span class="pill p-NM">✓ Carte reconnue</span></p>
     <h3>${flag(c.lang)} ${esc(nm(c))}</h3><div class="langsw" id="langsw"></div>${ownedLine(c)}${howLine(scanState.how)}<p class="small mut">${esc(c.set_name)} · n° ${esc(c.local_id)} · cote <button type="button" class="cote" data-cote="${c.id}">${eur(c.price_eur)}${trend(c)} 📈</button></p>
-    </div><div class="sr-acts"><p class="small" style="margin:0"><b>C'est bien elle ?</b></p>${add ? bAdd + bAuth : bAuth + bAdd}${askAI(scanState.how)}
+    </div><div class="sr-acts"><p class="small" style="margin:0"><b>C'est bien elle ?</b></p>${add ? bAdd + bAuth : bAuth + bAdd}${askAI(scanState.how)}${widenBtn(scanState.how)}
     <p class="small" style="margin:6px 0 0">${wishStar(c.id)} ${S.wish.has(c.id) ? 'Dans ta liste de souhaits' : 'La chercher : ajouter à mes souhaits'}</p></div></div>
     ${others.length ? `<details class="small"><summary>Pas la bonne ? (${others.length} autres)</summary><div class="alts">${others.map(x => `<button type="button" data-tw="${x.id}">${img(x)}<small>${flag(x.lang)} ${esc(nm(x))}<br>${esc(x.set_name)} · ${esc(x.local_id)}</small></button>`).join('')}</div></details>` : ''}`;
   if (!c.image) cardRef(c).then(r => {
@@ -970,6 +1022,8 @@ function showScan(c) {
   });
   $('#scr').onclick = async e => {
     if (e.target.closest('#askai')) return runAskAI();
+    if (e.target.closest('#scwide')) return runWiden();
+    const x = e.target.closest('[data-xl]'); if (x) return pickLang(c, x.dataset.xl);
     const t = e.target.closest('[data-tw],[data-q],#sadd,#sauth'); if (!t) return;
     if (t.dataset.tw) { const v = list.find(x => x.id === t.dataset.tw); if (t.closest('#langsw')) setScanLang(v.lang); return showScan(v); }
     if (t.dataset.q) { scanState.qty = Math.max(1, Math.min(20, scanState.qty + +t.dataset.q)); $('#sq').textContent = scanState.qty; return; }

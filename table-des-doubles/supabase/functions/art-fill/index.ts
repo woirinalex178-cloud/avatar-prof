@@ -1,12 +1,13 @@
 import { createClient } from 'npm:@supabase/supabase-js@2';
 
-// Visuels des cartes japonaises et chinoises.
-// TCGdex ne fournit pas d'image pour une bonne partie des séries japonaises (ni pour les chinoises).
-// Limitless publie, pour chaque série japonaise, une page listant toutes les cartes avec leur visuel.
-// On lit cette page (une requête par série), on garde l'adresse du visuel, et on la range dans `cards.image_url`.
-// Les séries chinoises reprennent les codes japonais : le visuel japonais sert d'illustration, c'est annoncé dans l'appli.
-const SITE = 'https://limitlesstcg.com/cards/jp/';
-const UA = 'SharingCards/1.0 (catalogue de cartes entre collectionneurs ; contact : https://table-des-doubles.vercel.app)';
+// Visuels manquants du catalogue.
+// TCGdex n'a pas d'image pour une bonne partie des séries japonaises et chinoises,
+// ni pour certaines séries internationales (McDonald's, coffres, galeries, promos).
+// Limitless publie une page par série, avec tous les visuels : on la lit (une requête par série)
+// et on range l'adresse dans `cards.image_url`, en notant la langue du visuel trouvé.
+const JP = 'https://limitlesstcg.com/cards/jp/';
+const INT = 'https://limitlesstcg.com/cards/';
+const UA = 'SharingCards/1.0 (catalogue entre collectionneurs ; https://table-des-doubles.vercel.app)';
 const db = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
 const cors = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'authorization, content-type, apikey, x-client-info, x-cron' };
 const json = (b: unknown, s = 200) => new Response(JSON.stringify(b), { status: s, headers: { ...cors, 'Content-Type': 'application/json' } });
@@ -23,18 +24,37 @@ async function cronOk(req: Request) {
   return !!p?.is_admin;
 }
 
-// Récupère { "1": "https://…_LG.png", "2": … } pour une série.
-async function setImages(code: string) {
-  const r = await fetch(SITE + encodeURIComponent(code), { headers: { 'User-Agent': UA } });
+const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+// Lit une page de série et renvoie { "1": "https://…_LG.png", … }
+async function readPage(url: string, code: string, zone: 'tpc' | 'tpci', lang: 'JP' | 'EN') {
+  const r = await fetch(url, { headers: { 'User-Agent': UA } });
   if (!r.ok) return null;
   const html = await r.text(), out: Record<string, string> = {};
-  const esc = code.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const re = new RegExp(`https://[^"' ]+/tpc/${esc}/[^"' ]*?_(\\d+)_[A-Z]+_JP(?:_SM|_LG)?\\.png`, "g");
+  const re = new RegExp(`https://[^"' ]+/${zone}/${esc(code)}/[^"' ]*?_(\\d+)_[A-Z]+_${lang}(?:_SM|_LG)?\\.png`, 'g');
   for (const m of html.matchAll(re)) {
     const num = m[1];
     if (!out[num]) out[num] = m[0].replace(/_SM\.png$/, '_LG.png');
   }
-  return out;
+  return Object.keys(out).length ? out : null;
+}
+
+// Pour une série du catalogue, on essaie les adresses plausibles chez Limitless.
+async function findImages(set: { lang: string; code: string; alias?: string | null }) {
+  const code = set.code, tries: { url: string; code: string; zone: 'tpc' | 'tpci'; lang: 'JP' | 'EN' }[] = [];
+  if (set.lang === 'ja' || set.lang.startsWith('zh')) {
+    tries.push({ url: JP + encodeURIComponent(code), code, zone: 'tpc', lang: 'JP' });
+  } else {
+    const cands = [set.alias, code.toUpperCase(), code.replace(/\./g, '').toUpperCase()].filter(Boolean) as string[];
+    for (const c of [...new Set(cands)]) tries.push({ url: INT + encodeURIComponent(c), code: c, zone: 'tpci', lang: 'EN' });
+  }
+  for (const t of tries) {
+    try {
+      const imgs = await readPage(t.url, t.code, t.zone, t.lang);
+      if (imgs) return { imgs, src: t.code, lang: t.lang === 'JP' ? 'ja' : 'en' };
+    } catch (e) { console.error('art-fill', t.url, (e as Error).message); }
+  }
+  return null;
 }
 
 Deno.serve(async (req) => {
@@ -42,14 +62,14 @@ Deno.serve(async (req) => {
   if (!(await cronOk(req))) return json({ error: 'interdit' }, 403);
   const n = Number(new URL(req.url).searchParams.get('sets') || 6);
   const { data: todo } = await db.rpc('art_todo', { p_limit: Math.min(12, Math.max(1, n)) });
-  const done: Record<string, number> = {}, vides: string[] = [];
-  for (const s of (todo ?? []) as { set_id: string; code: string; lang: string }[]) {
+  const rempli: Record<string, number> = {}, sans: string[] = [];
+  for (const s of (todo ?? []) as { set_id: string; code: string; lang: string; alias: string | null }[]) {
     try {
-      const imgs = await setImages(s.code);
-      if (!imgs || !Object.keys(imgs).length) { await db.rpc('art_apply', { p_set: s.set_id, p_imgs: {} }); vides.push(s.set_id); continue; }
-      const { data: k } = await db.rpc('art_apply', { p_set: s.set_id, p_imgs: imgs });
-      done[s.set_id] = k ?? 0;
+      const found = await findImages(s);
+      if (!found) { await db.rpc('art_apply', { p_set: s.set_id, p_imgs: {} }); sans.push(s.set_id); continue; }
+      const { data: k } = await db.rpc('art_apply', { p_set: s.set_id, p_imgs: found.imgs, p_src: found.src, p_lang: found.lang });
+      rempli[s.set_id] = k ?? 0;
     } catch (e) { console.error('art-fill', s.set_id, (e as Error).message); }
   }
-  return json({ ok: true, rempli: done, sans_visuel: vides });
+  return json({ ok: true, rempli, sans_visuel: sans });
 });

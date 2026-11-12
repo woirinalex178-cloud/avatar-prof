@@ -199,7 +199,11 @@ async function route() {
   const r = location.hash.replace(/^#\/?/, '').split('/')[0];
   if (r !== 'classeur' && typeof binder !== 'undefined') binder.opened = false;
   document.querySelectorAll('#nav a').forEach(a => a.classList.toggle('on', a.dataset.r === r));
-  close(); window.scrollTo(0, 0);
+  close();
+  // on retient où on en était dans chaque page : revenir ne renvoie plus tout en haut
+  const back = S.scroll?.[r];
+  if (back != null) requestAnimationFrame(() => requestAnimationFrame(() => window.scrollTo(0, back)));
+  else window.scrollTo(0, 0);
   try { await (routes[r] || home)(); } catch (e) { console.error(e); view.innerHTML = `<div class="empty">Erreur de chargement. ${esc(e.message)}</div>`; }
   refreshFx(view);
 }
@@ -658,9 +662,19 @@ async function scanModal(intent = 'add') {
   <p class="small mut" id="scs" role="status"></p><div id="bst"></div><div id="scr"></div>
   <details id="scman"><summary class="small">✍️ Saisir le numéro à la main</summary><div class="row2"><label class="f">Numéro (ex. 091/132)<span class="numpair"><input id="scn" placeholder="091" inputmode="numeric" maxlength="7" aria-label="Numéro de la carte"><b>/</b><input id="sct" placeholder="132" inputmode="numeric" maxlength="3" aria-label="Total de la série (optionnel)"></span></label><label class="f">Nom (optionnel)<input id="scw" placeholder="Dracaufeu"></label></div><button class="btn ghost" id="scgo" type="button">Chercher</button><button class="btn ghost sm" type="button" data-names>🔎 Plusieurs cartes par nom (dracau, pika…)</button></details></div>`);
   $('#scint').onclick = e => { const b = e.target.closest('[data-si]'); if (b) setIntent(b.dataset.si); };
-  $('#scf').onchange = async e => { const f = e.target.files[0]; if (!f) return; scanState.intent === 'page' ? scanPage(f) : analyse(await fileToCard(f)); };
+  // Une photo de 12 Mpx met deux bonnes secondes à être décodée : on le dit tout de suite,
+  // on verrouille le bouton, et on vide le champ pour pouvoir re-choisir la même photo.
+  const busy = on => { scanState.busy = on; dbody.querySelectorAll('#cap,#scpick,#pgcap,#bgo').forEach(b => b.classList.toggle('wait', on)); };
+  const withPhoto = async (f, mode) => {
+    if (!f || scanState.busy) return;
+    busy(true); $('#scs').textContent = '⏳ Lecture de la photo…';
+    try { if (mode === 'page') await scanPage(f); else analyse(await fileToCard(f)); }
+    catch (err) { $('#scs').textContent = 'Photo illisible : ' + (err?.message || 'réessaie'); }
+    finally { busy(false); }
+  };
+  $('#scf').onchange = async e => { const f = e.target.files[0]; e.target.value = ''; await withPhoto(f, scanState.intent === 'page' ? 'page' : 'card'); };
   $('#pgfmt').onclick = e => { const b = e.target.closest('[data-pf]'); if (!b) return; try { localStorage.setItem('sc_page', b.dataset.pf); } catch { } $('#pgfmt').querySelectorAll('button').forEach(x => x.setAttribute('aria-pressed', x === b)); };
-  $('#pgf').onchange = e => { const f = e.target.files[0]; if (f) scanPage(f); };
+  $('#pgf').onchange = async e => { const f = e.target.files[0]; e.target.value = ''; await withPhoto(f, 'page'); };
   $('#scgo').onclick = () => manualSearch();
   $('#scn').oninput = e => { if (/^\d{3}$/.test(e.target.value)) $('#sct').focus(); }; // 3 chiffres : on passe au total
   $('#scman').onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); manualSearch(); } };
@@ -670,7 +684,11 @@ async function scanModal(intent = 'add') {
   loadRecog(e => { if (e.status === 'progress' && /onnx/.test(e.file || '') && $('#scs') && e.progress - pct >= 3) { pct = e.progress; $('#scs').textContent = `⏳ Préparation de la reconnaissance (1re fois seulement, 24 Mo)… ${Math.round(pct)} %`; } })
     .then(() => { if (pct && $('#scs')) $('#scs').innerHTML = '✅ Reconnaissance prête. ' + TIPS[scanState.intent]; }).catch(() => { });
   scanState.cam = await startCam($('#cam video'), $('#frame'));
-  if (scanState.cam) { $('#cap').onclick = () => analyse(scanState.cam.capture(true)); $('#bgo').onclick = toggleBurst; }
+  if (scanState.cam) {
+    $('#cap').onclick = async () => { if (scanState.busy) return; busy(true); $('#scs').textContent = '📸 Photo prise, lecture…';
+      try { await analyse(scanState.cam.capture(true)); } finally { busy(false); } };
+    $('#bgo').onclick = toggleBurst;
+  }
   setIntent(scanState.intent);
 }
 function setIntent(k) {
@@ -1887,6 +1905,9 @@ function realtime() {
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => { });
 window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); S.install = e; });
 sb.auth.onAuthStateChange((ev) => { if (ev === 'SIGNED_IN' && !S.user) loadSession().then(() => { realtime(); route(); }); });
+// position de lecture mémorisée par page (classeur, table, forum…)
+S.scroll = {};
+addEventListener('scroll', () => { const r = location.hash.replace(/^#\/?/, '').split('/')[0]; S.scroll[r] = scrollY; }, { passive: true });
 window.addEventListener('hashchange', route);
 { let n = 0, tm; $('.logo').addEventListener('click', () => { n++; clearTimeout(tm); tm = setTimeout(() => n = 0, 2500); if (n >= 7) { n = 0; Game.flag('logo'); checkUnlock(); } }); }
 document.addEventListener('click', e => { if (e.target.closest('[data-intro]')) { e.preventDefault(); playIntro(true); } });

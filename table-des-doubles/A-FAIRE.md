@@ -48,6 +48,13 @@ Aujourd'hui : **0 annonce**. Un site d'échange vide, le visiteur part et ne rev
 3. Note le score. Refais avec une **fausse** carte si tu en as une (1 € sur AliExpress).
 4. Envoie-moi les deux scores : je règle les seuils avec.
 
+## A5 bis. Écrire à Limitless (5 min)
+Les visuels des cartes **japonaises et chinoises** viennent de leur site : TCGdex ne les a pas. Un petit mot de courtoisie (via https://limitlesstcg.com, ou leur Discord) :
+
+> « Bonjour, je développe Sharing Cards, un site gratuit d'échange entre collectionneurs francophones. TCGdex ne fournit pas les visuels des séries japonaises et chinoises ; j'affiche actuellement les vôtres depuis votre CDN, en citant Limitless. Est-ce acceptable pour vous, ou préférez-vous que je les héberge de mon côté ? »
+
+→ Transmets-moi la réponse : si besoin, je bascule sur un hébergement maison en une heure.
+
 ## A6. Vérifications juridiques (20 min)
 - **INPI** : https://data.inpi.fr → recherche « Sharing Cards » en **marques**. Si rien d'identique en classes 9/35/42, tu peux continuer sereinement. (Le dépôt, 190 €, n'est pas obligatoire pour démarrer.)
 - **Relire** une dernière fois Mentions légales / CGU / CGV / Confidentialité (bas du site) : ton SIRET, ton adresse et ton médiateur CM2C y sont déjà.

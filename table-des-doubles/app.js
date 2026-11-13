@@ -333,6 +333,14 @@ async function catalogClasseur() {
   Game.visit();
   const p = progress(S.set), { st, ev: t } = await gameState(), dl = Game.daily();
   const list = p.cs.filter(c => { const q = S.coll[c.id] || 0; return S.filter === 'all' || (S.filter === 'own' && q) || (S.filter === 'miss' && !q) || (S.filter === 'dbl' && q > 1); });
+  // classement : numéro (ordre de la série), cote, rareté, nom, quantité possédée
+  const so = S.sortC || 'num';
+  if (so === 'price') list.sort((a, b) => (b.price_eur ?? -1) - (a.price_eur ?? -1));
+  else if (so === 'cheap') list.sort((a, b) => (a.price_eur ?? 1e9) - (b.price_eur ?? 1e9));
+  else if (so === 'rare') list.sort((a, b) => rarTier(b.rarity) - rarTier(a.rarity) || (b.price_eur ?? -1) - (a.price_eur ?? -1));
+  else if (so === 'common') list.sort((a, b) => (rarTier(a.rarity) || 99) - (rarTier(b.rarity) || 99) || (a.price_eur ?? 1e9) - (b.price_eur ?? 1e9));
+  else if (so === 'name') list.sort((a, b) => nm(a).localeCompare(nm(b), 'fr'));
+  else if (so === 'qty') list.sort((a, b) => (S.coll[b.id] || 0) - (S.coll[a.id] || 0));
   view.innerHTML = `
   ${suspBanner()}
   ${S.profile ? '' : `<div class="banner"><span>Mode invité : ton classeur est enregistré sur cet appareil. Crée ton compte pour le sauvegarder et échanger.</span><a class="btn sm" href="#/compte">Créer mon compte</a></div>`}
@@ -353,11 +361,13 @@ async function catalogClasseur() {
   </div>
   <div class="bar" style="margin-top:18px"><div class="seg" id="flt">${[['all', 'Toutes'], ['own', 'Possédées'], ['miss', 'Manquantes'], ['dbl', 'Doubles']].map(([k, n]) => `<button data-f="${k}" aria-pressed="${S.filter === k}">${n}</button>`).join('')}</div>
   <button class="btn sm" data-scan>📷 Scanner</button><button class="btn sm" data-scan="burst">⚡ Rafale</button><button class="btn sm ghost" data-names>🔎 Par nom</button><button class="btn sm ghost" data-express>⌨️ Saisie express</button><button class="btn sm ghost" data-csv>⬆️ Importer / exporter</button><a class="btn sm ghost" href="#/souhaits">⭐ Mes souhaits${S.wish.size ? ' (' + S.wish.size + ')' : ''}</a></div>
+  <div class="sortbar"><label class="small mut" for="csort">Classer par</label><select id="csort" aria-label="Classement des cartes">${[['num', 'Numéro (ordre de la série)'], ['price', 'Cote : de la plus chère à la moins chère'], ['cheap', 'Cote : de la moins chère à la plus chère'], ['rare', 'Rareté : de la plus rare à la plus commune'], ['common', 'Rareté : de la plus commune à la plus rare'], ['name', 'Nom (A → Z)'], ['qty', 'Quantité possédée']].map(([k, n]) => `<option value="${k}" ${so === k ? 'selected' : ''}>${n}</option>`).join('')}</select></div>
+  ${so === 'rare' || so === 'common' ? `<p class="rarlegend small">${RAR.slice(1).map((r, i) => `<span><span class="rar r${i + 1}">${r[0]}</span> ${i + 1} · ${esc(r[1])}</span>`).join('')}</p>` : ''}
   <div class="grid">${list.map(c => { const q = S.coll[c.id] || 0; return `<div class="tile ${q ? '' : 'miss'}" data-id="${c.id}">
     <button class="tile" data-tog="${c.id}" aria-label="${esc(nm(c))} : ${q} exemplaire(s)" style="padding:0">${img(c)}</button>
     ${q ? `<span class="qty ${q > 1 ? 'dbl' : ''}">×${q}</span>` : ''}
     ${wishStar(c.id)}
-    <div class="meta"><span class="nm">${c.local_id} · ${esc(nm(c))}</span><button type="button" class="v cote" data-cote="${c.id}" aria-label="Courbe de la cote">${eur(c.price_eur)}${trend(c)}</button></div>${jp(c)}
+    <div class="meta"><span class="nm">${rarBadge(c)}${c.local_id} · ${esc(nm(c))}</span><button type="button" class="v cote" data-cote="${c.id}" aria-label="Courbe de la cote">${eur(c.price_eur)}${trend(c)}</button></div>${jp(c)}
     <div class="stepper"><button data-dq="${c.id}" aria-label="Retirer un">−</button>${q > 1 ? `<button class="put" data-put="${c.id}">Poser</button>` : ''}<button data-iq="${c.id}" aria-label="Ajouter un">+</button></div>
   </div>`; }).join('') || '<div class="empty">Rien ici pour l\'instant.</div>'}</div>`;
 }
@@ -828,7 +838,18 @@ async function toLang(c, lang) {
   return v || c;
 }
 const langChips = (c, attr) => ALL_LANGS.map(l => `<button type="button" class="chip lg${c.lang === l ? ' on' : ''}" data-${attr}="${l}" aria-pressed="${c.lang === l}">${lcode(l)}</button>`).join('');
+// Prévenir quand un travail long se termine alors que l'appli est en arrière-plan
+async function notifyDone(title, body) {
+  try { navigator.vibrate?.([120, 60, 120]); } catch { }
+  try {
+    if (!('Notification' in window) || Notification.permission !== 'granted') return;
+    const reg = await navigator.serviceWorker?.getRegistration();
+    if (reg?.showNotification) reg.showNotification(title, { body, icon: '/img/favicon.png', badge: '/img/favicon.png', tag: 'scan' }); else new Notification(title, { body });
+  } catch { }
+}
 async function scanPage(file) {
+  // on demande une seule fois le droit de prévenir (refus = on n'insiste pas)
+  try { if ('Notification' in window && Notification.permission === 'default') Notification.requestPermission(); } catch { }
   const [cols, rows] = pageFmt().split('x').map(Number), page = await splitPage(file, cols, rows);
   const res = Array.from({ length: page.n }, () => ({ st: 'wait' }));
   scanState.page = res;
@@ -908,7 +929,14 @@ async function scanPage(file) {
     }
   };
   const fils = (navigator.deviceMemory || 4) < 4 ? 2 : 3; // téléphone serré : on calme le jeu
-  await Promise.all(Array.from({ length: fils }, worker));
+  // L'écran reste allumé pendant la lecture (sinon le téléphone se met en veille et tout s'arrête),
+  // et si tu es passé sur une autre appli, une notification te prévient quand c'est fini.
+  let wl = null; try { wl = await navigator.wakeLock?.request('screen'); } catch { }
+  const relock = async () => { if (!document.hidden && wl?.released) try { wl = await navigator.wakeLock?.request('screen'); } catch { } };
+  document.addEventListener('visibilitychange', relock);
+  try { await Promise.all(Array.from({ length: fils }, worker)); }
+  finally { document.removeEventListener('visibilitychange', relock); try { await wl?.release(); } catch { } }
+  if (document.hidden) notifyDone(`Page lue : ${res.filter(r => r.pick).length} carte(s) reconnue(s)`, 'Reviens sur Sharing Cards pour vérifier et les ajouter au classeur.');
   page.close();
   if (scanState.page !== res || !$('#scr')) return;
   const ok = res.filter(r => r.st === 'sure').length, doubt = res.filter(r => r.st === 'unsure').length, none = res.filter(r => r.st === 'none').length;
@@ -1102,6 +1130,23 @@ async function cardRef(c) {
   const px = c.price_eur != null ? null : [...vs].filter(v => v.price_eur != null).sort((a, b) => (b.lang === 'en') - (a.lang === 'en'))[0];
   return im || px ? { img: im, px } : null;
 }
+// Échelle de rareté commune à toutes les séries : 1 (commune) à 9 (la plus rare).
+const RAR = [['—', 'Rareté inconnue'], ['●', 'Commune'], ['◆', 'Peu commune'], ['★', 'Rare'], ['★H', 'Rare holo'], ['★★', 'Double rare (ex, V, GX…)'],
+  ['★★U', 'Ultra rare'], ['✦', 'Illustration rare'], ['✦✦', 'Illustration spéciale / Secrète'], ['♛', 'Hyper rare / Or']];
+const rarTier = rarity => {
+  const r = String(rarity || '').toLowerCase();
+  if (!r || r === 'none') return 0;
+  if (/hyper|gold|crown|mega hyper/.test(r)) return 9;
+  if (/special illustration|secret|rainbow|shiny ultra|black white/.test(r)) return 8;
+  if (/illustration|trainer gallery|shiny rare|full art/.test(r)) return 7;
+  if (/ultra|vmax|vstar|prime|legend|lv\.x|star/.test(r)) return 6;
+  if (/double|ace spec|radiant|amazing|holo (?:rare )?(?:v|ex|gx)|rare holo (?:v|ex|gx)|classic collection/.test(r)) return 5;
+  if (/holo/.test(r)) return 4;
+  if (/uncommon|peu commune/.test(r)) return 2;
+  if (/common|commune/.test(r)) return 1;
+  return 3;
+};
+const rarBadge = c => { const t = rarTier(c?.rarity); return t ? `<span class="rar r${t}" title="${esc(RAR[t][1])} (indice ${t}/9)">${RAR[t][0]}</span>` : ''; };
 const rarityMark = rarity => {
   const r = String(rarity || '').toLowerCase();
   if (/(common|commune)/.test(r) && !/(uncommon|peu)/.test(r)) return '●';
@@ -2168,3 +2213,7 @@ async function sparks() {
     el.innerHTML = `<svg viewBox="0 0 220 48" class="${up ? 'up' : 'dn'}"><polyline points="${line}"/></svg><span class="small mut">min ${eur(mn)} · max ${eur(mx)} · ${data.length} relevés</span>`;
   }
 }
+
+// classement du classeur : retenu d'une visite à l'autre
+try { S.sortC = localStorage.getItem('c_sort') || 'num'; } catch { }
+document.addEventListener('change', e => { if (e.target.id !== 'csort') return; S.sortC = e.target.value; try { localStorage.setItem('c_sort', S.sortC); } catch { } classeur(); });

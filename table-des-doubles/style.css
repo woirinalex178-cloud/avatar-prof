@@ -590,3 +590,11 @@ details>summary{cursor:pointer}
 .qkv .on{color:var(--gold);font-weight:700}
 .gap{font-size:12.5px;line-height:1.45;margin:8px 0 0;padding:6px 9px;border-radius:8px}
 .gap.warn{background:#e0b85c1f;border-left:3px solid var(--gold)}.gap.ok{color:var(--ok);padding-left:0}
+
+/* Classement du classeur et indice de rareté (1 commune → 9 hyper rare) */
+.sortbar{display:flex;align-items:center;gap:8px;margin:12px 0 0;flex-wrap:wrap}
+.sortbar select{flex:1;min-width:0;max-width:340px}
+.rar{display:inline-block;font:700 10px var(--mono);padding:1px 4px;border-radius:5px;margin-right:4px;background:#ffffff14;color:#cfd8d3;vertical-align:1px}
+.rar.r3,.rar.r4{color:#f3e3a6}.rar.r5,.rar.r6{background:#e0b85c2e;color:var(--gold)}
+.rar.r7,.rar.r8{background:#7fd6ff26;color:#9fe3ff}.rar.r9{background:linear-gradient(90deg,#e0b85c,#fff1c2);color:#2a1f05}
+.rarlegend{display:flex;flex-wrap:wrap;gap:4px 12px;margin:8px 0 0;color:var(--mut)}

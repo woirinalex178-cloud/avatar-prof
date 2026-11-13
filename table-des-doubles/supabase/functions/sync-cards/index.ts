@@ -43,7 +43,9 @@ function quote(card: any, fx: number) {
   if (eur == null) { eur = avg7; basis = 'avg7'; }
   if (eur == null) { eur = avg; basis = 'avg'; }
   if (eur == null) { eur = alt; basis = 'tcgplayer'; }
-  return { eur: r2(eur), basis: eur == null ? null : basis + (holoOnly && basis !== 'tcgplayer' ? '-holo' : ''), trend, avg30, avg7, low, usd, alt };
+  // numéro du produit chez TCGplayer : sert de visuel de dernier recours quand aucune autre source n'en a
+  const tpId = t?.productId ?? card.variants_detailed?.find((x: any) => x.thirdParty?.tcgplayer)?.thirdParty.tcgplayer ?? null;
+  return { eur: r2(eur), basis: eur == null ? null : basis + (holoOnly && basis !== 'tcgplayer' ? '-holo' : ''), trend, avg30, avg7, low, usd, alt, tp: tpId != null ? String(tpId) : null };
 }
 
 async function plan(langs = LANGS) {

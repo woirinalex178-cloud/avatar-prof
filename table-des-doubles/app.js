@@ -38,7 +38,11 @@ const esc = s => String(s ?? '').replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': 
 const eur = v => v == null ? '—' : Number(v).toLocaleString('fr-FR', { style: 'currency', currency: 'EUR', maximumFractionDigits: v < 10 ? 2 : 0 });
 const view = $('#view'), dlg = $('#dlg'), dbody = $('#dbody');
 function toast(m, bad) { const t = $('#toast'); t.textContent = m; t.className = 'toast' + (bad ? ' bad' : ''); t.hidden = false; clearTimeout(toast.h); toast.h = setTimeout(() => t.hidden = true, 3200); }
-function modal(html) { dbody.innerHTML = html; if (!dlg.open) dlg.showModal(); }
+function modal(html) { dbody.innerHTML = html; if (!dlg.open) { dlg.showModal(); dlgPush(); } }
+// Retour du téléphone : chaque fenêtre ouverte ajoute une étape à l'historique, le retour la referme.
+function dlgPush() { if (!history.state?.dlg) history.pushState({ dlg: 1 }, ''); }
+function dlgClosed() { if (S.popClose || document.querySelector('dialog[open]')) return; if (history.state?.dlg) history.back(); }
+window.addEventListener('popstate', () => { const d = [...document.querySelectorAll('dialog[open]')].pop(); if (!d) return; S.popClose = true; d.close(); S.popClose = false; if (document.querySelector('dialog[open]')) dlgPush(); });
 const close = () => dlg.open && dlg.close();
 const errMsg = e => { const m = e?.message || String(e);
   if (/posts_body_check/.test(m)) return 'Ton message doit faire entre 2 et 2 000 caractères.';
@@ -199,13 +203,13 @@ async function route() {
   const r = location.hash.replace(/^#\/?/, '').split('/')[0];
   if (r !== 'classeur' && typeof binder !== 'undefined') binder.opened = false;
   document.querySelectorAll('#nav a').forEach(a => a.classList.toggle('on', a.dataset.r === r));
-  close();
-  // on retient où on en était dans chaque page : revenir ne renvoie plus tout en haut
-  const back = S.scroll?.[r];
-  if (back != null) requestAnimationFrame(() => requestAnimationFrame(() => window.scrollTo(0, back)));
-  else window.scrollTo(0, 0);
+  S.popClose = true; close(); document.querySelector('#dlg2[open]')?.close(); S.popClose = false;
+  // on retient où on en était dans chaque page : on y retourne une fois la page dessinée
+  // (avant, la page vide du chargement remettait le compteur à zéro)
+  const back = S.scroll?.[r]; S.restoring = true;
   try { await (routes[r] || home)(); } catch (e) { console.error(e); view.innerHTML = `<div class="empty">Erreur de chargement. ${esc(e.message)}</div>`; }
   refreshFx(view);
+  requestAnimationFrame(() => { window.scrollTo(0, back || 0); setTimeout(() => { if (back && Math.abs(scrollY - back) > 40) window.scrollTo(0, back); S.restoring = false; }, 350); });
 }
 
 async function home() {
@@ -261,7 +265,7 @@ function playBinderOpening() {
 }
 async function classeur() {
   clearTimeout(binderTimer);
-  if (binder.mode !== 'catalog' && !binder.cinema) playBinderOpening();
+  if (binder.mode !== 'catalog' && !binder.cinema && !binder.opened) { playBinderOpening(); binder.opened = true; }
   if (binder.mode === 'catalog') {
     await catalogClasseur();
     view.insertAdjacentHTML('afterbegin', '<button class="btn ghost binder-back" id="binder-back">← Revenir à mes cartes</button>');
@@ -298,17 +302,26 @@ async function classeur() {
   const languages = Object.keys(LANGS);
   const cards = collections.flatMap(g => [...g.rows].sort((a,b) => String(a.local_id ?? a.num ?? '').localeCompare(String(b.local_id ?? b.num ?? ''), 'fr', { numeric: true }) || languages.indexOf(a.lang) - languages.indexOf(b.lang)));
   const qty = ids.reduce((n,id) => n + S.coll[id], 0), doubles = ids.reduce((n,id) => n + Math.max(0,S.coll[id]-1),0);
-  const card = (c, n) => { const q = S.coll[c.id]; return `<article class="binder-pocket binder-reveal" style="--reveal:${Math.min(n * .045, 1.8)}s" data-id="${esc(c.id)}"><button class="binder-art" data-binder-card="${esc(c.id)}" aria-label="Agrandir ${esc(nm(c))}, ${LANGS[c.lang] || c.lang}">${img(c)}<span class="binder-count ${q > 1 ? 'is-double' : ''}">×${q}${q > 1 ? (q === 2 ? ' · Double' : q === 3 ? ' · Triple' : ' · Exemplaires') : ''}</span></button><div class="binder-card-info"><b>${esc(nm(c))}</b><span>N° ${esc(c.local_id ?? c.num)} · ${flag(c.lang)}</span></div><div class="stepper"><button data-dq="${esc(c.id)}" aria-label="Retirer un exemplaire de ${esc(nm(c))}">−</button><span>${q} ex.</span><button data-iq="${esc(c.id)}" aria-label="Ajouter un exemplaire de ${esc(nm(c))}">+</button></div>${q > 1 ? `<button class="btn ghost sm binder-trade" data-put="${esc(c.id)}">⇄ Échanger mes doubles</button>` : ''}</article>`; };
-  const sections = collections.map((g, gi) => { const ordered = g.rows.sort((a,b) => String(a.local_id ?? a.num ?? '').localeCompare(String(b.local_id ?? b.num ?? ''), 'fr', { numeric: true }) || languages.indexOf(a.lang) - languages.indexOf(b.lang)); return `<section class="binder-collection"><header><span class="binder-eyebrow">COLLECTION ${gi + 1}</span><h2>${esc(g.name)}</h2><span>${g.rows.length} carte${g.rows.length > 1 ? 's' : ''}</span></header><div class="binder-pockets" style="--binder-cols:${binder.size === 4 ? 2 : binder.size === 16 ? 4 : 3}">${ordered.map((c, i) => card(c, cards.indexOf(c))).join('')}</div></section>`; }).join('');
+  const card = (c, n) => { const q = S.coll[c.id]; return `<article class="binder-pocket binder-reveal" style="--reveal:${Math.min(n * .045, 1.8)}s" data-id="${esc(c.id)}"><button class="binder-art" data-binder-card="${esc(c.id)}" aria-label="Agrandir ${esc(nm(c))}, ${LANGS[c.lang] || c.lang}">${img(c)}<span class="binder-count ${q > 1 ? 'is-double' : ''}">×${q}${q > 1 ? (q === 2 ? ' · Double' : q === 3 ? ' · Triple' : ' · Exemplaires') : ''}</span></button><div class="binder-card-info"><b>${esc(nm(c))}</b><span>${rarBadge(c)}N° ${esc(c.local_id ?? c.num)} · ${flag(c.lang)}</span><span class="binder-price">${eur(c.price_eur)}${q > 1 ? ` <small class="mut">× ${q} = ${eur((c.price_eur || 0) * q)}</small>` : ''}</span></div><div class="stepper"><button data-dq="${esc(c.id)}" aria-label="Retirer un exemplaire de ${esc(nm(c))}">−</button><span>${q} ex.</span><button data-iq="${esc(c.id)}" aria-label="Ajouter un exemplaire de ${esc(nm(c))}">+</button></div>${q > 1 ? `<button class="btn ghost sm binder-trade" data-put="${esc(c.id)}">⇄ Échanger mes doubles</button>` : ''}</article>`; };
+  // classement choisi : par collection (défaut) ou toutes les cartes à la suite, triées
+  const sb_ = S.sortB || 'set', price = c => c.price_eur ?? -1;
+  const SORTS = { price: (a, b) => price(b) - price(a), cheap: (a, b) => (a.price_eur ?? 1e9) - (b.price_eur ?? 1e9),
+    rare: (a, b) => rarTier(b.rarity) - rarTier(a.rarity) || price(b) - price(a), common: (a, b) => (rarTier(a.rarity) || 99) - (rarTier(b.rarity) || 99) || price(a) - price(b),
+    name: (a, b) => nm(a).localeCompare(nm(b), 'fr'), qty: (a, b) => S.coll[b.id] - S.coll[a.id] || price(b) - price(a) };
+  if (SORTS[sb_]) { const all = [...rows].sort(SORTS[sb_]); cards.length = 0; cards.push(...all);
+    collections.splice(0, collections.length, { key: 'all', name: { price: 'De la plus chère à la moins chère', cheap: 'De la moins chère à la plus chère', rare: 'De la plus rare à la plus commune', common: 'De la plus commune à la plus rare', name: 'Par nom (A → Z)', qty: 'Les plus possédées d’abord' }[sb_], rows: all, sorted: true }); }
+  const total = rows.reduce((t, c) => t + (c.price_eur || 0) * S.coll[c.id], 0);
+  const sections = collections.map((g, gi) => { const ordered = g.sorted ? g.rows : g.rows.sort((a,b) => String(a.local_id ?? a.num ?? '').localeCompare(String(b.local_id ?? b.num ?? ''), 'fr', { numeric: true }) || languages.indexOf(a.lang) - languages.indexOf(b.lang)); return `<section class="binder-collection"><header><span class="binder-eyebrow">${g.sorted ? 'TOUTES MES CARTES' : 'COLLECTION ' + (gi + 1)}</span><h2>${esc(g.name)}</h2><span>${g.rows.length} carte${g.rows.length > 1 ? 's' : ''}</span></header><div class="binder-pockets" style="--binder-cols:${binder.size === 4 ? 2 : binder.size === 16 ? 4 : 3}">${ordered.map((c, i) => card(c, cards.indexOf(c))).join('')}</div></section>`; }).join('');
   const opening = '';
   view.innerHTML = `${opening}<section class="binder-intro"><div><span class="binder-eyebrow">TA COLLECTION PREND VIE</span><h1>Mon classeur</h1><p class="mut">Toutes tes cartes, collection après collection.</p></div><div class="binder-actions"><button class="btn" data-scan>＋ Scanner une carte</button><button class="btn ghost" id="binder-add">Ajouter depuis le catalogue</button></div></section>
-    <div class="binder-stats"><span><b>${qty}</b> exemplaires</span><span><b>${ids.length}</b> cartes différentes</span><span><b>${collections.length}</b> collections</span><span><b>${doubles}</b> doubles à échanger</span></div>
+    <div class="binder-stats"><span><b>${qty}</b> exemplaires</span><span><b>${ids.length}</b> cartes différentes</span><span><b>${collections.length}</b> collections</span><span><b>${doubles}</b> doubles à échanger</span><span><b>${eur(total)}</b> valeur estimée</span></div>
     ${S.profile ? '' : '<p class="small mut">Mode invité · enregistré sur cet appareil. <a href="#/compte">Créer un compte pour sauvegarder ma collection</a></p>'}
-    ${ids.length ? `<div class="binder-toolbar"><label>Pochettes par page<select id="binder-size">${[[4,'2 × 2'],[9,'3 × 3'],[12,'3 × 4'],[16,'4 × 4']].map(([n,label]) => `<option value="${n}" ${binder.size === n ? 'selected' : ''}>${label}</option>`).join('')}</select></label><button class="btn ghost" id="binder-slide">▷ Lancer le diaporama</button></div><section class="binder-book" aria-label="Classeur ouvert"><div class="binder-spine" aria-hidden="true"><i></i><i></i><i></i></div><div class="binder-sheet">${sections}</div></section><p class="small mut binder-tip">Les cartes sont rangées par collection, numéro puis langue. Clique sur une carte pour l’admirer.</p>` : `<div class="binder-empty"><img src="img/logo.webp" alt="" width="84" height="84"><h2>La première page de ton aventure</h2><p>Ajoute tes premières cartes : elles apparaîtront ici, rangées par collection et par langue.</p><button class="btn" data-scan>📷 Scanner ma première carte</button><button class="btn ghost" id="binder-empty-add">Parcourir le catalogue</button></div>`}`;
+    ${ids.length ? `<div class="binder-toolbar"><label>Pochettes par page<select id="binder-size">${[[4,'2 × 2'],[9,'3 × 3'],[12,'3 × 4'],[16,'4 × 4']].map(([n,label]) => `<option value="${n}" ${binder.size === n ? 'selected' : ''}>${label}</option>`).join('')}</select></label><label>Classer<select id="binder-sort">${[['set', 'Par collection'], ['price', 'Valeur : la plus chère d’abord'], ['cheap', 'Valeur : la moins chère d’abord'], ['rare', 'Rareté : la plus rare d’abord'], ['common', 'Rareté : la plus commune d’abord'], ['name', 'Nom (A → Z)'], ['qty', 'Quantité possédée']].map(([k, l]) => `<option value="${k}" ${sb_ === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label><button class="btn ghost" id="binder-slide">▷ Lancer le diaporama</button></div>${sb_ === 'rare' || sb_ === 'common' ? `<p class="rarlegend small">${RAR.slice(1).map((r, i) => `<span><span class="rar r${i + 1}">${r[0]}</span> ${i + 1} · ${esc(r[1])}</span>`).join('')}</p>` : ''}<section class="binder-book" aria-label="Classeur ouvert"><div class="binder-spine" aria-hidden="true"><i></i><i></i><i></i></div><div class="binder-sheet">${sections}</div></section><p class="small mut binder-tip">Les cartes sont rangées par collection, numéro puis langue. Clique sur une carte pour l’admirer.</p>` : `<div class="binder-empty"><img src="img/logo.webp" alt="" width="84" height="84"><h2>La première page de ton aventure</h2><p>Ajoute tes premières cartes : elles apparaîtront ici, rangées par collection et par langue.</p><button class="btn" data-scan>📷 Scanner ma première carte</button><button class="btn ghost" id="binder-empty-add">Parcourir le catalogue</button></div>`}`;
   const catalogue = () => { binder.cinema = false; binder.mode = 'catalog'; classeur(); };
   $('#binder-add').onclick = catalogue;
   if (!ids.length) { $('#binder-empty-add').onclick = catalogue; return; }
   $('#binder-size').onchange = e => { binder.size = Number(e.target.value); classeur(); };
+  $('#binder-sort').onchange = e => { S.sortB = e.target.value; try { localStorage.setItem('b_sort', S.sortB); } catch { } window.scrollTo(0, 0); classeur(); };
   // L'édition japonaise partage généralement l'illustration des autres langues.
   // Quand TCGdex ne fournit pas son fichier image, on montre cette illustration de référence.
   view.querySelectorAll('.binder-pocket[data-id]').forEach(el => {
@@ -1175,8 +1188,8 @@ async function nameSearch() {
 
 // ---------- fenêtres secondaires : carte en grand, courbe de cote ----------
 function sheet(html, cls = '') {
-  let z = $('#dlg2'); if (!z) { z = Object.assign(document.createElement('dialog'), { id: 'dlg2' }); z.onclick = e => { if (e.target === z || z.classList.contains('zoom') || e.target.closest('[data-x]')) z.close(); }; document.body.append(z); }
-  z.className = cls; z.innerHTML = `<button type="button" class="x" data-x aria-label="Fermer">×</button>${html}`; if (!z.open) z.showModal(); return z;
+  let z = $('#dlg2'); if (!z) { z = Object.assign(document.createElement('dialog'), { id: 'dlg2' }); z.addEventListener('close', dlgClosed); z.onclick = e => { if (e.target === z || z.classList.contains('zoom') || e.target.closest('[data-x]')) z.close(); }; document.body.append(z); }
+  z.className = cls; z.innerHTML = `<button type="button" class="x" data-x aria-label="Fermer">×</button>${html}`; if (!z.open) { z.showModal(); dlgPush(); } return z;
 }
 // toucher une carte (fiche du scan, annonce, recherche par nom) l'affiche en plein écran
 document.addEventListener('click', e => { const i = e.target.closest('.sr-img img, .split > div:first-child > img.cimg, .ns-img img'); if (!i) return;
@@ -2100,7 +2113,10 @@ document.addEventListener('submit', async e => {
   inp.value = ''; loadChat(f.dataset.chat);
 });
 dlg.addEventListener('click', e => { if (e.target === dlg) close(); });
-dlg.addEventListener('close', () => { if (location.hash.startsWith('#/classeur')) classeur(); });
+dlg.addEventListener('close', dlgClosed);
+// fenêtre fermée dans le classeur : on le redessine (quantités à jour) sans bouger de place
+dlg.addEventListener('close', async () => { if (!location.hash.startsWith('#/classeur')) return; const y = scrollY; S.restoring = true;
+  try { await classeur(); } finally { requestAnimationFrame(() => { window.scrollTo(0, y); S.restoring = false; }); } });
 
 // temps réel : nouveaux messages / offres
 function realtime() {
@@ -2116,7 +2132,7 @@ window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); S.inst
 sb.auth.onAuthStateChange((ev) => { if (ev === 'SIGNED_IN' && !S.user) loadSession().then(() => { realtime(); route(); }); });
 // position de lecture mémorisée par page (classeur, table, forum…)
 S.scroll = {};
-addEventListener('scroll', () => { const r = location.hash.replace(/^#\/?/, '').split('/')[0]; S.scroll[r] = scrollY; }, { passive: true });
+addEventListener('scroll', () => { if (S.restoring) return; const r = location.hash.replace(/^#\/?/, '').split('/')[0]; S.scroll[r] = scrollY; }, { passive: true });
 window.addEventListener('hashchange', route);
 { let n = 0, tm; $('.logo').addEventListener('click', () => { n++; clearTimeout(tm); tm = setTimeout(() => n = 0, 2500); if (n >= 7) { n = 0; Game.flag('logo'); checkUnlock(); } }); }
 document.addEventListener('click', e => { if (e.target.closest('[data-intro]')) { e.preventDefault(); playIntro(true); } });
@@ -2278,5 +2294,5 @@ async function sparks() {
 }
 
 // classement du classeur : retenu d'une visite à l'autre
-try { S.sortC = localStorage.getItem('c_sort') || 'num'; } catch { }
+try { S.sortC = localStorage.getItem('c_sort') || 'num'; S.sortB = localStorage.getItem('b_sort') || 'set'; } catch { }
 document.addEventListener('change', e => { if (e.target.id !== 'csort') return; S.sortC = e.target.value; try { localStorage.setItem('c_sort', S.sortC); } catch { } classeur(); });

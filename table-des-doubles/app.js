@@ -1070,6 +1070,29 @@ async function langVersions(c) {
   })().catch(() => []));
   return langCache.get(k);
 }
+// Carte sans visuel : le membre désigne, parmi les propositions, l'image qui va avec.
+// Le choix est enregistré pour tout le monde (et pour les autres langues de la même illustration).
+function artPicker(c, list) {
+  const seen = new Set(), opts = [...(list || []), ...Object.values(S.cards).filter(x => x.name === c.name || (c.name_fr && x.name_fr === c.name_fr))]
+    .filter(x => x.id !== c.id && artUrl(x) && !seen.has(artUrl(x)) && seen.add(artUrl(x))).slice(0, 12);
+  const box = document.createElement('div'); box.className = 'artpick panel'; box.id = 'artpick';
+  box.innerHTML = opts.length
+    ? `<p class="small" style="margin:0 0 6px"><b>🖼️ Cette carte n'a pas encore de visuel.</b> Si l'un de ceux-ci est le bon dessin, touche-le : il sera ajouté pour toute la communauté.</p>
+       <div class="artopts">${opts.map(x => `<button type="button" data-artfrom="${esc(x.id)}" title="${esc(nm(x))} · ${esc(x.set_name || '')} · ${esc(x.local_id)}"><img src="${artUrl(x)}" alt="" loading="lazy"><small>${flag(x.lang)} ${esc(x.local_id)}</small></button>`).join('')}</div>`
+    : `<p class="small mut" style="margin:0">🖼️ Pas encore de visuel pour cette carte, et aucun dessin proche dans les propositions.</p>`;
+  $('#scr')?.appendChild(box);
+  box.onclick = async e => {
+    const b = e.target.closest('[data-artfrom]'); if (!b) return; e.stopPropagation();
+    if (!S.user) return toast('Connecte-toi pour associer un visuel.', true);
+    const x = opts.find(o => o.id === b.dataset.artfrom);
+    if (!confirm(`Associer ce visuel (${x ? nm(x) + ' · ' + x.local_id : ''}) à « ${nm(c)} » n° ${c.local_id} ?\n\nVérifie que c'est bien le même dessin : il sera visible par tous.`)) return;
+    const { data, error } = await sb.rpc('art_confirm', { p_card: c.id, p_from: b.dataset.artfrom });
+    if (error) return toast(/art_confirm|function/i.test(error.message) ? 'Fonction pas encore installée côté base (voir A-FAIRE).' : error.message, true);
+    c.image_url = artUrl(x, true); remember([c]);
+    toast(data > 1 ? `Merci ! Visuel ajouté à ${data} versions de cette carte.` : 'Merci ! Visuel ajouté.');
+    showScan(c);
+  };
+}
 function showScan(c) {
   scanState.shown = c; scanState.qty = scanState.qty || 1;
   const add = scanState.intent === 'add', list = scanState.list || [], seenArt = new Set([artKey(c.id)]);
@@ -1083,6 +1106,7 @@ function showScan(c) {
     </div><div class="sr-acts"><p class="small" style="margin:0"><b>C'est bien elle ?</b></p>${add ? bAdd + bAuth : bAuth + bAdd}${askAI(scanState.how)}${widenBtn(scanState.how)}
     <p class="small" style="margin:6px 0 0">${wishStar(c.id)} ${S.wish.has(c.id) ? 'Dans ta liste de souhaits' : 'La chercher : ajouter à mes souhaits'}</p></div></div>
     ${others.length ? `<details class="small"><summary>Pas la bonne ? (${others.length} autres)</summary><div class="alts">${others.map(x => `<button type="button" data-tw="${x.id}">${img(x)}<small>${flag(x.lang)} ${esc(nm(x))}<br>${esc(x.set_name)} · ${esc(x.local_id)}</small></button>`).join('')}</div></details>` : ''}`;
+  if (!artUrl(c)) artPicker(c, list);
   if (!c.image) cardRef(c).then(r => {
     const b = $('#scr .sr-img'); if (!b || scanState.shown !== c) return;
     b.innerHTML = r?.img

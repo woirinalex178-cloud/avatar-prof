@@ -107,3 +107,10 @@ Tant que ce bloc n'est pas fait, **les échanges carte contre carte fonctionnent
 
 # Déjà fait ✅
 Inscriptions · Stripe en test · Boxtal connecté (vrais points relais) · textes légaux + médiateur · page de modération (signalements, litiges, RGPD) · liste de souhaits · import/export CSV · défi de la semaine · frais d'échange payables · forum en 5 sections · blog hebdomadaire automatique · masquage des coordonnées · trophées honnêtes · page Boutiques partenaires · kit de lancement (`LANCEMENT.md`).
+
+
+## 🖼️ Visuels confirmés par les membres (13 nov.) — 2 min
+Pour que le bouton « c'est ce visuel » fonctionne :
+1. Supabase → **SQL Editor** → **New query**.
+2. Colle tout le fichier `supabase/sql/2026-11-13-visuels-par-les-membres.sql`.
+3. **Run**. Message attendu : « Success. No rows returned ».

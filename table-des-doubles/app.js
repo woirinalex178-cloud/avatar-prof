@@ -1276,11 +1276,13 @@ const BASIS = { trend: 'tendance Cardmarket', avg30: 'moyenne 30 jours Cardmarke
 const quoteCache = new Map();
 async function quoteBox(c) {
   if (!c?.id) return '';
-  if (!quoteCache.has(c.id)) quoteCache.set(c.id, sb.from('cards').select('price_eur,price_basis,price_trend,price_avg30,price_avg7,price_low,price_usd,price_alt,price_updated').eq('id', c.id).maybeSingle().then(r => r.data).catch(() => null));
+  if (!quoteCache.has(c.id)) quoteCache.set(c.id, sb.from('cards').select('price_eur,price_basis,price_trend,price_avg30,price_avg7,price_low,price_usd,price_alt,price_updated,price_src,price_alt_at').eq('id', c.id).maybeSingle().then(r => r.data).catch(() => null));
   const q = await quoteCache.get(c.id);
   if (!q || q.price_eur == null || !q.price_basis) return '';
   const holo = /-holo$/.test(q.price_basis), b = BASIS[q.price_basis.replace(/-holo$/, '')] || q.price_basis;
-  const when = q.price_updated ? ` · relevée le ${new Date(q.price_updated).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' })}` : '';
+  const SRC = { cardmarket: 'fichier officiel Cardmarket', tcgdex: 'Cardmarket via TCGdex', tcgplayer: 'TCGplayer' };
+  const src = SRC[q.price_src] ? ` · source : ${SRC[q.price_src]}` : '';
+  const when = q.price_updated ? `${src} · relevée le ${new Date(q.price_updated).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' })}` : '';
   const row = (k, v, on) => v == null ? '' : `<dt${on ? ' class="on"' : ''}>${k}</dt><dd${on ? ' class="on"' : ''}>${eur(v)}</dd>`;
   const base = q.price_basis.replace(/-holo$/, '');
   let gap = '';

@@ -661,6 +661,7 @@ const INTENTS = [['add', '➕ Ajouter'], ['burst', '⚡ Rafale'], ['page', '📒
 const TIPS = { add: 'Cadre la carte en entier : l\'appli lit le numéro (ex. 199/165) et la compare aux images officielles.', auth: 'Prends le recto en photo : la carte est reconnue puis le contrôle démarre avec la même photo.',
   burst: 'Passe tes cartes une à une dans le cadre : chaque carte reconnue est ajoutée toute seule (bip). Change de carte au signal ✅.', page: 'Choisis le format de ta page, puis photographie-la à plat, cadrée bord à bord, sans reflet.' };
 async function scanModal(intent = 'add') {
+  if (scanState.cv) freeCanvas(scanState.cv); if (scanState.url) URL.revokeObjectURL(scanState.url);
   scanState = { intent, photo: null, cv: null }; burst = null;
   modal(`<div class="form scan"><h2 style="margin:0">Scanner des cartes</h2>
   <div class="seg quad" id="scint">${INTENTS.map(([k, t]) => `<button type="button" data-si="${k}" aria-pressed="${intent === k}">${t}</button>`).join('')}</div>
@@ -712,9 +713,12 @@ function setIntent(k) {
   if (k === 'add' || k === 'auth') { if (scanState.shown) showScan(scanState.shown); } else if (!burst) $('#scr').innerHTML = '';
 }
 async function analyse(cv) {
-  scanState.cv = cv; scanState.photo = await toBlob(cv); scanState.shown = null;
+  // la photo précédente est libérée avant de garder la nouvelle (sinon la mémoire du téléphone se remplit à chaque carte)
+  if (scanState.cv && scanState.cv !== cv) freeCanvas(scanState.cv);
+  if (scanState.url) URL.revokeObjectURL(scanState.url);
+  scanState.cv = cv; scanState.photo = await toBlob(cv); scanState.shown = null; scanState.url = URL.createObjectURL(scanState.photo);
   const tA = performance.now();
-  $('#scr').innerHTML = `<div class="scanwait"><img src="${URL.createObjectURL(scanState.photo)}" alt=""><span>Lecture de la carte…<br><small class="mut" id="scwt">0,0 s · abandon au bout de ${SCAN_BUDGET / 1000} s</small></span></div>`; $('#scs').textContent = '';
+  $('#scr').innerHTML = `<div class="scanwait"><img src="${scanState.url}" alt=""><span>Lecture de la carte…<br><small class="mut" id="scwt">0,0 s · abandon au bout de ${SCAN_BUDGET / 1000} s</small></span></div>`; $('#scs').textContent = '';
   clearInterval(analyse.t); analyse.t = setInterval(() => { const e = $('#scwt'); if (!e) return clearInterval(analyse.t); e.textContent = `${secs(performance.now() - tA)} · abandon au bout de ${SCAN_BUDGET / 1000} s`; }, 200);
   try {
     const r = await identify(cv);
@@ -751,6 +755,7 @@ async function tickBurst() {
         else if (r.list.length) return burstAsk(r.list.slice(0, 6), g);
         else { burst.last = g; burst.cleared = false; camtip('😕 Non reconnue : retourne-la un peu ou passe à la suivante'); }
       } catch (e) { camtip(e.message); }
+      finally { freeCanvas(cv); } // rafale : chaque image lue est rendue aussitôt (Safari plafonne la mémoire des images)
       burst.busy = false;
     }
   }
@@ -963,7 +968,8 @@ const howLine = h => {
 // L'IA lit souvent la bonne carte alors que le catalogue ne la retrouve pas (s\u00e9rie absente,
 // nom en cor\u00e9en ou en chinois). On propose toujours de chercher ce qu'elle a lu, partout.
 const widenBtn = h => { const r = h?.read, n = r && (r.name_en || r.name);
-  return n ? `<button type="button" class="btn sm ghost" id="scwide">\u{1F50E} Aucune ne correspond : chercher \u00ab\u00a0${esc(String(n).slice(0, 22))}\u00a0\u00bb</button>` : ''; };
+  const num = r.number ? ` n\u00b0 ${esc(r.number)}${r.total ? '/' + esc(r.total) : ''}` : '', lg = r.language ? ` \u00b7 ${esc(lcode(String(r.language).toLowerCase()))}` : '';
+  return n ? `<button type="button" class="btn sm aipick" id="scwide">\u{1F916} Prendre la carte lue par l'IA : <b>${esc(String(r.name || n).slice(0, 26))}</b>${num}${lg}</button>` : ''; };
 async function runWiden() {
   const r = scanState.how?.read || {}, b = $('#scwide');
   if (b) { b.disabled = true; b.textContent = '\u{1F50E} Recherche dans tout le catalogue\u2026'; }
@@ -985,6 +991,9 @@ async function runWiden() {
     $('#scw').value = name; $('#scman').open = true;
     return $('#scs').innerHTML = `Rien au catalogue pour \u00ab\u00a0${esc(name)}\u00a0\u00bb. ${/^(ko|zh)/.test(r.language || '') ? 'Les cartes cor\u00e9ennes ne sont pas encore au catalogue : cherche la version japonaise ou anglaise.' : 'Corrige le nom ci-dessous et relance la recherche.'}`;
   }
+  // même langue et même numéro que ce que l'IA a lu : c'est elle, on l'ouvre directement
+  const hit = list.find(c => c.lang === rl && rn && String(c.local_id).replace(/^0+/, '') === rn);
+  if (hit) { remember(list); scanState.list = list; scanState.autoLang = true; return showScan(hit); }
   showRanked({ list, sure: false, how: scanState.how });
   $('#scs').innerHTML = `Toutes les cartes nomm\u00e9es \u00ab\u00a0<b>${esc(name)}</b>\u00a0\u00bb : touche la bonne.`;
 }
@@ -1000,8 +1009,8 @@ function showRanked({ list, sure, how }) {
   remember(list); scanState.list = list; scanState.how = how; scanState.autoLang = false;
   if (sure) return showScan(list[0]);
   $('#scs').textContent = list.length > 1 ? 'Plusieurs cartes possibles : touche la bonne.' : '';
-  $('#scr').innerHTML = howLine(how) + `<div class="alts big">${list.map((c, i) => c.alt ? '' : `<button type="button" data-alt="${i}">${img(c)}${ownBadge(c)}<small>${flag(c.lang)} ${esc(nm(c))}<br>${esc(c.set_name)} · ${esc(c.local_id)}</small></button>`).join('')}</div>`;
-  $('#scr').insertAdjacentHTML('beforeend', askAI(how) + widenBtn(how));
+  $('#scr').innerHTML = howLine(how) + widenBtn(how) + `<div class="alts big">${list.map((c, i) => c.alt ? '' : `<button type="button" data-alt="${i}">${img(c)}${ownBadge(c)}<small>${flag(c.lang)} ${esc(nm(c))}<br>${esc(c.set_name)} · ${esc(c.local_id)}</small></button>`).join('')}</div>`;
+  $('#scr').insertAdjacentHTML('beforeend', askAI(how));
   $('#scr').onclick = e => { if (e.target.closest('#askai')) return runAskAI(); if (e.target.closest('#scwide')) return runWiden();
     const b = e.target.closest('[data-alt]'); if (b) showScan(list[+b.dataset.alt]); };
 }

@@ -57,6 +57,7 @@ export async function fileToCard(file) {
   cv.raw = Object.assign(document.createElement('canvas'), { width: Math.round(bmp.width * k), height: Math.round(bmp.height * k) });
   cv.raw.getContext('2d').drawImage(bmp, 0, 0, cv.raw.width, cv.raw.height);
   cv.found = !!box;
+  bmp.close?.(); // la photo décodée (jusqu'à 50 Mo pour 12 Mpx) n'est plus utile : on la rend tout de suite
   return cv;
 }
 export const toBlob = cv => new Promise(r => cv.toBlob(r, 'image/jpeg', .9));

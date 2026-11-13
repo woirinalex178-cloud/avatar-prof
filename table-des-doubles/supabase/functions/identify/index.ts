@@ -3,15 +3,21 @@ import { createClient } from 'npm:@supabase/supabase-js@2';
 // Identification d'une carte par IA de vision (Google Gemini, palier gratuit) :
 // l'IA lit le nom, le numéro complet (123/124), la langue et la série, puis la base trouve la carte exacte.
 // Secret requis : GEMINI_API_KEY (Supabase -> Edge Functions -> Secrets). Optionnel : GEMINI_MODEL.
-// IA de secours (gratuites) si Gemini est saturé : GROQ_API_KEY (Llama 4 vision) et/ou MISTRAL_API_KEY (Pixtral).
+// IA de secours (gratuites), essayées dans l'ordre si Gemini est saturé — chacune ne sert que si sa clé est posée :
+//   GROQ_API_KEY (Llama 4 vision), OPENROUTER_API_KEY (modèles de vision gratuits), HF_TOKEN (Hugging Face, Qwen-VL),
+//   GITHUB_MODELS_TOKEN (GitHub Models, GPT-4.1 mini), MISTRAL_API_KEY (Pixtral).
 const KEY = Deno.env.get('GEMINI_API_KEY');
 // Échelle de modèles : le meilleur d'abord, puis on descend quand il est saturé, absent ou trop lent.
 // GEMINI_MODEL force un modèle en tête de liste.
 const MODELS = [...new Set([Deno.env.get('GEMINI_MODEL'), 'gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-flash-latest',
   'gemini-2.5-flash-lite', 'gemini-flash-lite-latest'].filter(Boolean))] as string[];
+// jsonMode : le service accepte de forcer une réponse JSON (sinon on extrait l'objet du texte)
 const BACKUPS = [
-  { name: 'groq', key: Deno.env.get('GROQ_API_KEY'), url: 'https://api.groq.com/openai/v1/chat/completions', model: Deno.env.get('GROQ_MODEL') || 'meta-llama/llama-4-scout-17b-16e-instruct' },
-  { name: 'mistral', key: Deno.env.get('MISTRAL_API_KEY'), url: 'https://api.mistral.ai/v1/chat/completions', model: Deno.env.get('MISTRAL_MODEL') || 'pixtral-12b-2409' }
+  { name: 'groq', key: Deno.env.get('GROQ_API_KEY'), url: 'https://api.groq.com/openai/v1/chat/completions', model: Deno.env.get('GROQ_MODEL') || 'meta-llama/llama-4-scout-17b-16e-instruct', jsonMode: true },
+  { name: 'openrouter', key: Deno.env.get('OPENROUTER_API_KEY'), url: 'https://openrouter.ai/api/v1/chat/completions', model: Deno.env.get('OPENROUTER_MODEL') || 'qwen/qwen2.5-vl-72b-instruct:free', jsonMode: false },
+  { name: 'hf', key: Deno.env.get('HF_TOKEN'), url: 'https://router.huggingface.co/v1/chat/completions', model: Deno.env.get('HF_MODEL') || 'Qwen/Qwen2.5-VL-7B-Instruct', jsonMode: false },
+  { name: 'github', key: Deno.env.get('GITHUB_MODELS_TOKEN'), url: 'https://models.github.ai/inference/chat/completions', model: Deno.env.get('GITHUB_MODEL') || 'openai/gpt-4.1-mini', jsonMode: true },
+  { name: 'mistral', key: Deno.env.get('MISTRAL_API_KEY'), url: 'https://api.mistral.ai/v1/chat/completions', model: Deno.env.get('MISTRAL_MODEL') || 'pixtral-12b-2409', jsonMode: true }
 ].filter(b => b.key);
 // Mémoire des modèles fatigués : quota épuisé = 10 min de repos, modèle absent = 12 h, panne = 1 min.
 // Évite de perdre 10 secondes à réessayer un modèle qui vient de refuser.
@@ -39,9 +45,13 @@ Read what is PRINTED on the card and answer ONLY with this JSON:
  "total": "number AFTER the slash (e.g. \\"165\\"), or null",
  "language": "fr|en|ja|de|it|es|pt|ko|zh — language of the printed text",
  "set_name_en": "English name of the expansion if you can tell (set symbol, set code like MEW/PAR/OBF, regulation mark, layout, card number range), else null",
- "set_code": "small printed set abbreviation near the number (e.g. MEW), else null",
- "regulation_mark": "single letter in the small box near the number, else null",
+ "set_code": "small printed set abbreviation near the number (e.g. PAR, MEW, SVI), else null",
+ "lang_code": "the 2-letter language code printed right after the set code on recent cards (e.g. \"PAR FR\" -> \"FR\", \"MEW EN\" -> \"EN\"), else null",
+ "regulation_mark": "single letter in the small white box at the bottom left (e.g. G, H, I), else null",
+ "rarity_symbol": "rarity symbol printed next to the number: circle | diamond | star | two stars | three stars | gold star, else null",
  "confidence": 0.0-1.0}
+The bottom strip of the card (e.g. \"G  PAR FR  020/182 ●\") is the most reliable part: read it carefully, even rotated or in a sleeve.
+If lang_code is printed, "language" MUST match it. Otherwise decide the language from the printed words, not from the Pokémon.
 Never invent: use null when you cannot read a field.`;
 
 // si un modèle est saturé (503) ou indisponible, on passe au suivant : les modèles gratuits ont chacun leur quota
@@ -81,7 +91,7 @@ async function backup(b64: string, until: number) {
     if (tired(b.name) || Date.now() > until) continue;
     try {
       const r = await post(b.url, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${b.key}` },
-        body: JSON.stringify({ model: b.model, temperature: 0, response_format: { type: 'json_object' }, max_tokens: 600,
+        body: JSON.stringify({ model: b.model, temperature: 0, ...(b.jsonMode ? { response_format: { type: 'json_object' } } : {}), max_tokens: 600,
           messages: [{ role: 'user', content: [{ type: 'text', text: PROMPT }, { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${b64}` } }] }] }) });
       if (!r.ok) { last = `${b.name} ${r.status} ${(await r.text()).slice(0, 160)}`; console.error('secours', last);
         rest(b.name, r.status === 429 ? 600000 : 60000); continue; }
@@ -110,6 +120,10 @@ Deno.serve(async (req) => {
     const { model, read } = await readCard(image.replace(/^data:image\/\w+;base64,/, ''));
     const ms = Date.now() - t0;
     if (read.is_card === false) return json({ read, cards: [], model, ms });
+    const LC: Record<string, string> = { FR: 'fr', EN: 'en', DE: 'de', IT: 'it', ES: 'es', PT: 'pt', JP: 'ja', JA: 'ja', KR: 'ko', KO: 'ko', TW: 'zh-tw', CN: 'zh-cn' };
+    const printed = LC[String(read.lang_code || '').trim().toUpperCase()];
+    if (printed) read.language = printed;
+    if (read.language === 'zh') read.language = 'zh-tw';
     const num = read.number ? String(read.number).replace(/\s/g, '') : null, total = read.total && /^\d+$/.test(String(read.total)) ? +read.total : null;
     const args = { p_num: num, p_total: total, p_lang: read.language || 'fr', p_set: read.set_name_en || null };
     let { data } = await db.rpc('match_card', { ...args, p_name: read.name || read.name_en || '' });

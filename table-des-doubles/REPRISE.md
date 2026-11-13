@@ -116,3 +116,12 @@
 - PostgREST limite à 1000 lignes → paginer.
 - Cartes JP : noms FR via `pokemon_names` et `name_fr` des sets.
 - Commits : auteur woirinalex178 <woirinalex178@gmail.com>, pas d'identifiant de modèle.
+
+
+## 13 nov. — cotes croisées, coréen, visuels Scrydex (v47)
+- **Cotes** : colonnes `price_trend/avg30/avg7/low/usd/alt/basis` sur `cards`, RPC `price_apply`. Deux marchés (Cardmarket + TCGplayer, tous deux via TCGdex). L'appli affiche la valeur retenue, sa date, et signale un écart > 30 %. Les cartes **japonaises** ont désormais leur cote. pokemontcg.io reste instable (502) : non branché.
+- **Coréen** : `ko_mirror()` reconstruit les séries coréennes à partir des japonaises (mêmes codes, mêmes numéros), noms via `pokemon_names.ko` (PokéAPI). Cron hebdo `ko-mirror`. Visuel = version japonaise. Pas de cote coréenne.
+- **Visuels** : `art-fill` v3 lit Scrydex (`scrydex.com/pokemon/expansions/x/{id}`) puis Limitless. Correspondances manuelles dans `set_alias.scrydex`. `sets.art_v` : monter `V` dans la fonction relance les séries incomplètes.
+  Sans source à ce jour : McDonald's **français** 2018 et 2019 (40 cartes, séries propres à la France), My First Battle, séries chinoises SC*.
+- **Langue au scan** : `card_in_lang()` + départage par la photo (`rank`). Les 10 langues sont toujours proposées.
+- Piège MCP : `execute_sql` avec DELETE bloque en attente de confirmation → n'utiliser que SELECT/UPDATE…WHERE.

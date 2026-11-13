@@ -13,8 +13,8 @@ playIntro();
 
 const sb = createClient(SUPABASE_URL, SUPABASE_KEY);
 const S = { user: null, profile: null, sets: [], cards: {}, bySet: {}, set: null, lang: 'fr', coll: {}, fee: 0.0001, filter: 'all', pseudos: {}, prog: {}, wish: new Set() };
-const LANGS = { fr: 'Français', en: 'Anglais (US/UK)', ja: 'Japonais', 'zh-tw': 'Chinois traditionnel', 'zh-cn': 'Chinois simplifié', de: 'Allemand', it: 'Italien', es: 'Espagnol', pt: 'Portugais' };
-const LCODE = { ja: 'JP', 'zh-tw': 'TW', 'zh-cn': 'CN' };
+const LANGS = { fr: 'Français', en: 'Anglais (US/UK)', ja: 'Japonais', 'zh-tw': 'Chinois traditionnel', 'zh-cn': 'Chinois simplifié', ko: 'Coréen', de: 'Allemand', it: 'Italien', es: 'Espagnol', pt: 'Portugais' };
+const LCODE = { ja: 'JP', 'zh-tw': 'TW', 'zh-cn': 'CN', ko: 'KR' };
 const lcode = l => LCODE[l] || String(l || '').toUpperCase();
 const flag = l => `<span class="lang">${lcode(l)}</span>`;
 const COND = { NM: ['Near Mint', 'Comme neuve, aucun défaut visible', 1], EX: ['Excellent', 'Micro-défauts (léger blanchiment)', .85], GD: ['Bon', 'Usure visible, coins/bords marqués', .65], PL: ['Joué', 'Pliure, rayure ou usure forte', .4] };
@@ -28,7 +28,7 @@ const DISC = {
   deal: "Sharing Cards héberge des annonces entre particuliers : le site n'est ni vendeur, ni acheteur, ni expert. L'état, l'authenticité et la conformité de la carte relèvent du membre qui la propose.",
   auth: "Le contrôle d'authenticité est une aide automatique et indicative : il ne remplace ni une expertise, ni une gradation professionnelle, et aucune carte n'est certifiée par le site.",
   ship: "Le transport est assuré par le transporteur choisi. En cas de perte ou de casse, la réclamation se fait auprès de lui : le site t'accompagne mais n'achemine rien.",
-  ja: "Les cartes japonaises ne sont pas cotées sur les places de marché européennes : la cote est le plus souvent absente, et le visuel peut manquer dans la base communautaire."
+  ja: "Les cartes japonaises ont leur propre cote Cardmarket quand le marché en publie une ; elle est plus fragile (peu de ventes) et le visuel peut manquer. Les cartes coréennes et chinoises ne sont cotées nulle part : la cote affichée est alors celle d'une autre version, à titre indicatif."
 };
 const disc = (...ks) => `<p class="disc">⚠️ ${ks.map(k => esc(DISC[k])).join(' ')}</p>`;
 
@@ -341,7 +341,7 @@ async function catalogClasseur() {
       <div class="ring" style="--p:${p.pct}"><span>${p.pct}%<small>${p.main}/${p.set?.total ?? '?'}</small></span></div>
       <div>
         ${setPicker()}
-        <p class="small mut" style="margin:6px 0 0">${flag(S.lang)} ${esc(p.set?.serie_name || '')} · ${esc(setName(p.set))} · ${p.set?.released ? new Date(p.set.released).toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' }) : ''}${S.lang === 'ja' ? ' · cotes japonaises non disponibles' : ''}</p>
+        <p class="small mut" style="margin:6px 0 0">${flag(S.lang)} ${esc(p.set?.serie_name || '')} · ${esc(setName(p.set))} · ${p.set?.released ? new Date(p.set.released).toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' }) : ''}</p>
         <div class="kpis" style="margin-top:12px"><div><b>${eur(p.value)}</b><span>valeur de ce set</span></div><div><b>${p.owned}</b><span>cartes différentes</span></div><div><b>${p.doubles}</b><span>doubles</span></div><div><b>Niv. ${t.lvl}</b><span>${esc(t.title)} · ${t.xp} XP</span></div><div><b>🔥 ${st.streak}</b><span>jour(s) de suite</span></div></div>
         <div class="xp"><i style="width:${t.pct}%"></i></div>
         <p class="small" style="margin:8px 0 0">🎯 Défi du jour : ajoute ${dl.n} cartes — ${dl.done ? '<b class="dn">réussi ✔</b>' : `${dl.cur}/${dl.n}`}</p>
@@ -558,7 +558,7 @@ const beep = () => { try { actx ||= new (window.AudioContext || window.webkitAud
   o.frequency.value = 880; g.gain.setValueAtTime(.18, t); g.gain.exponentialRampToValueAtTime(.001, t + .15); o.connect(g).connect(actx.destination); o.start(); o.stop(t + .16); } catch { } navigator.vibrate?.(60); };
 // photo cadrée -> cartes candidates classées ; sure = une seule carte possible
 // 1) reconnaissance visuelle (empreinte de l'illustration comparée aux ~24 000 officielles), 2) secours : lecture du numéro
-const ALL_LANGS = ['fr', 'en', 'ja', 'zh-tw', 'zh-cn', 'de', 'it', 'es', 'pt'];
+const ALL_LANGS = ['fr', 'en', 'ja', 'ko', 'zh-tw', 'zh-cn', 'de', 'it', 'es', 'pt'];
 // Budget de temps : une carte ne doit jamais bloquer le scanner. Au-delà, on rend la main.
 const SCAN_BUDGET = 40000, AI_BUDGET = 22000;
 const race = (p, ms, tag) => Promise.race([p, new Promise((_, rj) => setTimeout(() => rj(new Error(tag || 'délai dépassé')), ms))]);
@@ -806,17 +806,19 @@ async function expressModal() {
 const wantLang = () => scanLang || S.lang;
 // Choisir n'importe quelle langue, toujours : les séries japonaises et chinoises ont leurs propres
 // numéros, donc la même carte n'y porte pas le même identifiant. On la retrouve par son nom.
-async function pickLang(c, lang) {
+async function pickLang(c, lang, quiet) {
   const label = LANGS[lang] || lang;
   $('#scs').textContent = `Recherche de la version ${label}\u2026`;
   const { data, error } = await sb.rpc('card_in_lang', { p_card: c.id, p_lang: lang });
   const list = data || [];
-  if (error || !list.length) { $('#scs').textContent = ''; return toast(`Pas de version ${label} de cette carte dans le catalogue.`, true); }
+  if (error || !list.length) { $('#scs').textContent = ''; return quiet ? null : toast(`Pas de version ${label} de cette carte dans le catalogue.`, true); }
   setScanLang(lang); remember(list);
-  const best = list.find(x => x.same_num) || (list.length === 1 ? list[0] : null);
-  scanState.list = [...list, ...(scanState.list || []).filter(x => !list.some(v => v.id === x.id))];
+  let best = list.find(x => x.same_num) || (list.length === 1 ? list[0] : null), shown = list;
+  // plusieurs versions dans cette langue : la photo désigne la bonne (même dessin)
+  if (!best && scanState.cv) { try { const r = await rank(list.map(x => ({ ...x, score: 0 })), scanState.cv, lang); shown = r.list; if (r.list[0]?.sim >= .6 && (r.list[0].sim - (r.list[1]?.sim ?? -1)) >= .05) best = r.list[0]; } catch { } }
+  scanState.list = [...shown, ...(scanState.list || []).filter(x => !shown.some(v => v.id === x.id))];
   if (best) { $('#scs').textContent = ''; return showScan(best); }
-  showRanked({ list, sure: false, how: scanState.how });
+  showRanked({ list: shown, sure: false, how: scanState.how });
   $('#scs').innerHTML = `Versions <b>${esc(label)}</b> de cette carte : touche la bonne (le num\u00e9ro change d'une langue \u00e0 l'autre).`;
 }
 async function toLang(c, lang) {
@@ -1017,7 +1019,11 @@ function showScan(c) {
     remember(vs); scanState.list = list;
     // bonne langue d'office : celle lue par l'IA, sinon la dernière choisie, sinon celle du classeur
     if (!scanState.autoLang) { scanState.autoLang = true; const h = scanState.how, want = (h?.t === 'ai' && h.read?.language) || scanLang || S.lang, v = vs.find(x => x.lang === want);
-      if (v && v.id !== c.id) return showScan(list.find(x => x.id === v.id) || v); }
+      if (v && v.id !== c.id) return showScan(list.find(x => x.id === v.id) || v);
+      // l'IA a lu une autre langue que celle proposée, et cette langue n'est pas rattachée au même dessin :
+      // on va la chercher par le nom (séries japonaises, coréennes, chinoises : numéros différents)
+      const read = h?.t === 'ai' && String(h.read?.language || '').toLowerCase();
+      if (!v && read && read !== c.lang && ALL_LANGS.includes(read)) return pickLang(c, read, true); }
     $('#langsw').innerHTML = langChipsAll(c, [c, ...vs.filter(v => v.id !== c.id)]);
   });
   $('#scr').onclick = async e => {
@@ -1102,15 +1108,22 @@ async function cardInfoModal(c) {
     <p class="small mut" style="margin:0">${flag(c.lang)} ${esc(LANGS[c.lang] || c.lang || '')}</p><h2>${esc(nm(c))}</h2>${jp(c)}
     <div id="info-langs"></div>
     <dl class="kv"><dt>Collection</dt><dd>${esc(setName(set) || c.set_name || 'Non renseignée')}</dd><dt>Numéro</dt><dd><b>${esc(c.local_id ?? c.num ?? '?')}/${esc(total)}</b></dd><dt>Rareté</dt><dd><span class="rarity-mark" aria-label="${esc(rarity)}">${rarityMark(rarity)}</span> ${esc(rarity)}</dd><dt>Illustrateur</dt><dd>${esc(c.illustrator || 'Non renseigné')}</dd></dl>
-    <section class="cardinfo-price"><h3>Cote</h3>${quote ? `<p class="cotebig">${eur(quote.price_eur)}${trend(quote)}</p>${quote !== c ? `<p class="small mut">Cote indicative de la version ${flag(quote.lang)} de la même carte.</p>` : ''}<h4>Selon l'état</h4>${condTable(quote.price_eur)}<button type="button" class="btn ghost sm" id="info-price">Voir l'historique complet</button>` : '<p class="mut">Aucune cote connue pour cette carte actuellement.</p>'}</section>
+    <section class="cardinfo-price"><h3>Cote</h3>${quote ? `<p class="cotebig">${eur(quote.price_eur)}${trend(quote)}</p>${quote !== c ? `<p class="small mut">Cote indicative de la version ${flag(quote.lang)} de la même carte.</p>` : ''}<div id="info-qsrc"></div><h4>Selon l'état</h4>${condTable(quote.price_eur)}<button type="button" class="btn ghost sm" id="info-price">Voir l'historique complet</button>` : '<p class="mut">Aucune cote connue pour cette carte actuellement.</p>'}</section>
     <section class="cardinfo-history"><h3>Historique</h3>${history.length >= 2 ? `<p><b>${history.length}</b> relevés · de ${eur(Math.min(...history.map(x => +x.price)))} à ${eur(Math.max(...history.map(x => +x.price)))}</p><div class="spark" id="info-spark"></div>` : '<p class="small mut">Historique en construction : la courbe apparaît après plusieurs relevés.</p>'}</section>
   </div></div>`, 'cotedlg cardinfodlg');
-  if (quote) $('#info-price', z).onclick = () => coteModal(quote);
+  if (quote) { $('#info-price', z).onclick = () => coteModal(quote); quoteBox(quote).then(h => { const b = $('#info-qsrc', z); if (b && b.isConnected) b.innerHTML = h; }); }
   // toutes les langues de cette carte, sans re-scanner : un clic ouvre la fiche de la version choisie
   langVersions(c).then(vs => {
     const box = $('#info-langs', z); if (!box || !box.isConnected) return;
     box.innerHTML = langChipsAll(c, [c, ...vs.filter(v => v.id !== c.id)], 'cardlang');
-    box.onclick = e => { const b = e.target.closest('[data-cardlang]'); if (!b) return;
+    box.onclick = async e => {
+      const x = e.target.closest('[data-xl]');
+      if (x) { const lg = x.dataset.xl, { data } = await sb.rpc('card_in_lang', { p_card: c.id, p_lang: lg }).catch(() => ({}));
+        if (!data?.length) return toast(`Pas de version ${LANGS[lg] || lg} de cette carte dans le catalogue.`, true);
+        remember(data); const v = data.find(d => d.same_num) || data[0];
+        if (data.length > 1 && !data.some(d => d.same_num)) toast(`${data.length} versions ${LANGS[lg] || lg} : voici la plus récente.`);
+        return cardInfoModal(S.cards[v.id] || v); }
+      const b = e.target.closest('[data-cardlang]'); if (!b) return;
       const v = vs.find(x => x.id === b.dataset.cardlang) || (b.dataset.cardlang === c.id ? c : null);
       if (v && v.id !== c.id) { remember([v]); cardInfoModal(S.cards[v.id] || v); } };
   });
@@ -1127,15 +1140,40 @@ function curve(data, W, H, pad = 4) {
   const pts = data.map(r => [pad + ((+new Date(r.d) - t0) / (t1 - t0 || 1)) * (W - 2 * pad), H - pad - ((+r.price - mn) / (mx - mn || 1)) * (H - 2 * pad)]);
   return { pts, mn, mx, up: v.at(-1) >= v[0], line: pts.map(p => p.map(n => n.toFixed(1)).join(',')).join(' ') };
 }
+// D'où vient la cote : la valeur retenue, sa date, les autres relevés Cardmarket, et le second avis
+// (TCGplayer, marché américain converti en euros). Un écart de plus de 30 % entre les deux est signalé.
+const BASIS = { trend: 'tendance Cardmarket', avg30: 'moyenne 30 jours Cardmarket', avg7: 'moyenne 7 jours Cardmarket', avg: 'moyenne Cardmarket', tcgplayer: 'TCGplayer (marché américain, converti en euros)' };
+const quoteCache = new Map();
+async function quoteBox(c) {
+  if (!c?.id) return '';
+  if (!quoteCache.has(c.id)) quoteCache.set(c.id, sb.from('cards').select('price_eur,price_basis,price_trend,price_avg30,price_avg7,price_low,price_usd,price_alt,price_updated').eq('id', c.id).maybeSingle().then(r => r.data).catch(() => null));
+  const q = await quoteCache.get(c.id);
+  if (!q || q.price_eur == null || !q.price_basis) return '';
+  const holo = /-holo$/.test(q.price_basis), b = BASIS[q.price_basis.replace(/-holo$/, '')] || q.price_basis;
+  const when = q.price_updated ? ` · relevée le ${new Date(q.price_updated).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' })}` : '';
+  const row = (k, v, on) => v == null ? '' : `<dt${on ? ' class="on"' : ''}>${k}</dt><dd${on ? ' class="on"' : ''}>${eur(v)}</dd>`;
+  const base = q.price_basis.replace(/-holo$/, '');
+  let gap = '';
+  if (q.price_alt != null && base !== 'tcgplayer') {
+    const d = Math.abs(q.price_alt - q.price_eur) / Math.min(q.price_alt, q.price_eur), lo = Math.min(q.price_alt, q.price_eur), hi = Math.max(q.price_alt, q.price_eur);
+    gap = d > .3 && hi - lo >= .5
+      ? `<p class="gap warn">⚠️ <b>Les deux marchés ne sont pas d'accord</b> (écart de ${Math.round(d * 100)} %) : compte plutôt une fourchette de <b>${eur(lo)} à ${eur(hi)}</b> et regarde les ventes récentes avant de fixer un prix.</p>`
+      : `<p class="gap ok">✓ Les deux marchés concordent (écart de ${Math.round(d * 100)} %).</p>`;
+  }
+  const swapped = base === 'avg30' && q.price_trend != null ? `<p class="small mut" style="margin:4px 0 0">La tendance du jour (${eur(q.price_trend)}) s'écartait trop de la moyenne : une vente isolée l'avait emballée, on retient la moyenne 30 jours, plus stable.</p>` : '';
+  return `<div class="qsrc"><p class="small" style="margin:0"><b>Cote retenue : ${b}</b>${holo ? ' (version holo, la seule qui existe)' : ''}${when}</p>
+    <dl class="kv qkv">${row('Tendance', q.price_trend, base === 'trend')}${row('Moyenne 7 j', q.price_avg7, base === 'avg7')}${row('Moyenne 30 j', q.price_avg30, base === 'avg30')}${row('Prix le plus bas', q.price_low)}${q.price_alt != null ? `<dt${base === 'tcgplayer' ? ' class="on"' : ''}>TCGplayer</dt><dd${base === 'tcgplayer' ? ' class="on"' : ''}>${eur(q.price_alt)} <span class="mut">(${Number(q.price_usd).toFixed(2)} $)</span></dd>` : ''}</dl>${swapped}${gap}</div>`;
+}
 const fmtD = d => new Date(d).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' });
 async function coteModal(c) {
   if (!c) return;
   const z = sheet(`<div class="cotebox"><p class="small mut" style="margin:0">${flag(c.lang)} ${esc(setName(S.sets.find(x => x.id === c.set_id)) || c.set_name || '')} · n° ${esc(c.local_id)}</p>
     <h3 style="margin:2px 0 4px">${esc(nm(c))}</h3><p class="cotebig">${eur(c.price_eur)}${trend(c)}</p>
-    <div id="coteref"></div>
+    <div id="cotesrc"></div><div id="coteref"></div>
     ${c.price_eur != null ? `<h4 style="margin:10px 0 4px">Estimation selon l'état</h4>${condTable(c.price_eur)}${disc('etat')}` : ''}
     <div id="cotech"><div class="skel" style="height:150px"></div></div>
-    ${disc('cote', ...(c.lang === 'ja' ? ['ja'] : []))}</div>`, 'cotedlg');
+    ${disc('cote', ...(['ja', 'ko', 'zh-tw', 'zh-cn'].includes(c.lang) ? ['ja'] : []))}</div>`, 'cotedlg');
+  quoteBox(c).then(h => { const b = $('#cotesrc', z); if (b && b.isConnected) b.innerHTML = h; });
   if (c.price_eur == null) cardRef(c).then(r => {
     const b = $('#coteref', z); if (!b || !b.isConnected) return;
     b.innerHTML = r?.px
@@ -1144,7 +1182,7 @@ async function coteModal(c) {
   });
   const box = $('#cotech', z), data = c.tcg_id ? await priceHist(c.tcg_id) : [];
   if (!box.isConnected) return;
-  if (data.length < 2) { box.innerHTML = `<p class="small mut">${c.lang === 'ja' ? 'Pas de cote pour les cartes japonaises.' : 'Historique en construction : la courbe apparaîtra après quelques jours de relevés.'}</p>`; return; }
+  if (data.length < 2) { box.innerHTML = `<p class="small mut">Historique en construction : la courbe apparaîtra après quelques jours de relevés.</p>`; return; }
   const W = 320, H = 150, { pts, mn, mx, up, line } = curve(data, W, H, 6), last = +data.at(-1).price;
   const ago = n => { const t = Date.now() - n * 864e5, r = [...data].reverse().find(x => +new Date(x.d) <= t); return r ? (last - r.price) / r.price : null; };
   const pc = d => d == null ? '—' : `<span class="${d >= 0 ? 'pos' : 'neg'}">${d >= 0 ? '+' : ''}${Math.round(d * 100)} %</span>`;

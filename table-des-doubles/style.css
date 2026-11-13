@@ -583,3 +583,10 @@ details>summary{cursor:pointer}
 .btn.wait,label.btn.wait{opacity:.6;pointer-events:none;position:relative}
 .btn.wait::before{content:"";position:absolute;left:8px;top:50%;width:14px;height:14px;margin-top:-7px;border:2px solid #0004;border-top-color:currentColor;border-radius:50%;animation:spinw .7s linear infinite}
 @keyframes spinw{to{transform:rotate(360deg)}}
+
+/* D'où vient la cote : valeur retenue en surbrillance, second avis, alerte si les marchés divergent */
+.qsrc{background:#0004;border:1px solid #ffffff14;border-radius:10px;padding:10px 12px;margin:8px 0}
+.qkv{grid-template-columns:1fr auto;gap:2px 12px;margin:6px 0 0;font-size:13px}
+.qkv .on{color:var(--gold);font-weight:700}
+.gap{font-size:12.5px;line-height:1.45;margin:8px 0 0;padding:6px 9px;border-radius:8px}
+.gap.warn{background:#e0b85c1f;border-left:3px solid var(--gold)}.gap.ok{color:var(--ok);padding-left:0}

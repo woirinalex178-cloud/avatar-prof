@@ -5,7 +5,8 @@ import { createClient } from 'npm:@supabase/supabase-js@2';
 // Secret requis : GEMINI_API_KEY (Supabase -> Edge Functions -> Secrets). Optionnel : GEMINI_MODEL.
 // IA de secours (gratuites), essayées dans l'ordre si Gemini est saturé — chacune ne sert que si sa clé est posée :
 //   GROQ_API_KEY (Llama 4 vision), OPENROUTER_API_KEY (modèles de vision gratuits), HF_TOKEN (Hugging Face, Qwen-VL),
-//   GITHUB_MODELS_TOKEN (GitHub Models, GPT-4.1 mini), MISTRAL_API_KEY (Pixtral).
+//   GITHUB_MODELS_TOKEN (GitHub Models, GPT-4.1 mini), CF_AI_TOKEN + CF_ACCOUNT_ID (Cloudflare Workers AI),
+//   MISTRAL_API_KEY (Pixtral).
 const KEY = Deno.env.get('GEMINI_API_KEY');
 // Échelle de modèles : le meilleur d'abord, puis on descend quand il est saturé, absent ou trop lent.
 // GEMINI_MODEL force un modèle en tête de liste.
@@ -17,8 +18,9 @@ const BACKUPS = [
   { name: 'openrouter', key: Deno.env.get('OPENROUTER_API_KEY'), url: 'https://openrouter.ai/api/v1/chat/completions', model: Deno.env.get('OPENROUTER_MODEL') || 'qwen/qwen2.5-vl-72b-instruct:free', jsonMode: false },
   { name: 'hf', key: Deno.env.get('HF_TOKEN'), url: 'https://router.huggingface.co/v1/chat/completions', model: Deno.env.get('HF_MODEL') || 'Qwen/Qwen2.5-VL-7B-Instruct', jsonMode: false },
   { name: 'github', key: Deno.env.get('GITHUB_MODELS_TOKEN'), url: 'https://models.github.ai/inference/chat/completions', model: Deno.env.get('GITHUB_MODEL') || 'openai/gpt-4.1-mini', jsonMode: true },
+  { name: 'cloudflare', key: Deno.env.get('CF_AI_TOKEN'), url: `https://api.cloudflare.com/client/v4/accounts/${Deno.env.get('CF_ACCOUNT_ID')}/ai/v1/chat/completions`, model: Deno.env.get('CF_MODEL') || '@cf/meta/llama-4-scout-17b-16e-instruct', jsonMode: false },
   { name: 'mistral', key: Deno.env.get('MISTRAL_API_KEY'), url: 'https://api.mistral.ai/v1/chat/completions', model: Deno.env.get('MISTRAL_MODEL') || 'pixtral-12b-2409', jsonMode: true }
-].filter(b => b.key);
+].filter(b => b.key && !b.url.includes('/accounts/undefined/'));
 // Mémoire des modèles fatigués : quota épuisé = 10 min de repos, modèle absent = 12 h, panne = 1 min.
 // Évite de perdre 10 secondes à réessayer un modèle qui vient de refuser.
 const cool = new Map<string, number>();

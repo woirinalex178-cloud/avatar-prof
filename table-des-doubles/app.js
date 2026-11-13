@@ -862,13 +862,14 @@ async function scanPage(file) {
       const x = ev.target.closest('[data-pxl]');
       if (x) { ev.stopPropagation(); const lg = x.dataset.pxl, label = LANGS[lg] || lg;
         $('#scs').textContent = `Recherche de la version ${label}…`;
-        const { data } = await sb.rpc('card_in_lang', { p_card: r.pick.id, p_lang: lg }).catch(() => ({}));
+        const { data } = await sb.rpc('card_in_lang', { p_card: r.pick.id, p_lang: lg }).then(r => r, () => ({}));
         const got = data || []; $('#scs').textContent = '';
         if (!got.length) return toast(`Pas de version ${label} de cette carte au catalogue.`, true);
         remember(got); setScanLang(lg);
         r.list = [...got, ...r.list.filter(y => !got.some(g => g.id === y.id))];
-        const best = got.find(g => g.same_num) || (got.length === 1 ? got[0] : null);
-        if (best) { r.pick = best; r.on = true; r.st = 'sure'; } else toast(`Plusieurs versions ${label} : touche la bonne.`);
+        // la première est la série sortie à la date la plus proche : choisie d'office, les autres restent proposées
+        r.pick = got.find(g => g.same_num) || got[0]; r.on = true; r.st = 'sure';
+        if (got.length > 1) toast(`${got.length} versions ${label} : vérifie que c'est la bonne, les autres sont au-dessus.`);
         draw(); return cellPick(i); }
       const l = ev.target.closest('[data-pcl]');
       if (l) { ev.stopPropagation(); r.pick = await toLang(r.pick, l.dataset.pcl); r.on = true; r.st = 'sure';
@@ -940,10 +941,18 @@ async function runWiden() {
   if (b) { b.disabled = true; b.textContent = '\u{1F50E} Recherche dans tout le catalogue\u2026'; }
   const name = String(r.name_en || r.name || '').trim(), words = name.split(/\s+/).filter(w => w.length >= 4);
   const got = new Map(), add = d => { for (const c of d || []) got.set(c.id, c); };
-  if (words.length) add((await sb.rpc('scan_match', { p_num: null, p_total: null, p_words: words, p_lang: r.language || S.lang }).catch(() => ({}))).data);
+  if (words.length) add((await sb.rpc('scan_match', { p_num: null, p_total: null, p_words: words, p_lang: r.language || S.lang }).then(r => r, () => ({}))).data);
   const num = r.number ? String(r.number).replace(/\s/g, '') : null;
-  if (num && got.size < 6) add((await sb.rpc('scan_match', { p_num: num, p_total: null, p_words: words, p_lang: r.language || S.lang }).catch(() => ({}))).data);
-  const list = [...got.values()];
+  if (num && got.size < 6) add((await sb.rpc('scan_match', { p_num: num, p_total: null, p_words: words, p_lang: r.language || S.lang }).then(r => r, () => ({}))).data);
+  // recherche par nom dans tout le catalogue, y compris les cartes sans visuel (nom imprimé puis nom anglais)
+  for (const q of [...new Set([r.name, r.name_en].map(x => String(x || '').trim()).filter(x => x.length >= 2))]) {
+    if (got.size >= 24) break;
+    const { data } = await sb.rpc('search_cards', { p_q: q, p_lang: null }).then(x => x, () => ({}));
+    add((data || []).map(c => ({ ...c, set_name: setName(S.sets.find(x => x.id === c.set_id)) || '' })));
+  }
+  // d'abord la langue lue par l'IA, puis le numéro lu
+  const rl = String(r.language || '').toLowerCase(), rn = String(r.number || '').replace(/^0+/, '');
+  const list = [...got.values()].sort((x, y) => ((y.lang === rl) - (x.lang === rl)) || ((String(y.local_id).replace(/^0+/, '') === rn) - (String(x.local_id).replace(/^0+/, '') === rn)));
   if (!list.length) { if (b) { b.disabled = false; b.textContent = '\u{1F50E} R\u00e9essayer la recherche'; }
     $('#scw').value = name; $('#scman').open = true;
     return $('#scs').innerHTML = `Rien au catalogue pour \u00ab\u00a0${esc(name)}\u00a0\u00bb. ${/^(ko|zh)/.test(r.language || '') ? 'Les cartes cor\u00e9ennes ne sont pas encore au catalogue : cherche la version japonaise ou anglaise.' : 'Corrige le nom ci-dessous et relance la recherche.'}`;
@@ -1118,7 +1127,7 @@ async function cardInfoModal(c) {
     box.innerHTML = langChipsAll(c, [c, ...vs.filter(v => v.id !== c.id)], 'cardlang');
     box.onclick = async e => {
       const x = e.target.closest('[data-xl]');
-      if (x) { const lg = x.dataset.xl, { data } = await sb.rpc('card_in_lang', { p_card: c.id, p_lang: lg }).catch(() => ({}));
+      if (x) { const lg = x.dataset.xl, { data } = await sb.rpc('card_in_lang', { p_card: c.id, p_lang: lg }).then(r => r, () => ({}));
         if (!data?.length) return toast(`Pas de version ${LANGS[lg] || lg} de cette carte dans le catalogue.`, true);
         remember(data); const v = data.find(d => d.same_num) || data[0];
         if (data.length > 1 && !data.some(d => d.same_num)) toast(`${data.length} versions ${LANGS[lg] || lg} : voici la plus récente.`);

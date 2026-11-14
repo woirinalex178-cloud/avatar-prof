@@ -125,3 +125,11 @@
   Sans source à ce jour : McDonald's **français** 2018 et 2019 (40 cartes, séries propres à la France), My First Battle, séries chinoises SC*.
 - **Langue au scan** : `card_in_lang()` + départage par la photo (`rank`). Les 10 langues sont toujours proposées.
 - Piège MCP : `execute_sql` avec DELETE bloque en attente de confirmation → n'utiliser que SELECT/UPDATE…WHERE.
+
+## 14 nov. — forum, audit
+- **Source de vérité** : la production est déployée depuis la branche `claude/relaxed-galileo-u5yzct` (déploiements Vercel manuels, cible production). La branche `claude/pokemon-cards-marketplace-wiwxqw` est ancienne : ne plus y travailler.
+- **Forum** : `posts.parent_id` (réponses), `replies`, `last_at`, `last_user`, `card_id` (vitrine), `pinned`. Triggers `posts_thread_bi/ai/bu`, RPC `forum_overview`. Rubriques : presentation, vitrine, recherche, libre, idees, blog. Routes `#/forum`, `#/forum/<rubrique>`, `#/forum/t/<id>`.
+- **Trophées forum** : compteurs `f_*` calculés dans `my_stats()` (en base, anti-triche).
+- **Audit corrigé** : contrôle visuel (plus « authentification »), Stripe idempotent, accord IA + `ai_hits`, confidentialité, Permissions-Policy.
+- **Encore à coller par le propriétaire** : `supabase/sql/2026-10-21-moderation-rgpd-echanges.sql` (purge RGPD + remboursements automatiques). Les DELETE bloquent l'outil MCP.
+- **PikaQian** : fonction `pikaqian`, état dans `pq_state`, cron toutes les 3 min + relecture le 2 du mois. Quota 500 demandes/mois.

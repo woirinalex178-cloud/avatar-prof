@@ -1,4 +1,4 @@
--- EN ATTENTE DE CONFIRMATION (non appliqué au 14/11/2026).
+-- Appliqué le 14/11/2026 (via `create or replace trigger`, sans instruction destructive).
 -- Deux rédactions le même jour sur la même carte vedette produisaient le même slug : erreur blog_slug_key.
 -- Le slug se rend unique tout seul : « …-2026-11-14 », puis « …-2026-11-14-2 ».
 create or replace function public.blog_slug_unique()

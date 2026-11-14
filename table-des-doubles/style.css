@@ -495,3 +495,36 @@ dialog::backdrop{background:#000a;backdrop-filter:blur(6px)}
 @media(prefers-reduced-motion:no-preference){.binder-continuous .binder-book:first-child .binder-sheet{animation:binder-open 1.2s cubic-bezier(.16,1,.3,1)}.binder-continuous .binder-book:first-child .binder-sheet{animation-name:binder-open}@keyframes binder-open{from{opacity:.35;transform:perspective(1400px) rotateY(-12deg);transform-origin:left}to{opacity:1;transform:none}}}
 @media(prefers-reduced-motion:no-preference){.binder-continuous.is-opening .binder-book:first-child{animation:binder-book-open 1.6s cubic-bezier(.16,1,.3,1) both;transform-origin:left center}.binder-continuous.is-opening .binder-book:first-child .binder-sheet{animation:binder-sheet-open 1.6s cubic-bezier(.16,1,.3,1) both;transform-origin:left center}@keyframes binder-book-open{0%{opacity:0;transform:perspective(1800px) rotateY(-68deg) translateX(-80px)}55%{opacity:1;transform:perspective(1800px) rotateY(4deg) translateX(0)}100%{opacity:1;transform:none}}@keyframes binder-sheet-open{0%{filter:brightness(.5)}60%{filter:brightness(1.08)}100%{filter:none}}}
 @keyframes binder-book-open-force{0%{opacity:0;transform:perspective(1800px) rotateY(-68deg) translateX(-80px)}55%{opacity:1;transform:perspective(1800px) rotateY(4deg) translateX(0)}100%{opacity:1;transform:none}}@keyframes binder-sheet-open-force{0%{filter:brightness(.5)}60%{filter:brightness(1.08)}100%{filter:none}}@media(prefers-reduced-motion:reduce){.binder-continuous.is-opening .binder-book:first-child{animation:binder-book-open-force 1.6s cubic-bezier(.16,1,.3,1) both!important;transform-origin:left center}.binder-continuous.is-opening .binder-book:first-child .binder-sheet{animation:binder-sheet-open-force 1.6s cubic-bezier(.16,1,.3,1) both!important;transform-origin:left center}}
+
+/* ---------- Le journal ---------- */
+.jr-tag{display:inline-block;font:600 11px/1 var(--body);letter-spacing:.12em;text-transform:uppercase;color:var(--gold);border:1px solid #e0b85c55;border-radius:999px;padding:5px 10px;background:#e0b85c14}
+.jr-une{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:0;align-items:stretch;background:var(--panel);border:1px solid var(--line);border-radius:18px;overflow:hidden;text-decoration:none;color:inherit;box-shadow:var(--sh2);transition:border-color .2s,transform .2s}
+.jr-une:hover{border-color:#e0b85c66;transform:translateY(-2px)}
+.jr-une img{width:100%;height:100%;min-height:220px;object-fit:cover;object-position:center 28%}
+.jr-une>div{padding:26px;display:flex;flex-direction:column;gap:10px;justify-content:center}
+.jr-une h2{margin:0;font-size:clamp(20px,2.6vw,28px)}
+.jr-une p{margin:0}
+.jr-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:16px;margin-top:16px}
+.jr-card{display:flex;flex-direction:column;background:var(--panel);border:1px solid var(--line);border-radius:14px;overflow:hidden;text-decoration:none;color:inherit;box-shadow:var(--sh1);transition:border-color .2s,transform .2s}
+.jr-card:hover{border-color:#e0b85c66;transform:translateY(-2px)}
+.jr-card>img{width:100%;aspect-ratio:16/10;object-fit:cover;object-position:center 28%}
+.jr-nocover{display:grid;place-items:center;aspect-ratio:16/10;font-size:40px;background:linear-gradient(140deg,var(--felt),var(--felt2))}
+.jr-body{padding:14px;display:flex;flex-direction:column;gap:7px}
+.jr-body b{font-family:var(--disp);font-size:16px;line-height:1.25;text-wrap:balance}
+.jr-meta{margin-top:auto}
+.jr-article{max-width:44rem;margin:0 auto;padding-bottom:10px}
+.jr-article h1{margin:10px 0 6px}
+.jr-cover{margin:20px 0 0}
+.jr-fig{margin:24px 0;text-align:center}
+.jr-fig img{border-radius:14px;border:1px solid var(--line);box-shadow:var(--sh2);max-height:440px;width:auto}
+.jr-cover img{width:100%;max-width:100%;max-height:340px;object-fit:cover;object-position:center 26%}
+.jr-fig figcaption{font:13px/1.5 var(--body);color:var(--mut);margin-top:8px}
+.jr-chapo{font-size:18px;line-height:1.6;color:var(--gold2);border-left:3px solid #e0b85c66;padding-left:14px;margin:22px 0}
+.jr-texte{font-size:16.5px;line-height:1.75}
+.jr-texte h2{margin:32px 0 10px;font-size:22px}
+.jr-texte h3{margin:24px 0 8px;font-size:17px;color:var(--gold2)}
+.jr-texte ul{padding-left:20px;margin:12px 0}
+.jr-texte li{margin:6px 0}
+.jr-texte p{margin:14px 0}
+.jr-fin{margin-top:34px}
+@media(max-width:720px){.jr-une{grid-template-columns:1fr}.jr-une img{min-height:180px}.jr-une>div{padding:18px}.jr-texte{font-size:16px}}

@@ -66,6 +66,21 @@ clic Publier → blog/approve?id&k     : status=published · fil du forum signé
   `sc-gazette-reseaux`), mail via l'identifiant Brevo existant, 4 nœuds Facebook/Instagram **grisés** jusqu'à la Page + le jeton.
 - **Coût : 0 €** (Gemini gratuit, Groq en secours, Brevo 300 mails/jour, n8n sur le VPS déjà en place).
 
+### Le journal du site (ajout 14/11)
+`blog` existait depuis octobre, **mais aucune page ne l'affichait** : les articles étaient écrits dans le vide,
+et le lien que la Gazette posait sur Facebook ne menait nulle part. C'est réparé.
+- Route **`#/journal`** (liste) et **`#/journal/<slug>`** (article), fichier `journal.js` (rendu + markdown
+  minimal : `##`, `###`, listes, `**gras**`, `*italique*`, `![image](url)`, liens — tout est échappé avant mise en forme).
+- Lien dans la navigation, styles `.jr-*` en fin de `style.css`, `sw.js` passé en `tdd-v29`.
+- RPC `blog_view(slug)` : compteur de lectures. **Sans lui la boucle d'amélioration notait à l'aveugle**,
+  `views` restant à 0.
+- Trigger `blog_cover_bi` : un article sans illustration reçoit l'image de la carte vedette de la semaine
+  (convention TCGdex `<image>/high.webp`), sinon le visuel du site.
+- Trois articles de fond écrits et publiés le 14/11 (Règne Delta, grille d'état NM/EX/GD/PL, six réflexes
+  d'échange), chacun avec son fil de forum. Le filtre `contact_violation` a refusé le premier essai : le mot
+  **« signal »** est dans la liste noire (« signal d'alerte »). Bon rappel que les textes du forum doivent
+  éviter aussi : tel, numero, fb, snap, rib, signal.
+
 ### Vidéo — YouTube (ajout 14/11)
 La Gazette ne refait pas de chaîne vidéo : elle **appelle celle qui existe**, `LnHApbawsIE4dw70`
 « 🎬 Shorts — Faits racontés (Pexels + voix off) », 39 nœuds déjà éprouvés (TTS Google, sous-titres ASS

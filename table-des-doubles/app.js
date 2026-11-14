@@ -9,6 +9,7 @@ import { renderLegal } from './legal.js';
 import { playIntro } from './intro.js';
 import { initCritters, critterSVG, CRITTER_NAMES, HUES } from './critters.js';
 import { renderGuide } from './guide.js';
+import { renderJournalList, renderArticle } from './journal.js';
 import { initFx, refreshFx } from './fx.js';
 // L'introduction reste accessible depuis « Revoir l'intro » ; elle ne s'ouvre plus
 // automatiquement afin de ne jamais bloquer l'accès à l'application.
@@ -166,7 +167,24 @@ function legal() {
   view.innerHTML = renderLegal(esc, sub);
   if (sub) document.getElementById('lg-' + sub)?.scrollIntoView();
 }
-const routes = { '': home, trophees, legal, classeur, table, offres, forum, compte, regles, guide, membre };
+// ---------- le journal ----------
+async function journal() {
+  const slug = location.hash.split('/')[2];
+  if (slug) {
+    const { data: a } = await sb.from('blog')
+      .select('slug,title,excerpt,tag,cover,body,published_at,created_at,post_id')
+      .eq('slug', slug).eq('status', 'published').maybeSingle();
+    if (!a) { view.innerHTML = '<div class="empty">Article introuvable. <a href="#/journal">Retour au journal</a></div>'; return; }
+    view.innerHTML = renderArticle(a, esc, !!a.post_id);
+    sb.rpc('blog_view', { p_slug: slug });   // compteur de lectures : il nourrit la boucle d'amélioration
+    return;
+  }
+  const { data } = await sb.from('blog')
+    .select('slug,title,excerpt,tag,cover,body,published_at,created_at')
+    .eq('status', 'published').order('published_at', { ascending: false }).limit(30);
+  view.innerHTML = renderJournalList(data || [], esc);
+}
+const routes = { '': home, trophees, legal, classeur, table, offres, forum, journal, compte, regles, guide, membre };
 function guide() {
   const k = location.hash.split('/')[2]; view.innerHTML = renderGuide();
   const el = k && document.getElementById('g-' + k); if (!el) return;

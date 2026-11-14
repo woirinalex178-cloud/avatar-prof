@@ -66,10 +66,38 @@ clic Publier → blog/approve?id&k     : status=published · fil du forum signé
   `sc-gazette-reseaux`), mail via l'identifiant Brevo existant, 4 nœuds Facebook/Instagram **grisés** jusqu'à la Page + le jeton.
 - **Coût : 0 €** (Gemini gratuit, Groq en secours, Brevo 300 mails/jour, n8n sur le VPS déjà en place).
 
+### Vidéo — YouTube (ajout 14/11)
+La Gazette ne refait pas de chaîne vidéo : elle **appelle celle qui existe**, `LnHApbawsIE4dw70`
+« 🎬 Shorts — Faits racontés (Pexels + voix off) », 39 nœuds déjà éprouvés (TTS Google, sous-titres ASS
+calés au dixième de seconde, ducking de la musique, loudnorm en deux passes, upload YouTube **en privé**).
+
+Deux retouches chirurgicales seulement, le comportement d'origine est intact :
+- nœud **« Appel depuis la Gazette »** (`executeWorkflowTrigger`) → « Preparer le dossier » ;
+- `Choisir le theme` accepte un `domaine` injecté ; sans appel extérieur, la rotation habituelle reprend
+  (la référence au nœud échoue, on retombe dans le `catch`) ;
+- `Preparer le montage` ajoute le lien du site à la description YouTube quand l'appel vient de nous.
+
+Côté Gazette (`StcinxUjfXgoNGIQ`) : « Réglages Sharing Cards » → **« Sujet de la vidéo »** → **« Lancer la
+vidéo (YouTube) »** (`waitForSubWorkflow: false`, le montage prend plusieurs minutes). Le domaine injecté est
+*« les cartes Pokémon à collectionner : rareté, cotes, contrefaçons, état et conservation »* : l'agent éditorial
+y cherche un fait qui corrige une idée reçue, le **vérifie dans une encyclopédie**, puis écrit le script.
+Ce n'est donc pas un résumé des cotes mais un Short qui tient tout seul — c'est ce qui marche sur YouTube.
+
+**TikTok et Instagram Reels restent manuels** : aucune API gratuite ne publie dessus (la chaîne
+`EFZy3OZHCzikCqQS` existe mais finit par un envoi par mail, pas par une publication). La même vidéo verticale
+sert aux trois. Piste : Reels est publiable via l'API Graph, à faire après la Page Facebook.
+
 ### Points de vigilance
 - `GEMINI_API_KEY` **absente** : `ai_hits` est à 0, tout a été rédigé par le moteur de secours. C'est le seul verrou qui sépare
   d'un rendu vraiment pro (étape 1 ter d'`A-FAIRE.md`).
 - Trigger `blog_slug_bi` (slug unique en cas de double rédaction le même jour) : **migration en attente de confirmation**.
+- **TTS Google en panne (403)** : `texttospeech.googleapis.com` répond `PERMISSION_DENIED / ACCESS_DENIED`.
+  Les 3 derniers passages programmés du workflow Shorts ont échoué (13/11 18h, 14/11 6h, 14/11 18h) : **aucune
+  vidéo ne se monte plus**, et ce depuis avant la Gazette. À débloquer dans Google Cloud (étape 7 bis d'`A-FAIRE.md`).
+  Sans carte bancaire, l'alternative est le TTS de Gemini, mais son palier gratuit (3 requêtes/min, 15/jour)
+  ne tient pas : la chaîne appelle le TTS une fois par phrase pour mesurer chaque durée de sous-titre.
+- Le modèle principal du workflow Shorts, `gemini-flash-latest`, échoue (`fetch failed`) : seul le modèle de
+  secours répond, ce qui fait durer l'agent éditorial 5 minutes au lieu de quelques secondes. À revoir.
 - Instagram refuse une publication sans image : à défaut de `blog.cover`, le moteur envoie `img/og.jpg`. Un visuel par article
   serait mieux (piste : la carte vedette via la fonction `img`, à arbitrer côté droits Nintendo).
 

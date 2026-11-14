@@ -171,6 +171,20 @@ Sans elle, les textes sont écrits par le moteur de secours : exacts, mais plats
    ⚠️ Le jeton Facebook actuel du compte est **invalidé** (mot de passe changé) : il faut le refaire.
 4. Tant que ces nœuds restent grisés, le site et le forum publient quand même. Rien n'est cassé.
 
+### 7.b bis La voix off des vidéos est bloquée (5 min) — à faire avant d'espérer une vidéo
+Ta chaîne vidéo est branchée sur la Gazette, mais **elle est en panne depuis au moins le 13/11** : Google
+Text-to-Speech refuse la voix off (erreur 403, « Permission denied on the service »). Ce n'est pas lié à la
+Gazette : tes 3 derniers Shorts programmés ont échoué pour cette raison.
+1. Va sur https://console.cloud.google.com/apis/library/texttospeech.googleapis.com
+2. Vérifie en haut que tu es sur **le bon projet** (celui de la clé utilisée par n8n), puis clique **Activer**.
+3. Si c'est déjà activé : menu **API et services → Identifiants** → ouvre ta clé → section **Restrictions
+   d'API** → coche *Cloud Text-to-Speech API* (ou passe en « Ne pas restreindre »).
+4. L'API demande un compte de facturation enregistré, mais le palier gratuit est large : 4 millions de
+   caractères par mois en voix standard, 1 million en WaveNet. Un Short consomme environ 700 caractères.
+   Tu ne paieras rien, mais il faut une carte au dossier : si tu refuses, dis-le-moi, je chercherai une voix
+   off sans compte Google (le palier gratuit de Gemini est trop serré, il faudra une autre piste).
+5. Ensuite, dis-moi « TTS OK » : je relance une vidéo de test.
+
 ### 7.c Les groupes Facebook et Discord restent à la main
 L'API Facebook ne permet pas de publier dans les groupes des autres. Le mail te donne le texte prêt à copier : c'est le plus
 efficace pour démarrer (étape 6, point 4).
@@ -185,3 +199,4 @@ Dis-moi simplement « lance la Gazette » : je déclenche une rédaction et tu r
 - Tout bug remonté pendant l'étape 2 → correction.
 - « lance la Gazette » → une rédaction tout de suite, mail de validation à la clé.
 - « clé IA OK » → je relance une rédaction pour comparer avec la version de secours.
+- « TTS OK » → je relance une vidéo de test et je vérifie le montage de bout en bout.

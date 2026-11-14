@@ -151,8 +151,37 @@ Stripe sépare « Votre compte » (paiements) et « Comptes connectés » (vende
 
 ---
 
+---
+
+## ÉTAPE 7 — Les publications automatiques (« La Gazette ») — 15 min, gratuit
+Le moteur est en place : **chaque lundi**, il rédige la publication de la semaine à partir des vraies cotes du site et t'envoie
+**un seul mail** avec deux boutons, « ✅ Publier partout » et « 🗑️ Jeter ». Un clic suffit : l'article part sur le site, le fil
+s'ouvre sur le forum sous le compte « LaGazette », et les légendes partent sur les réseaux.
+
+### 7.a La clé IA — c'est la seule chose qui manque vraiment (2 min)
+Sans elle, les textes sont écrits par le moteur de secours : exacts, mais plats. Avec elle, ils sont vraiment rédigés.
+1. aistudio.google.com/apikey → « Create API key » (compte Google, pas de carte bancaire).
+2. Supabase → Edge Functions → **Secrets** → `GEMINI_API_KEY` = ta clé → Save.
+3. Ne la colle jamais dans le chat. (Secours facultatif : `GROQ_API_KEY` depuis console.groq.com.)
+
+### 7.b Facebook et Instagram (10 min)
+1. Crée la **Page Facebook** « Sharing Cards », puis un **compte Instagram professionnel** relié à cette Page.
+2. Dans n8n → workflow **🃏 SHARING CARDS — La Gazette** → nœud **Réglages Sharing Cards** : colle `fb_page_id` et `ig_user_id`.
+3. Sur les 4 nœuds grisés (Facebook, Instagram ×3) : ajoute un identifiant **Facebook Graph API**, puis clic droit → **Enable**.
+   ⚠️ Le jeton Facebook actuel du compte est **invalidé** (mot de passe changé) : il faut le refaire.
+4. Tant que ces nœuds restent grisés, le site et le forum publient quand même. Rien n'est cassé.
+
+### 7.c Les groupes Facebook et Discord restent à la main
+L'API Facebook ne permet pas de publier dans les groupes des autres. Le mail te donne le texte prêt à copier : c'est le plus
+efficace pour démarrer (étape 6, point 4).
+
+### 7.d Pour tester sans attendre lundi
+Dis-moi simplement « lance la Gazette » : je déclenche une rédaction et tu reçois le mail dans la minute.
+
 ## Ce que je fais de mon côté quand tu me le dis
 - « Stripe OK » → activer les paiements et le versement aux vendeurs, puis tout tester.
 - « scores authenticité : X et Y » → régler les seuils.
 - « rédige les CGU » → textes légaux complets.
 - Tout bug remonté pendant l'étape 2 → correction.
+- « lance la Gazette » → une rédaction tout de suite, mail de validation à la clé.
+- « clé IA OK » → je relance une rédaction pour comparer avec la version de secours.

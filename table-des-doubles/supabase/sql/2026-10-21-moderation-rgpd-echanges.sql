@@ -54,6 +54,9 @@ begin
   get diagnostics n_rep = row_count;
   delete from public.auth_checks where created_at < now() - interval '2 years';
   get diagnostics n_chk = row_count;
+  -- statistiques de scan : 90 jours ; compteurs anti-abus de l'IA : 30 jours
+  delete from public.scan_stats where created_at < now() - interval '90 days';
+  delete from public.ai_hits where d < current_date - 30;
   for u in select p.id from public.profiles p
       where p.pseudo not like 'supprime|_%' escape '|'
         and greatest(coalesce(p.last_seen, p.created_at::date), p.created_at::date) < current_date - interval '3 years'

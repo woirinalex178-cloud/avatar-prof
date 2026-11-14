@@ -1,4 +1,4 @@
-// Contrôle d'authenticité par photo, 100 % dans le navigateur (gratuit, rien n'est envoyé à un tiers).
+// Contrôle visuel indicatif par photo (pas une authentification), 100 % dans le navigateur (gratuit, rien n'est envoyé à un tiers).
 // Il ne remplace pas une expertise (PSA, CGC, PCA) : il repère des signes fréquents de contrefaçon.
 // Tests : 1) couleurs et mise en page comparées à l'image officielle, 2) texte (nom et numéro) lu sur la carte,
 //         3) teinte du dos, 4) test de la lampe (les vraies cartes ont une couche noire qui bloque la lumière).
@@ -110,11 +110,11 @@ const TESTS = [
 
 export function openAuth(card, H, opts = {}) {
   const files = {};
-  H.modal(`<div class="form"><h2 style="margin:0">Contrôle d'authenticité</h2>
+  H.modal(`<div class="form"><h2 style="margin:0">Contrôle visuel indicatif</h2>
   <p class="small mut" style="margin:0">${H.esc(H.nm(card))} · ${H.esc(card.local_id)} — plus tu ajoutes de photos, plus le score est fiable.</p>
   ${TESTS.map(([k, t, h, req]) => `<label class="panel small" style="display:flex;gap:10px;align-items:center;cursor:pointer"><span style="flex:1"><b>${t}</b>${req ? '' : ' <span class="mut">(conseillé)</span>'}<br><span class="mut">${h}</span></span><span class="btn sm ghost" id="st-${k}">📷 Photo</span><input type="file" accept="image/*" capture="environment" data-k="${k}" hidden></label>`).join('')}
   <button class="btn" id="agogo" disabled>Analyser</button><div id="ares" role="status"></div>
-  <p class="small mut">Indicatif : un contrôle photo ne remplace pas une expertise. Pour une carte de plus de 100 €, préfère une carte gradée (PSA, CGC, PCA).</p></div>`);
+  <p class="small mut">Indicatif : ce contrôle repère des incohérences visibles, il ne prouve pas qu'une carte est authentique et ne remplace pas une expertise. Pour une carte de plus de 100 €, préfère une carte gradée (PSA, CGC, PCA).</p></div>`);
   H.$('#dbody').onchange = e => { const k = e.target.dataset.k; if (!k) return; files[k] = e.target.files[0]; H.$('#st-' + k).textContent = '✔ Prise'; H.$('#agogo').disabled = !files.recto; };
   if (opts.recto) { files.recto = opts.recto; H.$('#st-recto').textContent = '✔ Prise'; H.$('#agogo').disabled = false; } // photo déjà prise au scanner
   H.$('#agogo').onclick = async () => {
@@ -129,7 +129,7 @@ export function openAuth(card, H, opts = {}) {
     const w = { recto: 30, texte: 25, dos: 20, lampe: 25 }; let s = 0, t = 0;
     for (const k in rep) if (rep[k].score != null && !rep[k].skip) { s += rep[k].score * w[k]; t += w[k]; }
     const score = t ? Math.round(s / t) : 0, bad = Object.values(rep).some(r => r.score != null && r.score < 30);
-    const verdict = !t ? ['Photos insuffisantes', 'p-PL'] : score >= 75 && !bad ? ['Aucun signe de contrefaçon détecté', 'p-NM'] : score >= 50 ? ['À vérifier de plus près', 'p-GD'] : ['Signes de contrefaçon', 'p-PL'];
+    const verdict = !t ? ['Photos insuffisantes', 'p-PL'] : score >= 75 && !bad ? ['Cohérence visuelle : rien d\'anormal relevé', 'p-NM'] : score >= 50 ? ['Cohérence visuelle à vérifier', 'p-GD'] : ['Incohérences détectées', 'p-PL'];
     rep.meta = { score, verdict: verdict[0], tests: Object.keys(rep).length, confidence: t >= 75 ? 'bonne' : t >= 55 ? 'moyenne' : 'faible' };
     const label = { recto: 'Couleurs & mise en page', texte: 'Texte imprimé', dos: 'Couleur du dos', lampe: 'Test de la lampe' };
     box.innerHTML = `<div class="panel"><div style="display:flex;align-items:center;gap:14px"><div class="ring" style="--p:${score};width:84px;height:84px"><span style="font-size:18px">${score}</span></div>

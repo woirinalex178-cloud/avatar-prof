@@ -30,7 +30,8 @@ const WEEKLY = [
   { k: 'scan', n: 10, ic: '📷', t: 'scanne 10 cartes' },
   { k: 'list', n: 3, ic: '⇄', t: 'pose 3 doubles sur la table' },
   { k: 'wish', n: 5, ic: '⭐', t: 'ajoute 5 cartes à ta liste de souhaits' },
-  { k: 'auth', n: 2, ic: '🔍', t: "fais 2 contrôles d'authenticité" }
+  { k: 'auth', n: 2, ic: '🔍', t: "fais 2 contrôles visuels de cartes" },
+  { k: 'f_posts', n: 3, ic: '💬', t: 'écris 3 messages sur le forum' }
 ];
 const weekQuest = w => WEEKLY[parseInt(w.slice(-2), 10) % WEEKLY.length];
 function weekBox() { const w = isoWeek(); if (G.week?.w !== w) G.week = { w, c: 0 }; return G.week; }
@@ -88,6 +89,9 @@ export function stats(rows, coll, profile, since) {
   st.streak = SRV ? (profile?.streak || 0) : streak();
   st.c = { add: cnt('add'), scan: cnt('scan'), auth: cnt('auth'), list: cnt('list'), wish: cnt('wish'), catch: cnt('catch'), daily: cnt('daily'), weekly: cnt('weekly') };
   st.f = { night: !!cnt('night'), early: !!cnt('early'), logo: !!cnt('logo') };
+  // forum : compteurs calculés par la base à partir des vrais messages
+  st.fo = { topics: cnt('f_topics'), replies: cnt('f_replies'), posts: cnt('f_posts'), likes: cnt('f_likes'), pop: cnt('f_pop'), idea: cnt('f_idea'),
+    vitrine: cnt('f_vitrine'), hello: cnt('f_hello'), welcome: cnt('f_welcome'), sections: cnt('f_sections') };
   return st;
 }
 
@@ -142,9 +146,22 @@ export const BADGES = {
     T('amb5', '🎺', 'Ambassadeur d\'argent', '5 filleuls actifs.', 2, s => s.fil >= 5, s => P(s.fil, 5)),
     T('amb20', '👑', 'Ambassadeur légendaire', '20 filleuls actifs.', 4, s => s.fil >= 20, s => P(s.fil, 20)),
     T('scan10', '📷', 'Œil de lynx', 'Scanne 10 cartes.', 1, s => (s.c.scan || 0) >= 10, s => P(s.c.scan || 0, 10)),
-    T('auth1', '🔍', 'Détective', 'Fais un contrôle d\'authenticité.', 1, s => (s.c.auth || 0) >= 1),
+    T('auth1', '🔍', 'Détective', 'Fais un contrôle visuel d\'une carte.', 1, s => (s.c.auth || 0) >= 1),
     T('st7', '📅', 'Assidu', 'Ouvre ton classeur 7 jours de suite.', 2, s => s.streak >= 7, s => P(s.streak, 7)),
     T('st30', '🗓️', 'Inarrêtable', '30 jours de suite.', 4, s => s.streak >= 30, s => P(s.streak, 30))
+  ],
+  'Forum': [
+    T('f_hello', '👋', 'Enchanté !', 'Présente-toi dans « Présentez-vous ».', 1, s => s.fo.hello >= 1),
+    T('f_first', '✍️', 'Premier mot', 'Publie ton premier message sur le forum.', 1, s => s.fo.posts >= 1),
+    T('f_welc3', '🤗', 'Comité d\'accueil', 'Souhaite la bienvenue à 3 nouveaux membres.', 2, s => s.fo.welcome >= 3, s => P(s.fo.welcome, 3)),
+    T('f_vit', '🖼️', 'Vitrine ouverte', 'Montre une carte dans « Ma vitrine ».', 1, s => s.fo.vitrine >= 1),
+    T('f_25', '🗨️', 'Bavard', '25 messages sur le forum.', 2, s => s.fo.posts >= 25, s => P(s.fo.posts, 25)),
+    T('f_100', '📢', 'Pilier du forum', '100 messages sur le forum.', 3, s => s.fo.posts >= 100, s => P(s.fo.posts, 100)),
+    T('f_like10', '❤️', 'Apprécié', 'Reçois 10 « j\'aime » sur tes messages.', 2, s => s.fo.likes >= 10, s => P(s.fo.likes, 10)),
+    T('f_like100', '💖', 'Chouchou de la table', 'Reçois 100 « j\'aime ».', 4, s => s.fo.likes >= 100, s => P(s.fo.likes, 100)),
+    T('f_pop', '🔥', 'Sujet brûlant', 'Lance un sujet qui reçoit 10 réponses.', 3, s => s.fo.pop >= 1),
+    T('f_idea', '💡', 'Boîte à idées', 'Une de tes idées reçoit 5 votes.', 3, s => s.fo.idea >= 1),
+    T('f_tour', '🧭', 'Tour du forum', 'Écris dans 4 rubriques différentes.', 2, s => s.fo.sections >= 4, s => P(s.fo.sections, 4))
   ],
   'Secrets': [
     T('x_catch', '🫧', 'Attrapeur', 'Attrape 10 créatures qui traversent le site.', 3, s => (s.c.catch || 0) >= 10, s => P(s.c.catch || 0, 10), 'Certaines choses passent… si l\'on est assez vif.'),

@@ -5,7 +5,7 @@ const STEPS = [
   ['🔒', 'Paiement bloqué', 'Achat : tu paies dans l\'appli, l\'argent est bloqué (séquestre). Échange pur : l\'acceptation suffit.'],
   ['🏠', 'Adresses', 'L\'adresse de l\'autre membre apparaît, uniquement pour cette transaction.'],
   ['📦', 'Envoi sous 5 jours', 'Bordereau prépayé téléchargeable dans l\'offre (point relais ou Colissimo) : on l\'imprime, on le colle, on dépose. Le suivi se remplit tout seul. Option : Lettre suivie achetée soi-même.'],
-  ['🔍', 'Réception', 'Tu vérifies la carte (contrôle d\'authenticité photo possible) puis tu confirmes.'],
+  ['🔍', 'Réception', 'Tu vérifies la carte (contrôle visuel photo possible, indicatif) puis tu confirmes.'],
   ['💶', 'Versement + avis', 'L\'argent part au vendeur. Sans réponse 7 jours après l\'arrivée, il est versé automatiquement. Chacun laisse un avis.'],
   ['⚖️', 'Problème ?', 'Carte absente, abîmée ou fausse : ouvre un litige AVANT de confirmer. L\'argent reste bloqué pendant l\'examen.']
 ];
@@ -27,7 +27,7 @@ const USAGE = [
   <li><b>Prix très en dessous de la cote sur une carte chère</b> → méfiance : contrefaçon ou carte abîmée non déclarée.</li>
   <li><b>Fausses cartes</b> : au doigt, une fausse est souvent plus lisse et plus légère ; à la lampe, elle laisse passer beaucoup plus de lumière. Lance le contrôle photo à la réception.</li></ul>`],
   ['Que faire à la réception ?', `<ol><li><b>Filme l'ouverture</b> du colis d'un seul plan, sans coupure : c'est ta preuve si la carte est absente ou cassée.</li>
-  <li>Vérifie l'état annoncé et lance le <b>contrôle d'authenticité</b> depuis l'offre.</li>
+  <li>Vérifie l'état annoncé et lance le <b>contrôle visuel</b> (indicatif) depuis l'offre.</li>
   <li>Tout est conforme → <b>J'ai reçu la carte</b>, et laisse un avis.</li>
   <li>Un problème → <b>n'appuie pas sur « reçu »</b> : ouvre un litige avec tes photos. L'argent reste bloqué.</li></ol>
   <p class="small mut">Sans réponse de ta part, l'argent est versé automatiquement 7 jours après la livraison.</p>`],

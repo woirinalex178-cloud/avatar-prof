@@ -26,7 +26,7 @@ const DISC = {
   cote: "Cotes indicatives, issues de données publiques (Cardmarket / TCGplayer via TCGdex), relevées chaque nuit. Ce n'est ni une estimation officielle, ni un conseil d'achat ou d'investissement : Sharing Cards n'intervient pas dans la fixation des prix.",
   etat: "La fourchette par état est un simple ordre de grandeur calculé à partir de la cote Near Mint. L'état réel, l'édition et la demande du moment décident du prix final.",
   deal: "Sharing Cards héberge des annonces entre particuliers : le site n'est ni vendeur, ni acheteur, ni expert. L'état, l'authenticité et la conformité de la carte relèvent du membre qui la propose.",
-  auth: "Le contrôle d'authenticité est une aide automatique et indicative : il ne remplace ni une expertise, ni une gradation professionnelle, et aucune carte n'est certifiée par le site.",
+  auth: "Le contrôle visuel compare tes photos à la carte officielle : c'est une aide indicative pour repérer une incohérence, pas une preuve d'authenticité. Une bonne contrefaçon peut le passer, une vraie carte mal photographiée peut l'échouer. Il ne remplace ni une expertise ni une gradation, et aucune carte n'est certifiée par le site.",
   ship: "Le transport est assuré par le transporteur choisi. En cas de perte ou de casse, la réclamation se fait auprès de lui : le site t'accompagne mais n'achemine rien.",
   ja: "Les cartes japonaises ont leur propre cote Cardmarket quand le marché en publie une ; elle est plus fragile (peu de ventes) et le visuel peut manquer. Les cartes coréennes et chinoises ne sont cotées nulle part : la cote affichée est alors celle d'une autre version, à titre indicatif."
 };
@@ -55,7 +55,7 @@ const nm = c => c?.name_fr || c?.name || '?';
 const jp = c => c?.name_fr ? `<small class="jp">${esc(c.name)}</small>` : '';
 const setName = s => s ? (s.name_fr || s.name) : '';
 const stars = p => p?.reviews_count ? `★ ${p.rating} (${p.reviews_count})` : 'nouveau';
-const authBadge = l => l.auth_score != null ? `<span class="pill ${l.auth_score >= 75 ? 'p-NM' : l.auth_score >= 50 ? 'p-GD' : 'p-PL'}" title="Contrôle photo d'authenticité">IA ${l.auth_score}</span>` : '';
+const authBadge = l => l.auth_score != null ? `<span class="pill ${l.auth_score >= 75 ? 'p-NM' : l.auth_score >= 50 ? 'p-GD' : 'p-PL'}" title="Contrôle visuel indicatif (pas une garantie d'authenticité)">${l.auth_score >= 75 ? '👁 Cohérent' : l.auth_score >= 50 ? '👁 À vérifier' : '👁 Incohérences'}</span>` : '';
 const photoUrl = p => sb.storage.from('photos').getPublicUrl(p).data.publicUrl;
 const color = s => `hsl(${[...s].reduce((a, c) => a + c.charCodeAt(0), 0) * 37 % 360} 70% 70%)`;
 const av = (p, pr) => pr?.avatar ? `<div class="av crit th-${pr.theme || 'felt'}">${critterSVG(+pr.avatar[0], +pr.avatar[2])}</div>` : `<div class="av" style="background:${color(p || '?')}">${esc((p || '?').slice(0, 2).toUpperCase())}</div>`;
@@ -238,8 +238,17 @@ async function home() {
     <div class="panel step"><b>2 · Pose tes doubles</b>Chaque double devient une annonce en un clic : état, photo, prix conseillé d'après la cote.</div>
     <div class="panel step"><b>3 · Échange en sécurité</b>Offres, messagerie et paiement dans l'appli. L'argent est bloqué jusqu'à la réception de la carte.</div>
   </div>
+  <section id="homeforum"></section>
   <h2>Les plus grosses cotes</h2>
   <div class="grid">${top.map(c => `<a class="tile" href="#/table" data-card="${c.id}">${img(c)}<div class="meta"><span class="nm">${esc(nm(c))}</span><span class="v">${eur(c.price_eur)}${trend(c)}</span></div></a>`).join('') || '<p class="mut">Catalogue en cours de chargement…</p>'}</div>`;
+  // les derniers sujets du forum, chargés après la page (elle s'affiche sans attendre)
+  sb.from('posts').select('id,title,body,section,user_id,last_user,last_at,created_at,replies,votes,pinned').is('parent_id', null).order('last_at', { ascending: false }).limit(5)
+    .then(async ({ data }) => { const box = $('#homeforum'); if (!box || !box.isConnected) return;
+      await pseudos((data || []).flatMap(t => [t.user_id, t.last_user]).filter(Boolean));
+      box.innerHTML = `<div class="fhead"><h2 style="margin:0">💬 Ça discute au forum</h2><a class="btn ghost sm" href="#/forum">Tout le forum →</a></div>
+      ${(data || []).length ? `<div class="ftopics">${data.map(t => topicRow(t, true)).join('')}</div>` : ''}
+      <div class="fcta">${[['presentation', '👋 Présente-toi'], ['vitrine', '🖼️ Montre ta plus belle carte'], ['recherche', '🔎 Dis ce que tu cherches']].map(([k, t]) => `<a class="btn ghost sm" href="#/forum/${k}">${t}</a>`).join('')}</div>`; })
+    .catch(() => { });
 }
 
 function setPicker() {
@@ -432,7 +441,7 @@ function listingModal(l) {
   <div><p class="mut small">${flag(c.lang)} ${LANGS[c.lang]} · ${esc(setName(S.sets.find(x => x.id === c.set_id)))} · ${c.local_id} · ${esc(c.rarity || '')}</p><h2 style="margin:4px 0 12px">${esc(nm(c))}</h2>${jp(c)}
   <dl class="kv">${l.auc ? '' : `<dt>Prix</dt><dd>${l.price ? eur(l.price) : 'Échange uniquement'}</dd>`}<dt>Cote Cardmarket</dt><dd><button type="button" class="cote" data-cote="${c.id}">${eur(c.price_eur)}${trend(c)} 📈</button>${c.price_updated ? ` <span class="small mut">du ${new Date(c.price_updated).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })}</span>` : ''}<div class="spark" data-spark="${esc(c.tcg_id || '')}"></div></dd><dt>État</dt><dd><span class="pill p-${l.condition}">${l.condition}</span> ${COND[l.condition][0]}</dd><dt>Échange</dt><dd>${l.trade_ok ? 'accepté' : 'non'}</dd><dt>Vendeur</dt><dd>${who(l.user_id, s)} · ${stars(s)} · ${s.trades_done || 0} transaction(s)${s.verified ? ' · ✔ identité vérifiée' : ''}${s.passionne ? '<span class="badge-coll">🏅 Collectionneur passionné</span>' : ''} · ${esc(s.region || '')}</dd></dl>
   ${l.note ? `<p class="panel small" style="margin-top:12px">${esc(l.note)}</p>` : ''}
-  ${l.auth_score != null ? `<div class="panel small" style="margin-top:10px">${authBadge(l)} <b>Contrôle photo d'authenticité : ${l.auth_score}/100</b> — ${esc(l.auth_report?.meta?.verdict || '')} (fiabilité ${esc(l.auth_report?.meta?.confidence || '?')}). <span class="mut">Indicatif, tu pourras refaire le contrôle à la réception.</span></div>` : ''}
+  ${l.auth_score != null ? `<div class="panel small" style="margin-top:10px">${authBadge(l)} <b>Contrôle visuel indicatif : ${l.auth_score >= 75 ? 'photos cohérentes avec la carte officielle' : l.auth_score >= 50 ? 'cohérence à vérifier' : 'incohérences relevées'}</b> — ${esc(l.auth_report?.meta?.verdict || '')} (fiabilité ${esc(l.auth_report?.meta?.confidence || '?')}). <span class="mut">Ce n'est pas une garantie d'authenticité ; tu pourras refaire le contrôle à la réception.</span></div>` : ''}
   ${c.price_eur != null ? `<details class="small" style="margin-top:10px"><summary>Que vaut cette carte selon son état ?</summary>${condTable(c.price_eur, l.condition)}${disc('etat')}</details>` : ''}
   ${l.photo_path && l.verify_code ? `<p class="small mut">Code de vérification attendu sur la photo : <b class="mono">${esc(l.verify_code)}</b>. S'il n'y est pas, signale l'annonce.</p>` : ''}
   ${disc('deal', ...(l.auth_score != null ? ['auth'] : []))}
@@ -642,8 +651,20 @@ function fromAI(ai, extra = []) {
   remember(list); return { list, sure, nums: [], how: { t: 'ai', read: ai.read, model: ai.model } };
 }
 // IA de vision côté serveur (palier gratuit) : désactivée d'elle-même si la clé n'est pas configurée
+// Avant le premier envoi d'une photo à l'IA, on explique et on demande l'accord (retenu sur l'appareil).
+let aiAsk = null;
+function aiConsent() {
+  try { const v = localStorage.getItem('ai_ok'); if (v === '1') return Promise.resolve(true); } catch { }
+  if (S.aiNo) return Promise.resolve(false);
+  return aiAsk ||= new Promise(ok => {
+    const yes = confirm("Cette carte n'a pas été reconnue sur ton téléphone.\n\nVeux-tu l'aide de l'IA ? Une copie réduite de la photo sera envoyée à notre serveur puis à un service d'IA (Google Gemini ou un service de secours) qui lit le nom et le numéro. La photo n'est pas conservée.\n\nOK = oui, et ne plus me demander · Annuler = non");
+    if (yes) { try { localStorage.setItem('ai_ok', '1'); } catch { } } else S.aiNo = true;
+    aiAsk = null; ok(yes);
+  });
+}
 async function identifyAI(cv) {
   if (S.aiOff) { S.aiErr = 'IA non configurée'; return null; }
+  if (!(await aiConsent())) { S.aiErr = 'aide de l\'IA refusée (tu peux la réactiver dans Compte)'; return null; }
   S.aiErr = null;
   const src = cv.raw || cv, k = Math.min(1, 1400 / Math.max(src.width, src.height)); // grande image : le petit numéro reste lisible
   const c = Object.assign(document.createElement('canvas'), { width: Math.round(src.width * k), height: Math.round(src.height * k) });
@@ -670,7 +691,7 @@ async function identifyOCR(cv) {
 }
 const PAGE_FMT = ['2x2', '2x3', '3x2', '3x3', '4x3']; // colonnes x lignes
 const pageFmt = () => { try { return PAGE_FMT.includes(localStorage.getItem('sc_page')) ? localStorage.getItem('sc_page') : '3x3'; } catch { return '3x3'; } };
-const INTENTS = [['add', '➕ Ajouter'], ['burst', '⚡ Rafale'], ['page', '📒 Page classeur'], ['auth', '🔍 Authentifier']];
+const INTENTS = [['add', '➕ Ajouter'], ['burst', '⚡ Rafale'], ['page', '📒 Page classeur'], ['auth', '👁 Contrôle visuel']];
 const TIPS = { add: 'Cadre la carte en entier : l\'appli lit le numéro (ex. 199/165) et la compare aux images officielles.', auth: 'Prends le recto en photo : la carte est reconnue puis le contrôle démarre avec la même photo.',
   burst: 'Passe tes cartes une à une dans le cadre : chaque carte reconnue est ajoutée toute seule (bip). Change de carte au signal ✅.', page: 'Choisis le format de ta page, puis photographie-la à plat, cadrée bord à bord, sans reflet.' };
 async function scanModal(intent = 'add') {
@@ -1111,7 +1132,7 @@ function showScan(c) {
   const add = scanState.intent === 'add', list = scanState.list || [], seenArt = new Set([artKey(c.id)]);
   const others = list.filter(x => !x.alt && !seenArt.has(artKey(x.id)) && seenArt.add(artKey(x.id)));
   const bAdd = `<div class="qtyrow"><button type="button" class="btn sm ghost" data-q="-1" aria-label="Moins">−</button><b id="sq">${scanState.qty}</b><button type="button" class="btn sm ghost" data-q="1" aria-label="Plus">+</button><button type="button" class="btn${add ? '' : ' ghost'}" id="sadd">${S.coll[c.id] ? '➕ En ajouter un de plus' : '➕ Ajouter au classeur'}</button></div>`;
-  const bAuth = `<button type="button" class="btn${add ? ' ghost' : ''}" id="sauth">🔍 ${add ? 'L\'authentifier aussi' : 'Lancer le contrôle avec cette photo'}</button>`;
+  const bAuth = `<button type="button" class="btn${add ? ' ghost' : ''}" id="sauth">🔍 ${add ? 'Faire aussi le contrôle visuel' : 'Lancer le contrôle avec cette photo'}</button>`;
   $('#scs').textContent = '';
   $('#scr').innerHTML = `<div class="scanres panel"><div class="sr-img">${img(c, true)}</div><div class="sr-txt">
     <p class="small" style="margin:0"><span class="pill p-NM">✓ Carte reconnue</span></p>
@@ -1433,54 +1454,126 @@ async function act(id, a) {
   await loadSession(); offres();
 }
 
-// ---------- forum : 5 sections ----------
+// ---------- forum : des rubriques en cases, des sujets, des réponses ----------
 const SECTIONS = [
-  ['libre', '💬 Expression libre', 'Ce qui te passe par la tête, entre collectionneurs.'],
-  ['recherche', '🔎 Recherche de cartes', 'Dis ce que tu cherches : quelqu\'un l\'a peut-être en double.'],
-  ['idees', '💡 Améliorations / propositions', 'Propose une idée pour le site et vote pour celles des autres.'],
-  ['presentation', '👋 Présentez-vous', 'Ton pseudo, ta région, ce que tu collectionnes.'],
-  ['blog', '📰 Autour des articles', 'Les discussions nées des articles du blog.']
+  ['presentation', '👋', 'Présentez-vous', 'Ton pseudo, ta région, ce que tu collectionnes. Les anciens te souhaitent la bienvenue.'],
+  ['vitrine', '🖼️', 'Ma vitrine', 'Montre ta dernière pépite ou ta plus belle carte : choisis-la dans ton classeur.'],
+  ['recherche', '🔎', 'Recherche de cartes', 'Dis ce que tu cherches : quelqu\'un l\'a peut-être en double.'],
+  ['libre', '💬', 'Expression libre', 'Cotes, conseils d\'état, ouvertures de boosters, souvenirs de cour de récré…'],
+  ['idees', '💡', 'Améliorations du site', 'Propose une idée et vote pour celles des autres : les plus soutenues passent en priorité.'],
+  ['blog', '📰', 'Autour des articles', 'Les discussions nées des articles du blog.']
 ];
-const secName = k => (SECTIONS.find(x => x[0] === k) || SECTIONS[0])[1];
+const SEC = k => SECTIONS.find(x => x[0] === k) || SECTIONS[3];
+const secName = k => { const s = SEC(k); return `${s[1]} ${s[2]}`; };
 const maskNote = '<p class="small mut">Les coordonnées (téléphone, e-mail, lien, nom de famille) sont automatiquement masquées en <b class="mono">######</b> : écris librement, le site te protège.</p>';
+const ago = d => { const s = (Date.now() - new Date(d)) / 1000;
+  return s < 60 ? 'à l\'instant' : s < 3600 ? `il y a ${Math.floor(s / 60)} min` : s < 86400 ? `il y a ${Math.floor(s / 3600)} h` : s < 7 * 86400 ? `il y a ${Math.floor(s / 86400)} j` : new Date(d).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' }); };
+// dernière visite du forum : les sujets actifs depuis sont marqués « nouveau »
+let forumSeen = 0; try { forumSeen = +localStorage.getItem('forum_seen') || 0; } catch { }
+const isNew = t => forumSeen && new Date(t.last_at) > forumSeen && t.last_user !== S.user?.id;
+const markSeen = () => { try { localStorage.setItem('forum_seen', Date.now()); } catch { } };
+const topicTitle = t => esc(t.title || (t.body || '').slice(0, 70) + ((t.body || '').length > 70 ? '…' : ''));
+const topicRow = (t, showSec) => { const u = S.pseudos[t.user_id], lu = S.pseudos[t.last_user];
+  return `<a class="ftopic${t.pinned ? ' pin' : ''}" href="#/forum/t/${t.id}">${av(u?.pseudo, u)}
+    <span class="ft-main"><b>${t.pinned ? '📌 ' : ''}${isNew(t) ? '<span class="fnew">nouveau</span> ' : ''}${topicTitle(t)}</b>
+      <small class="mut">${showSec ? secName(t.section) + ' · ' : ''}par ${esc(u?.pseudo || '?')} · ${ago(t.created_at)}</small></span>
+    <span class="ft-num"><b>${t.replies}</b><small>réponse${t.replies > 1 ? 's' : ''}</small></span>
+    <span class="ft-num"><b>${t.votes || 0}</b><small>❤️</small></span>
+    <span class="ft-last"><small class="mut">${ago(t.last_at)}<br>${esc(lu?.pseudo || u?.pseudo || '')}</small></span></a>`; };
+
 async function forum() {
-  const sec = S.fsec || 'libre', idees = sec === 'idees';
-  let q = sb.from('posts').select('*, blog:blog(slug,title)').eq('section', sec).limit(80);
-  q = idees ? q.order('votes', { ascending: false }).order('created_at', { ascending: false }) : q.order('created_at', { ascending: false });
-  const [{ data }, { data: mv }] = await Promise.all([q, S.profile ? sb.from('post_votes').select('post_id') : Promise.resolve({ data: [] })]);
+  const [, a, b] = location.hash.replace(/^#\/?/, '').split('/');
+  if (a === 't' && b) return forumTopic(+b);
+  if (a && SECTIONS.some(s => s[0] === a)) return forumSection(a);
+  return forumHome();
+}
+// accueil du forum : une case par rubrique, puis les derniers sujets toutes rubriques confondues
+async function forumHome() {
+  const [{ data: ov }, { data: last }] = await Promise.all([
+    sb.rpc('forum_overview'),
+    sb.from('posts').select('id,title,body,section,user_id,last_user,last_at,created_at,replies,votes,pinned').is('parent_id', null).order('last_at', { ascending: false }).limit(12)]);
+  const o = ov || {}; await pseudos([...(last || []).flatMap(t => [t.user_id, t.last_user]), ...Object.values(o).map(x => x.last?.user)].filter(Boolean));
+  const total = Object.values(o).reduce((n, x) => n + x.posts, 0);
+  view.innerHTML = `<div class="fhead"><div><h2 style="margin:0">💬 Le forum</h2><p class="small mut" style="margin:4px 0 0">${total} message${total > 1 ? 's' : ''} entre collectionneurs. Lecture libre, écriture avec un compte.</p></div>
+    ${S.profile ? '' : '<a class="btn sm" href="#/compte">Se connecter pour écrire</a>'}</div>
+  <div class="fcats">${SECTIONS.map(([k, ic, n, d]) => { const x = o[k] || { topics: 0, posts: 0 }, l = x.last, nw = l && forumSeen && new Date(l.at) > forumSeen && l.user !== S.user?.id;
+    return `<a class="fcat panel" href="#/forum/${k}"><span class="fcat-ic">${ic}</span><span class="fcat-tx"><b>${n}${nw ? ' <span class="fnew">nouveau</span>' : ''}</b><small class="mut">${d}</small>
+      ${l ? `<small class="fcat-last">Dernier : <b>${esc(l.title || '')}</b> · ${esc(S.pseudos[l.user]?.pseudo || '')} · ${ago(l.at)}</small>` : '<small class="fcat-last">Aucun sujet : lance le premier !</small>'}</span>
+      <span class="fcat-n"><b>${x.topics}</b><small>sujets</small><b>${x.posts}</b><small>messages</small></span></a>`; }).join('')}</div>
+  <h3>🔥 Derniers sujets actifs</h3>
+  <div class="ftopics">${(last || []).map(t => topicRow(t, true)).join('') || '<div class="empty">Le forum attend son premier sujet. Présente-toi !</div>'}</div>`;
+  markSeen();
+}
+// une rubrique : la liste de ses sujets, et le bouton pour en ouvrir un
+async function forumSection(sec) {
+  const idees = sec === 'idees';
+  let q = sb.from('posts').select('id,title,body,section,user_id,last_user,last_at,created_at,replies,votes,pinned').eq('section', sec).is('parent_id', null).order('pinned', { ascending: false });
+  q = idees ? q.order('votes', { ascending: false }).order('last_at', { ascending: false }) : q.order('last_at', { ascending: false });
+  const { data } = await q.limit(100);
+  await pseudos((data || []).flatMap(t => [t.user_id, t.last_user]).filter(Boolean));
+  const [, ic, n, d] = SEC(sec);
+  view.innerHTML = `<p class="small"><a href="#/forum">💬 Forum</a> › ${ic} ${esc(n)}</p>
+  <div class="fhead"><div><h2 style="margin:0">${ic} ${esc(n)}</h2><p class="small mut" style="margin:4px 0 0">${esc(d)}</p></div>
+    ${S.profile ? `<button class="btn" id="fnew">✍️ ${sec === 'presentation' ? 'Me présenter' : sec === 'vitrine' ? 'Montrer une carte' : 'Nouveau sujet'}</button>` : '<a class="btn sm" href="#/compte">Se connecter pour écrire</a>'}</div>
+  <div class="ftopics">${(data || []).map(t => topicRow(t)).join('') || '<div class="empty">Aucun sujet ici pour l\'instant. Lance le premier !</div>'}</div>`;
+  $('#fnew') && ($('#fnew').onclick = () => newTopic(sec));
+}
+// ouvrir un sujet : titre, message, et selon la rubrique une carte ou une extension
+async function newTopic(sec) {
+  if (needAccount()) return;
+  const mine = sec === 'vitrine' ? Object.keys(S.coll).filter(id => S.coll[id] > 0 && S.cards[id]).map(id => S.cards[id]).sort((a, b) => (b.price_eur || 0) - (a.price_eur || 0)).slice(0, 300) : [];
+  modal(`<form class="form" id="ntf"><h2 style="margin:0">${secName(sec)}</h2>
+    ${sec === 'presentation' ? '' : `<label class="f">Titre du sujet<input id="ntt" maxlength="90" required placeholder="${sec === 'vitrine' ? 'Ma dernière pépite !' : sec === 'idees' ? 'Une idée en une phrase' : sec === 'recherche' ? 'Je cherche…' : 'De quoi veux-tu parler ?'}"></label>`}
+    ${sec === 'vitrine' ? (mine.length ? `<label class="f">La carte à montrer<select id="ntc">${mine.map(c => `<option value="${esc(c.id)}">${esc(nm(c))} · ${esc(c.local_id)} · ${lcode(c.lang)}${c.price_eur ? ' · ' + eur(c.price_eur) : ''}</option>`).join('')}</select></label>` : '<p class="small mut">Ajoute d\'abord des cartes à ton classeur pour pouvoir les montrer.</p>') : ''}
+    ${sec === 'recherche' || sec === 'libre' ? `<label class="f">Extension concernée (facultatif)<select id="nts"><option value="">Aucune en particulier</option>${S.sets.filter(x => x.lang === S.lang).slice(0, 120).map(x => `<option value="${x.id}">${esc(setName(x))}</option>`).join('')}</select></label>` : ''}
+    <label class="f">${sec === 'presentation' ? 'Présente-toi' : 'Ton message'}<textarea id="ntb" maxlength="1900" rows="6" required placeholder="${sec === 'presentation' ? 'Depuis quand tu collectionnes, tes séries préférées, ce que tu cherches…' : sec === 'vitrine' ? 'Raconte : où tu l\'as eue, depuis combien de temps tu la cherchais…' : 'Écris ici…'}"></textarea></label>
+    ${maskNote}<p class="err" id="nterr"></p><button class="btn">Publier</button></form>`);
+  $('#ntf').onsubmit = async e => { e.preventDefault();
+    const body = $('#ntb').value.trim(); if (body.length < 2) return $('#nterr').textContent = 'Écris au moins quelques mots.';
+    const row = { body, section: sec, title: $('#ntt')?.value.trim() || (sec === 'presentation' ? `${S.profile?.pseudo || 'Nouveau membre'} se présente` : null), set_id: $('#nts')?.value || null, card_id: $('#ntc')?.value || null };
+    const { data, error } = await sb.from('posts').insert(row).select('id').single();
+    if (error) return $('#nterr').textContent = errMsg(error);
+    close(); toast('Sujet publié !'); refreshStats(); location.hash = `#/forum/t/${data.id}`; };
+}
+// un sujet : le message de départ, les réponses, et le formulaire pour répondre
+async function forumTopic(id) {
+  const [{ data: t }, { data: rs }, { data: mv }] = await Promise.all([
+    sb.from('posts').select('*, blog:blog(slug,title)').eq('id', id).maybeSingle(),
+    sb.from('posts').select('*').eq('parent_id', id).order('created_at').limit(300),
+    S.profile ? sb.from('post_votes').select('post_id').eq('user_id', S.user.id) : Promise.resolve({ data: [] })]);
+  if (!t) { view.innerHTML = '<div class="empty">Ce sujet n\'existe plus. <a href="#/forum">Retour au forum</a></div>'; return; }
   S.myvotes = new Set((mv || []).map(v => v.post_id));
-  await pseudos((data || []).map(p => p.user_id));
-  const [, titre, sous] = SECTIONS.find(x => x[0] === sec) || SECTIONS[0];
-  view.innerHTML = `<h2>Le forum de la table</h2>
-  <div class="seg wrapseg" style="margin-bottom:14px">${SECTIONS.map(([k, n]) => `<button data-fs="${k}" aria-pressed="${sec === k}">${n}</button>`).join('')}</div>
-  <div class="panel"><h3 style="margin-top:0">${titre}</h3><p class="small mut">${sous}</p>
-  ${S.profile ? `<form class="form" id="pf">${idees ? '<label class="f">Titre de ta proposition<input id="pt" maxlength="90" required></label>' : ''}
-    <textarea id="pb" maxlength="1900" rows="4" placeholder="${idees ? 'Décris ton idée : à quoi ça sert, pour qui ?' : sec === 'presentation' ? 'Présente-toi : depuis quand tu collectionnes, ce que tu cherches…' : sec === 'recherche' ? 'Les cartes que tu cherches (extension, numéro, état voulu)…' : 'Une question sur une cote, une carte, un conseil d\'état ?'}"></textarea>
-    <div class="bar" style="margin:0">${sec === 'libre' || sec === 'recherche' ? `<select id="ps" style="width:auto"><option value="">Général</option>${S.sets.filter(x => x.lang === S.lang).slice(0, 80).map(x => `<option value="${x.id}">${esc(x.name)}</option>`).join('')}</select>` : ''}<button class="btn">Publier</button></div>
-    ${maskNote}<p class="err" id="perr"></p></form>` : `<p class="mut">Lecture libre. <a href="#/compte">Connecte-toi</a> pour participer.</p>`}
-  ${(data || []).map(p => { const u = S.pseudos[p.user_id], mine = p.user_id === S.user?.id, voted = S.myvotes.has(p.id);
-    return `<div class="post">${av(u?.pseudo, u)}<div style="flex:1">
-      <b>${who(p.user_id, u)}</b> <span class="small mut">${new Date(p.created_at).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' })}${p.set_id ? ' · ' + esc(setName(S.sets.find(x => x.id === p.set_id))) : ''}${p.blog ? ` · <a href="#/blog/${esc(p.blog.slug)}">${esc(p.blog.title)}</a>` : ''}</span>
-      ${p.title ? `<h4 style="margin:4px 0">${esc(p.title)}</h4>` : ''}
-      <div style="white-space:pre-wrap">${esc(p.body)}</div>
-      ${p.edited_at ? `<span class="small mut">(modifié le ${new Date(p.edited_at).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' })})</span>` : ''}
-      <div class="acts" style="margin-top:6px">${idees ? `<button class="btn ghost sm${voted ? ' on' : ''}" data-vote="${p.id}">👍 ${p.votes}${voted ? ' · voté' : ''}</button>` : ''}
-      ${mine ? `<button class="btn ghost sm" data-editpost="${p.id}">✏️ Modifier</button><button class="btn ghost sm" data-delpost="${p.id}">Supprimer</button>` : `<button class="btn ghost sm" data-report="post:${p.id}">Signaler</button>`}</div>
-    </div></div>`; }).join('') || '<div class="empty">Sois le premier à écrire ici.</div>'}</div>`;
-  const f = $('#pf'); if (!f) return;
-  f.onsubmit = async e => { e.preventDefault();
-    const body = $('#pb').value.trim(); if (body.length < 2) return;
-    const row = { body, section: sec, set_id: $('#ps')?.value || null, title: $('#pt')?.value.trim() || null };
-    const { error } = await sb.from('posts').insert(row);
-    if (error) return $('#perr').textContent = errMsg(error);
-    forum(); };
+  const all = [t, ...(rs || [])]; await pseudos(all.map(p => p.user_id));
+  if (t.card_id && !S.cards[t.card_id]) { const { data: c } = await sb.from('cards').select('*').eq('id', t.card_id).maybeSingle(); if (c) remember([c]); }
+  const [, ic, n] = SEC(t.section), card = t.card_id ? S.cards[t.card_id] : null;
+  const msg = (p, first) => { const u = S.pseudos[p.user_id], mine = p.user_id === S.user?.id, voted = S.myvotes.has(p.id);
+    return `<article class="fpost${first ? ' first' : ''}" id="p${p.id}"><div class="fp-who">${av(u?.pseudo, u)}<b>${who(p.user_id, u)}</b>${first ? '<small class="mut">auteur</small>' : ''}</div>
+      <div class="fp-body"><small class="mut">${new Date(p.created_at).toLocaleString('fr-FR', { dateStyle: 'medium', timeStyle: 'short' })}${p.edited_at ? ' · modifié' : ''}</small>
+        <div class="fp-text">${esc(p.body).replace(/^&gt; (.*)$/gm, '<q>$1</q>')}</div>
+        <div class="acts"><button class="btn ghost sm${voted ? ' on' : ''}" data-vote="${p.id}" aria-pressed="${voted}">❤️ ${p.votes || 0}</button>
+        ${S.profile ? `<button class="btn ghost sm" data-quote="${p.id}">↩︎ Citer</button>` : ''}
+        ${mine ? `<button class="btn ghost sm" data-editpost="${p.id}">✏️ Modifier</button><button class="btn ghost sm" data-delpost="${p.id}">Supprimer</button>` : `<button class="btn ghost sm" data-report="post:${p.id}">Signaler</button>`}</div></div></article>`; };
+  view.innerHTML = `<p class="small"><a href="#/forum">💬 Forum</a> › <a href="#/forum/${t.section}">${ic} ${esc(n)}</a></p>
+  <h2 style="margin:6px 0">${t.pinned ? '📌 ' : ''}${topicTitle(t)}</h2>
+  <p class="small mut" style="margin:0 0 10px">${t.replies} réponse${t.replies > 1 ? 's' : ''}${t.set_id ? ' · ' + esc(setName(S.sets.find(x => x.id === t.set_id)) || '') : ''}${t.blog ? ` · article : <a href="#/blog/${esc(t.blog.slug)}">${esc(t.blog.title)}</a>` : ''}</p>
+  ${card ? `<div class="panel fcard"><button type="button" class="cardbtn" data-card="${esc(card.id)}">${img(card, true)}</button><div><b>${esc(nm(card))}</b><br><small class="mut">${esc(setName(S.sets.find(x => x.id === card.set_id)) || '')} · n° ${esc(card.local_id)} · ${lcode(card.lang)}</small><br><button type="button" class="cote" data-cote="${esc(card.id)}">${eur(card.price_eur)} 📈</button></div></div>` : ''}
+  <div class="fthread">${all.map((p, i) => msg(p, i === 0)).join('')}</div>
+  ${S.profile ? `<form class="form panel" id="frf"><label class="f">Ta réponse<textarea id="frb" maxlength="1900" rows="4" required placeholder="${t.section === 'presentation' && t.user_id !== S.user?.id ? 'Souhaite-lui la bienvenue !' : 'Réponds ici…'}"></textarea></label>${maskNote}<p class="err" id="frerr"></p><button class="btn">Répondre</button></form>`
+    : '<p class="mut"><a href="#/compte">Connecte-toi</a> pour répondre.</p>'}`;
+  view.querySelectorAll('[data-quote]').forEach(b => b.onclick = () => { const p = all.find(x => x.id === +b.dataset.quote), ta = $('#frb'); if (!p || !ta) return;
+    ta.value = `> ${S.pseudos[p.user_id]?.pseudo || ''} : ${p.body.replace(/\n+/g, ' ').slice(0, 160)}\n` + ta.value; ta.focus(); });
+  const f = $('#frf'); if (f) f.onsubmit = async e => { e.preventDefault();
+    const body = $('#frb').value.trim(); if (body.length < 2) return;
+    const { error } = await sb.from('posts').insert({ body, parent_id: id, section: t.section });
+    if (error) return $('#frerr').textContent = errMsg(error);
+    refreshStats(); forumTopic(id); };
 }
 // corriger son propre message (fautes de frappe) : le masquage est réappliqué par la base
 async function editPost(id) {
-  const { data: p, error } = await sb.from('posts').select('id,body,title,section').eq('id', id).maybeSingle();
+  const { data: p, error } = await sb.from('posts').select('id,body,title,parent_id').eq('id', id).maybeSingle();
   if (error || !p) return toast('Message introuvable', true);
   modal(`<form class="form" id="epf"><h2 style="margin:0">✏️ Modifier mon message</h2>
-  ${p.section === 'idees' ? `<label class="f">Titre<input id="ept" maxlength="90" value="${esc(p.title || '')}"></label>` : ''}
+  ${p.parent_id ? '' : `<label class="f">Titre<input id="ept" maxlength="90" value="${esc(p.title || '')}"></label>`}
   <label class="f">Message<textarea id="epb" maxlength="1900" rows="6">${esc(p.body)}</textarea></label>
   ${maskNote}<p class="err" id="eperr"></p><button class="btn">Enregistrer</button></form>`);
   $('#epf').onsubmit = async e => { e.preventDefault();
@@ -1491,12 +1584,15 @@ async function editPost(id) {
     if (er) return $('#eperr').textContent = errMsg(er);
     close(); toast('Message modifié'); route(); };
 }
+// « j'aime » sur n'importe quel message (et vote pour les idées)
 async function votePost(id) {
   if (needAccount()) return;
   if (S.myvotes?.has(id)) await sb.from('post_votes').delete().eq('post_id', id).eq('user_id', S.user.id);
   else { const { error } = await sb.from('post_votes').insert({ post_id: id, user_id: S.user.id }); if (error) return toast(errMsg(error), true); }
-  forum();
+  route();
 }
+// les trophées du forum se calculent en base : on recharge les compteurs après chaque message
+async function refreshStats() { try { const { data } = await sb.rpc('my_stats'); if (data) { Game.setStats(data); checkUnlock(); } } catch { } }
 
 // ---------- blog : un article par semaine, écrit à partir des vraies cotes ----------
 const md = t => {
@@ -1579,8 +1675,9 @@ async function compte() {
       <p class="small">Code : <b>${S.profile.ref_code}</b> · ${S.profile.filleuls || 0} filleul(s) actif(s) · ${S.profile.free_trades} échange(s) offert(s)</p></div>
     <div class="panel" style="margin-top:12px"><h3>Installer l'appli</h3>${S.install ? '<button class="btn sm" id="install">Installer sur cet appareil</button>' : '<p class="small mut">iPhone : bouton Partager puis « Sur l\'écran d\'accueil ». Android : menu ⋮ puis « Installer l\'application ».</p>'}</div>
     <div class="panel" style="margin-top:12px"><h3>Mes données</h3><p class="small mut">Tes droits RGPD : récupère toutes tes données ou supprime ton compte. <a href="#/legal/confidentialite">En savoir plus</a></p>
+      <p class="small" style="margin:8px 0">🤖 Aide de l'IA pour reconnaître les cartes : <b id="aist">${(() => { try { return localStorage.getItem('ai_ok') === '1' ? 'activée' : 'demandée à chaque fois'; } catch { return '?'; } })()}</b> <button type="button" class="btn sm ghost" id="aitog">Changer</button></p>
       <div class="acts"><button class="btn sm ghost" data-export>📥 Télécharger mes données</button><button class="btn sm ghost" data-csv>⬆️ Importer / exporter mon classeur (CSV)</button><button class="btn sm ghost" data-delacct style="color:#ff8a80">Supprimer mon compte</button></div>
-      <p class="small mut">Conservation : messages et forum 3 ans, contrôles d'authenticité 2 ans, compte anonymisé après 3 ans sans visite.</p></div>
+      <p class="small mut">Conservation : messages et forum 3 ans, contrôles visuels 2 ans, compte anonymisé après 3 ans sans visite.</p></div>
     <div class="panel" style="margin-top:12px"><h3>⭐ Ma liste de souhaits</h3><p class="small mut">Les cartes que tu cherches : la table peut les filtrer et les autres membres peuvent te les proposer.</p><a class="btn sm" href="#/souhaits">Voir ma liste${S.wish.size ? ` (${S.wish.size})` : ''}</a></div>
     ${S.profile.is_admin ? `<div class="panel" style="margin-top:12px"><h3>🛡️ Modération</h3><p class="small mut">Signalements, litiges et purge des données.</p><a class="btn sm" href="#/moderation">Ouvrir la modération</a></div>` : ''}
     <h2>Mes doubles sur la table</h2><div class="grid">${(ls || []).map(l => `<div class="tile">${l.photo_path ? `<img class="cimg" src="${photoUrl(l.photo_path)}" alt="">` : img(l.card)}<div class="meta"><span class="nm">${esc(nm(l.card))}</span><span class="v">${l.price ? eur(l.price) : 'Échange'}</span></div><div class="seller small"><span class="pill p-${l.condition}">${l.condition}</span><button class="btn ghost sm" data-photos="${l.id}">📷 ${(l.photos || []).filter(Boolean).length}/${l.photo_quota || 3}</button>${authBadge(l) || `<button class="btn ghost sm" data-auth="${l.card_id}" data-lid="${l.id}">🔍 Authentifier</button>`}${l.status === 'reserved' ? '<span class="pill p-tr">réservée</span>' : `<button class="btn ghost sm" data-rmlist="${l.id}">Retirer</button>`}</div></div>`).join('') || '<div class="empty" style="grid-column:1/-1">Aucun double posé. <a href="#/classeur">Va dans ton classeur</a> et touche « Poser » sur une carte en double.</div>'}</div>`;
@@ -1655,7 +1752,7 @@ function regles() {
    <li><b>Envoi suivi obligatoire.</b> Numéro de suivi requis pour marquer une carte expédiée. Protection : sleeve + toploader + enveloppe rigide.</li>
    <li><b>État honnête.</b> NM = comme neuve, EX = micro-défauts, GD = usure visible, PL = abîmée. Photo de ta propre carte recommandée.</li>
    <li><b>Litige.</b> Carte non reçue ou non conforme : ouvre un litige depuis l'offre. L'argent reste bloqué pendant l'examen.</li>
-   <li><b>Contrôle d'authenticité.</b> Chaque carte peut passer un contrôle photo (couleurs comparées à l'officielle, texte, dos, test de la lampe). Le score est affiché sur l'annonce, et l'acheteur peut refaire le contrôle à la réception avant de confirmer. Il est indicatif et ne remplace pas une expertise.</li>
+   <li><b>Contrôle visuel (indicatif).</b> Chaque carte peut passer un contrôle photo (couleurs comparées à l'officielle, texte, dos, test de la lampe). Le score est affiché sur l'annonce, et l'acheteur peut refaire le contrôle à la réception avant de confirmer. Il est indicatif et ne remplace pas une expertise.</li>
    <li><b>Contrefaçons interdites.</b> Toute fausse carte signalée entraîne l'exclusion définitive.</li>
    <li><b>Trophées mérités.</b> Les compteurs (cartes, scans, défis) sont tenus par la base, pas par ton téléphone. Une carte compte pour les trophées après 7 jours dans ton classeur, et un trophée s'éteint si la condition n'est plus vraie.</li>
   </ol>
@@ -1949,7 +2046,7 @@ async function modDisputes() {
 function modRgpd(ov) {
   const p = ov?.a_purger || {}, last = ov?.derniere_purge;
   $('#mbody').innerHTML = `<div class="panel"><h3 style="margin-top:0">Purge automatique (RGPD)</h3>
-  <p class="small mut">Chaque nuit à 4 h 23, l'appli efface : messages et posts de plus de 3 ans, contrôles d'authenticité de plus de 2 ans, signalements traités de plus d'un an ; et anonymise les comptes sans visite depuis 3 ans (sauf transaction en cours). Les transactions terminées sont conservées sans nom (obligation comptable).</p>
+  <p class="small mut">Chaque nuit à 4 h 23, l'appli efface : messages et posts de plus de 3 ans, contrôles visuels de plus de 2 ans, signalements traités de plus d'un an ; et anonymise les comptes sans visite depuis 3 ans (sauf transaction en cours). Les transactions terminées sont conservées sans nom (obligation comptable).</p>
   <div class="kpis"><div><b>${p.comptes_inactifs ?? 0}</b><span>comptes inactifs à anonymiser</span></div><div><b>${p.messages ?? 0}</b><span>messages de +3 ans</span></div><div><b>${p.posts ?? 0}</b><span>posts de +3 ans</span></div><div><b>${ov?.remboursements_a_faire ?? 0}</b><span>remboursements en attente</span></div></div>
   <p class="small">Dernière purge : ${last ? new Date(last.at).toLocaleString('fr-FR') + ' · ' + esc(JSON.stringify(last.result)) : 'jamais'}</p>
   <button class="btn sm" data-purge>Lancer la purge maintenant</button></div>`;
@@ -2077,7 +2174,7 @@ document.addEventListener('click', async e => {
   else if ('connect' in d) { const { data, error } = await sb.functions.invoke('payments/connect'); if (error || !data?.url) return toast(data?.error || 'Activation des ventes bientôt disponible.', true); location.href = data.url; }
   else if (d.delpost) { await sb.from('posts').delete().eq('id', d.delpost); route(); }
   else if (d.editpost) editPost(+d.editpost);
-  else if (d.fs) { S.fsec = d.fs; forum(); }
+  else if (d.fs) location.hash = `#/forum/${d.fs}`;
   else if (d.vote) votePost(+d.vote);
   else if ('bgen' in d) { t.disabled = true; t.textContent = 'Écriture en cours…';
     const { data, error } = await sb.functions.invoke('blog/generate');
@@ -2116,6 +2213,10 @@ document.addEventListener('submit', async e => {
 });
 dlg.addEventListener('click', e => { if (e.target === dlg) close(); });
 dlg.addEventListener('close', dlgClosed);
+// réglage de l'aide de l'IA (page Compte)
+document.addEventListener('click', e => { if (e.target.id !== 'aitog') return;
+  let on = false; try { on = localStorage.getItem('ai_ok') === '1'; on ? localStorage.removeItem('ai_ok') : localStorage.setItem('ai_ok', '1'); } catch { }
+  S.aiNo = false; const b = $('#aist'); if (b) b.textContent = on ? 'demandée à chaque fois' : 'activée'; });
 // fenêtre fermée dans le classeur : on le redessine (quantités à jour) sans bouger de place
 dlg.addEventListener('close', async () => { if (!location.hash.startsWith('#/classeur')) return; const y = scrollY; S.restoring = true;
   try { await classeur(); } finally { requestAnimationFrame(() => { window.scrollTo(0, y); S.restoring = false; }); } });

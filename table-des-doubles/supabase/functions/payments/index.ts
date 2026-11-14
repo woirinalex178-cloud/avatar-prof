@@ -146,9 +146,15 @@ Deno.serve(async (req) => {
       for (const o of os ?? []) {
         const { data: s } = await db.from('profiles').select('stripe_account_id').eq('id', o.seller_id).single();
         if (!s?.stripe_account_id) continue;
-        const pi = await stripe.paymentIntents.retrieve(o.stripe_payment_intent);
-        await stripe.transfers.create({ amount: Math.round(o.cash * 100), currency: 'eur', destination: s.stripe_account_id, transfer_group: o.id, source_transaction: String(pi.latest_charge) });
-        await db.from('offers').update({ released: true }).eq('id', o.id); n++;
+        // Idempotence : une relance après une panne (virement accepté par Stripe mais pas encore noté en base)
+        // renvoie le MÊME virement au lieu d'en créer un second. On vérifie aussi les virements déjà faits.
+        const done = await stripe.transfers.list({ transfer_group: o.id, limit: 1 });
+        if (!done.data.length) {
+          const pi = await stripe.paymentIntents.retrieve(o.stripe_payment_intent);
+          await stripe.transfers.create({ amount: Math.round(o.cash * 100), currency: 'eur', destination: s.stripe_account_id, transfer_group: o.id,
+            source_transaction: String(pi.latest_charge), metadata: { offer_id: o.id } }, { idempotencyKey: `release:${o.id}` });
+        }
+        await db.from('offers').update({ released: true }).eq('id', o.id).eq('released', false); n++;
       }
       return json({ released: n });
     }
@@ -157,7 +163,7 @@ Deno.serve(async (req) => {
       const { data: os } = await db.from('offers').select('id,stripe_payment_intent').eq('refund_requested', true).is('refunded_at', null).not('stripe_payment_intent', 'is', null).limit(50);
       let n = 0;
       for (const o of os ?? []) {
-        try { await stripe.refunds.create({ payment_intent: o.stripe_payment_intent, reason: 'requested_by_customer' }); }
+        try { await stripe.refunds.create({ payment_intent: o.stripe_payment_intent, reason: 'requested_by_customer', metadata: { offer_id: o.id } }, { idempotencyKey: `refund:${o.id}` }); }
         catch (e) { console.error('remboursement', o.id, (e as Error).message); continue; }
         await db.from('offers').update({ refunded_at: new Date().toISOString() }).eq('id', o.id); n++;
       }

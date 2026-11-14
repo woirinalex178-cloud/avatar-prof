@@ -45,7 +45,7 @@ Read what is PRINTED on the card and answer ONLY with this JSON:
  "name_en": "the same card name in English",
  "number": "collector number BEFORE the slash exactly as printed (e.g. \\"045\\", \\"TG05\\", \\"GG12\\", \\"SWSH050\\"), or null",
  "total": "number AFTER the slash (e.g. \\"165\\"), or null",
- "language": "fr|en|ja|de|it|es|pt|ko|zh — language of the printed text",
+ "language": "fr|en|ja|de|it|es|pt|ko|zh-cn|zh-tw — language of the printed text (zh-cn = simplified Chinese characters, zh-tw = traditional)",
  "set_name_en": "English name of the expansion if you can tell (set symbol, set code like MEW/PAR/OBF, regulation mark, layout, card number range), else null",
  "set_code": "small printed set abbreviation near the number (e.g. PAR, MEW, SVI), else null",
  "lang_code": "the 2-letter language code printed right after the set code on recent cards (e.g. \"PAR FR\" -> \"FR\", \"MEW EN\" -> \"EN\"), else null",
@@ -115,9 +115,13 @@ Deno.serve(async (req) => {
   const ip = req.headers.get('x-forwarded-for')?.split(',')[0] ?? '?', now = Date.now(), h = (hits.get(ip) ?? []).filter(t => now - t < 60000);
   if (h.length >= 20) return json({ error: 'trop de demandes, patiente une minute' }, 429);
   h.push(now); hits.set(ip, h);
+  // limite durable (survit aux redémarrages du serveur) : 300 lectures par jour et par adresse
+  const { data: day } = await db.rpc('ai_hit', { p_ip: ip });
+  if ((day ?? 0) > Number(Deno.env.get('AI_DAILY_MAX') || 300)) return json({ error: 'limite quotidienne atteinte, reviens demain' }, 429);
   try {
     const { image } = await req.json();
-    if (typeof image !== 'string' || image.length > 3_000_000) return json({ error: 'image invalide' }, 400);
+    if (typeof image !== 'string' || image.length > 3_000_000 || !/^(data:image\/(jpeg|png|webp);base64,)?[A-Za-z0-9+/=]+$/.test(image.slice(0, 64) + image.slice(-16)))
+      return json({ error: 'image invalide' }, 400);
     const t0 = Date.now();
     const { model, read } = await readCard(image.replace(/^data:image\/\w+;base64,/, ''));
     const ms = Date.now() - t0;
@@ -125,7 +129,8 @@ Deno.serve(async (req) => {
     const LC: Record<string, string> = { FR: 'fr', EN: 'en', DE: 'de', IT: 'it', ES: 'es', PT: 'pt', JP: 'ja', JA: 'ja', KR: 'ko', KO: 'ko', TW: 'zh-tw', CN: 'zh-cn' };
     const printed = LC[String(read.lang_code || '').trim().toUpperCase()];
     if (printed) read.language = printed;
-    if (read.language === 'zh') read.language = 'zh-tw';
+    // « zh » seul : des caractères simplifiés courants dans le nom -> zh-cn, sinon zh-tw
+    if (read.language === 'zh') read.language = /[们这个国东车门见长马鸟龙电]/.test(String(read.name || '')) ? 'zh-cn' : 'zh-tw';
     const num = read.number ? String(read.number).replace(/\s/g, '') : null, total = read.total && /^\d+$/.test(String(read.total)) ? +read.total : null;
     const args = { p_num: num, p_total: total, p_lang: read.language || 'fr', p_set: read.set_name_en || null };
     let { data } = await db.rpc('match_card', { ...args, p_name: read.name || read.name_en || '' });

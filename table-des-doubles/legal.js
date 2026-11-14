@@ -32,7 +32,7 @@ const SECTIONS = [
 <li><b>Contrefaçons, reproductions et « proxies » interdits</b>, ainsi que toute carte volée ou tout objet autre qu'une carte à collectionner.</li>
 <li><b>Envoi suivi obligatoire</b>, carte protégée (sleeve + toploader + enveloppe rigide).</li>
 <li><b>Respect</b> : pas d'insultes, de harcèlement, de spam ni de contenu illicite dans le forum et les messages.</li></ul>
-<h4>6. Contrôle d'authenticité</h4><p>Le contrôle photo proposé par l'appli fournit des <b>indices</b> calculés automatiquement. Il ne constitue ni une expertise ni une garantie d'authenticité et n'engage pas la responsabilité de l'éditeur.</p>
+<h4>6. Contrôle visuel</h4><p>Le contrôle photo proposé par l'appli fournit des <b>indices</b> calculés automatiquement. Il ne constitue ni une expertise ni une garantie d'authenticité et n'engage pas la responsabilité de l'éditeur.</p>
 <h4>7. Modération et sanctions</h4><p>Tout membre peut signaler une annonce, un message ou un membre. L'éditeur peut retirer un contenu, suspendre ou fermer un compte en cas de manquement aux CGU, après information du membre sauf urgence (fraude, contrefaçon, sécurité). Le membre peut contester par e-mail à ${L.email}.</p>
 <h4>8. Responsabilité</h4><p>Chaque membre est responsable de ses annonces, de ses cartes et du respect de ses engagements. L'éditeur met en œuvre des moyens raisonnables pour sécuriser les transactions (paiement bloqué jusqu'à réception, litiges, plafonds pour les nouveaux comptes) mais ne garantit pas la qualité, l'authenticité ou la conformité des cartes, ni la disponibilité permanente du service.</p>
 <h4>9. Fin du compte</h4><p>Le membre peut supprimer son compte à tout moment depuis la page Compte, une fois ses transactions en cours terminées.</p>
@@ -50,7 +50,7 @@ const SECTIONS = [
 <h4>4 bis. Enchères</h4><p>Un vendeur peut proposer sa carte aux enchères pendant 1, 3 ou 7 jours, à partir d'un prix de départ. Il s'agit d'un <b>service de courtage en ligne entre particuliers</b>, sans adjudication ni commissaire-priseur : l'éditeur ne vend rien et n'intervient pas dans la fixation du prix. Chaque enchère doit dépasser la précédente d'au moins 5 % ; une enchère placée dans les 2 dernières minutes prolonge la vente de 2 minutes. <b>Enchérir engage à acheter</b> : à la fin, la vente est conclue avec le meilleur enchérisseur, qui paie le prix atteint, la protection acheteur et la livraison par le paiement sécurisé (séquestre), comme pour un achat classique. Sans enchère, l'annonce est retirée. Une enchère ne peut pas être retirée une fois qu'elle a reçu une offre. Les plafonds de sécurité ci-dessus s'appliquent.</p>
 <h4>5. Litiges et remboursement</h4><p>En cas de carte non reçue, non conforme à l'annonce ou suspecte, l'acheteur ouvre un litige depuis l'offre <b>avant de confirmer la réception</b>. L'argent reste bloqué pendant l'examen. Si le litige est fondé, l'acheteur est remboursé (prix + protection acheteur) après retour éventuel de la carte. La protection acheteur n'est pas remboursée en cas d'annulation de la part de l'acheteur après paiement sans faute du vendeur.</p>
 <h4>6. Droit de rétractation</h4><p>Les ventes entre particuliers ne relèvent pas du droit de rétractation du Code de la consommation. La <b>protection acheteur</b> est un service exécuté immédiatement à la demande de l'acheteur : en payant, celui-ci accepte son exécution immédiate et renonce au délai de rétractation pour ce service (article L221-28 du Code de la consommation). Il conserve la procédure de litige ci-dessus.</p>
-<h4>7. Médiation</h4><p>En cas de litige avec l'éditeur non résolu par écrit à ${L.email}, le consommateur peut recourir gratuitement au médiateur de la consommation : ${L.mediateur}. Plateforme européenne : ec.europa.eu/consumers/odr.</p>`],
+<h4>7. Médiation</h4><p>En cas de litige avec l'éditeur non résolu par écrit à ${L.email}, le consommateur peut recourir gratuitement au médiateur de la consommation : ${L.mediateur}.</p>`],
 
 ['plateforme', 'Fonctionnement de la plateforme', `
 <p>Informations fournies en application de l'article L111-7 du Code de la consommation.</p>
@@ -67,9 +67,10 @@ const SECTIONS = [
 <li><b>Compte :</b> e-mail, mot de passe (chiffré), pseudo, date de naissance (vérification 18+, jamais affichée), région (facultative).</li>
 <li><b>Adresse postale :</b> conservée dans un espace privé ; communiquée uniquement à l'autre membre d'une transaction, une fois celle-ci payée (ou l'échange accepté), pour l'expédition. Jamais affichée publiquement.</li>
 <li><b>Profil public :</b> pseudo, avatar, bio, Pokémon préféré, région, avis ; collection et trophées seulement si tu choisis de les montrer.</li>
-<li><b>Utilisation :</b> classeur, annonces et photos, offres, messages, avis, messages du forum, signalements, contrôles d'authenticité.</li>
+<li><b>Utilisation :</b> classeur, annonces et photos, offres, messages, avis, messages du forum, signalements, contrôles visuels.</li>
 <li><b>Paiement :</b> traité par Stripe. Nous ne voyons jamais ton numéro de carte ; nous conservons l'identifiant du paiement et du compte vendeur Stripe.</li>
-<li><b>Suivi d'envoi :</b> numéros de suivi saisis par les membres. Les adresses postales ne sont pas collectées par ${L.site}.</li></ul>
+<li><b>Suivi d'envoi :</b> numéros de suivi des colis. Pour éditer une étiquette, l'adresse de l'expéditeur et celle du destinataire sont transmises au transporteur choisi (Boxtal et son réseau), uniquement pour cet envoi.</li>
+<li><b>Reconnaissance des cartes :</b> la photo est d'abord analysée sur ton appareil. Si la carte n'est pas reconnue et que tu as accepté l'aide de l'IA, une copie réduite de la photo est envoyée à notre serveur puis à un service d'IA (Google Gemini ; en secours Groq, OpenRouter, Hugging Face, GitHub Models, Cloudflare ou Mistral) qui lit le nom et le numéro. La photo n'est pas conservée ; seuls la durée, le résultat et le modèle utilisé sont gardés 90 jours pour mesurer la fiabilité. Ton adresse IP sert à limiter les abus (compteur journalier effacé après 30 jours).</li></ul>
 <h4>Finalités et bases légales</h4><ul>
 <li>Fournir le service et exécuter les transactions (exécution du contrat).</li>
 <li>Sécurité, lutte contre la fraude et les contrefaçons, contrôle de l'âge (intérêt légitime et obligation légale).</li>
@@ -79,13 +80,15 @@ const SECTIONS = [
 <li>Compte : jusqu'à sa suppression. Un compte sans connexion pendant 3 ans est anonymisé automatiquement (purge quotidienne) : pseudo remplacé, collection, annonces, liste de souhaits, messages du forum et adresse effacés.</li>
 <li>Transactions et pièces comptables : 10 ans (Code de commerce), sous forme anonymisée après suppression du compte.</li>
 <li>Messages liés à une transaction : 3 ans après la transaction (preuve en cas de litige), puis effacés automatiquement.</li>
-<li>Contrôles d'authenticité (photos analysées et scores) : 2 ans. Signalements traités : 1 an.</li>
+<li>Contrôles visuels (photos analysées et scores) : 2 ans. Signalements traités : 1 an.</li>
 <li>Données DAC7 : 10 ans.</li></ul>
 <h4>Sous-traitants</h4><ul>
 <li>Supabase (base de données et fichiers, serveurs à Paris).</li>
 <li>Vercel (hébergement du site, États-Unis : clauses contractuelles types de la Commission européenne).</li>
 <li>Stripe (paiements, vérification d'identité).</li>
-<li>Google Fonts (polices d'écriture), jsDelivr (scripts), TCGdex (images des cartes) : ils reçoivent ton adresse IP lors du chargement de ces ressources.</li></ul>
+<li>Boxtal (étiquettes d'expédition) : nom et adresse de l'expéditeur et du destinataire d'un envoi.</li>
+<li>Services d'IA (Google Gemini et services de secours) : uniquement la photo de la carte, si tu as accepté l'aide de l'IA.</li>
+<li>Google Fonts (polices d'écriture), jsDelivr (scripts), TCGdex, Scrydex, Limitless, TCGplayer, PikaQian (images des cartes) : ils reçoivent ton adresse IP lors du chargement de ces ressources.</li></ul>
 <h4>Tes droits</h4><p>Accès, rectification, effacement, limitation, opposition, portabilité, et directives post-mortem. Depuis la page <b>Compte</b> : « Télécharger mes données » et « Supprimer mon compte ». Pour tout le reste : ${L.email} (réponse sous 1 mois). Tu peux saisir la CNIL (cnil.fr).</p>`],
 
 ['cookies', 'Cookies et stockage local', `

@@ -102,6 +102,18 @@ Ce n'est donc pas un résumé des cotes mais un Short qui tient tout seul — c'
 `EFZy3OZHCzikCqQS` existe mais finit par un envoi par mail, pas par une publication). La même vidéo verticale
 sert aux trois. Piste : Reels est publiable via l'API Graph, à faire après la Page Facebook.
 
+### Piège n8n : brouillon ≠ version publiée (15/11)
+n8n 2.x garde un **brouillon** et une **version publiée**. Les modifications faites par l'API atterrissent
+dans le brouillon : un workflow appelé comme sous-workflow continue de tourner sur son ancienne version, et
+l'appel échoue **en silence** (le nœud `executeWorkflow` affiche « réussi » parce qu'avec
+`waitForSubWorkflow: false` il renvoie son entrée sans attendre).
+Le symptôme : aucune exécution du sous-workflow, aucune erreur nulle part.
+Le diagnostic qui le révèle : retirer `onError: continueRegularOutput` — n8n répond alors
+*« references workflow ... which is not published »*.
+**Pour publier** un workflow modifié par l'API : `n8n_update_partial_workflow` avec
+`deactivateWorkflow` puis `activateWorkflow`. À refaire après chaque modification d'un workflow
+appelé par un autre.
+
 ### Points de vigilance
 - `GEMINI_API_KEY` **absente** : `ai_hits` est à 0, tout a été rédigé par le moteur de secours. C'est le seul verrou qui sépare
   d'un rendu vraiment pro (étape 1 ter d'`A-FAIRE.md`).

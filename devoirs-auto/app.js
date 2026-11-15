@@ -272,7 +272,15 @@ function dire(txt) {
 // Tire des questions variées : d'abord les moins vues, ordre progressif, propositions mélangées.
 function draw(p, n) {
   p.vus ||= {};
-  const idx = shuffle(p.questions.map((_, i) => i)).filter(i => !fuite(p.questions[i])).sort((a, b) => (p.vus[a] || 0) - (p.vus[b] || 0)).slice(0, n);
+  const tri = shuffle(p.questions.map((_, i) => i)).filter(i => !fuite(p.questions[i])).sort((a, b) => (p.vus[a] || 0) - (p.vus[b] || 0));
+  const deja = new Set(), idx = [];
+  for (const i of tri) {   // pas deux fois la même question ni la même réponse dans une partie
+    const q = p.questions[i], cle = norm(q.reponse || '') || norm(q.enonce);
+    if (idx.length >= n) break;
+    if (deja.has(cle) || deja.has(norm(q.enonce))) continue;
+    deja.add(cle); deja.add(norm(q.enonce)); idx.push(i);
+  }
+  for (const i of tri) if (idx.length < n && !idx.includes(i)) idx.push(i);   // banque trop petite : on complète
   idx.forEach(i => p.vus[i] = (p.vus[i] || 0) + 1);
   p.at = Date.now();
   return idx.map(i => ({ ...p.questions[i], choix: shuffle(p.questions[i].choix || []) }))
@@ -292,15 +300,17 @@ const unseen = p => p.questions.filter((q, i) => !(p.vus || {})[i] && !fuite(q))
 
 async function train(d, goal = false) {
   let p = S.packs[d.id];
-  let n = goal ? 20 : Math.min(SIZE[p.type] || 8, p.questions.length);
-  if (goal && p.questions.length < 20) {
-    status('🦉 Je prépare 20 questions pour ton objectif 20/20…');
-    try { await more(d, 20 - p.questions.length + 4); p = S.packs[d.id]; } catch (e) { return status('⚠️ ' + e.message); }
-    status('');
+  let n = goal ? 20 : SIZE[p.type] || 8;
+  // Pas assez de questions jamais vues : on en fait fabriquer AVANT de commencer (sinon les mêmes reviennent).
+  for (let essai = 0; essai < 2 && unseen(p) < n; essai++) {
+    status(goal ? '🦉 Je prépare 20 nouvelles questions pour ton objectif 20/20…' : '🦉 Je prépare de nouvelles questions…');
+    try { await more(d, Math.min(20, n - unseen(p) + 4)); p = S.packs[d.id]; } catch { break; }   // hors ligne : on joue avec ce qu'on a
   }
+  status('');
+  n = Math.min(n, p.questions.length);
   const qs = draw(p, n);
   n = qs.length;   // des questions écartées (réponse dans l'énoncé) : le total suit ce qui est vraiment posé
-  if (unseen(p) < n) more(d).catch(() => {});   // en arrière-plan : de quoi varier la prochaine fois
+  if (unseen(p) < 20) more(d, 20).catch(() => {});   // en arrière-plan : de quoi varier la prochaine partie (et le 20/20)
   save();
 
   let k = 0, score = 0, tries = 0, combo = 0;

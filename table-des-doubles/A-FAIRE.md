@@ -1,3 +1,7 @@
+## ⚡ Urgent (2 min) — éviter qu'une session redéploie l'ancien site
+- [ ] GitHub › dépôt `avatar-prof` › **Settings › General › Default branch** › choisir `claude/relaxed-galileo-u5yzct` › Update. Les nouvelles sessions partiront alors de la bonne version.
+- [ ] Ne plus lancer de travail sur le site depuis les branches `claude/kind-ritchie-xx2ouo` ni `claude/pokemon-cards-marketplace-wiwxqw`.
+
 # À faire (toi) — checklist avant l'ouverture
 
 *Mise à jour : 29/10/2026. Tout est gratuit. L'ordre compte : fais le bloc A en entier avant d'inviter qui que ce soit.*

@@ -8,6 +8,7 @@ import { renderLegal } from './legal.js';
 import { playIntro } from './intro.js';
 import { initCritters, critterSVG, CRITTER_NAMES, HUES } from './critters.js';
 import { renderGuide } from './guide.js';
+import { aiRead, nkey, isExact, aiSort, aiSure } from './ai-pick.js';
 import { initFx, refreshFx } from './fx.js';
 playIntro();
 
@@ -629,26 +630,33 @@ async function identify(cv, budget = SCAN_BUDGET) {
     try { ai = await race(identifyAI(cv), Math.min(AI_BUDGET, left()), 'IA trop lente'); }
     catch (e) { S.aiErr = e.message; }
   } else S.aiErr = 'temps écoulé avant l\'IA';
+  // le serveur n'a pas LA carte lue (nom + numéro + langue) : on cherche ce que l'IA a lu, partout au catalogue
+  const read = ai?.read && ai.read.is_card !== false ? ai.read : null;
+  if (read && !(ai.cards || []).some(c => isExact(c, read))) {
+    try { const w = await race(aiCandidates(read), 5000, 'recherche IA'), seen = new Set((ai.cards || []).map(c => c.id));
+      ai.cards = [...(ai.cards || []), ...w.list.filter(c => !seen.has(c.id))]; ai.widened = true; } catch { }
+  }
   if (ai?.cards?.length) {
     const r = fromAI(ai, vis?.list); logScan('ia', performance.now() - t0, true, ai.model);
     return { ...r, how: { ...r.how, ms: performance.now() - t0 } };
   }
+  // carte lue par l'IA mais absente du catalogue : sa lecture reste affichée et cliquable
+  const keep = read ? { read, model: ai.model, widened: ai.widened } : {};
   const aiErr = ai?.read?.is_card === false ? 'pas de carte reconnue sur la photo' : S.aiErr;
   if (vis?.list?.length) { remember(vis.list); logScan('local-doute', performance.now() - t0, true);
-    return { list: vis.list, sure: false, nums: [], how: { t: 'vis', s: vis[0].score, aiErr, ms: performance.now() - t0 } }; }
+    return { list: vis.list, sure: false, nums: [], how: { t: 'vis', s: vis[0].score, aiErr, ms: performance.now() - t0, ...keep } }; }
   // dernier filet : lecture du numéro (lente) — seulement s'il reste du temps
   if (left() < 10000) { logScan('abandon', performance.now() - t0, false);
-    return { list: [], sure: false, nums: [], how: { t: 'stop', aiErr, ms: performance.now() - t0 } }; }
+    return { list: [], sure: false, nums: [], how: { t: 'stop', aiErr, ms: performance.now() - t0, ...keep } }; }
   const ocr = await identifyOCR(cv).catch(() => ({ list: [], sure: false, nums: [] }));
   logScan('ocr', performance.now() - t0, !!ocr.list.length);
-  return { ...ocr, how: { t: 'ocr', aiErr, ms: performance.now() - t0 } };
+  return { ...ocr, how: { t: 'ocr', aiErr, ms: performance.now() - t0, ...keep } };
 }
 // résultat de l'IA : cartes trouvées dans la base d'après ce qu'elle a lu, puis les propositions du dessin
 function fromAI(ai, extra = []) {
-  const top = ai.cards[0], second = ai.cards[1], seen = new Set(ai.cards.map(c => c.id));
-  const list = [...ai.cards.map(c => ({ ...c, ai: true })), ...extra.filter(c => !seen.has(c.id) && !c.alt)];
-  const sure = top.score >= 12 || (top.score >= 9 && (!second || top.score - second.score >= 3));
-  remember(list); return { list, sure, nums: [], how: { t: 'ai', read: ai.read, model: ai.model } };
+  const cards = aiSort(ai.cards.map(c => ({ ...c, ai: true })), ai.read), seen = new Set(cards.map(c => c.id));
+  const list = [...cards, ...extra.filter(c => !seen.has(c.id) && !c.alt)];
+  remember(list); return { list, sure: aiSure(cards), nums: [], how: { t: 'ai', read: ai.read, model: ai.model, widened: ai.widened } };
 }
 // IA de vision côté serveur (palier gratuit) : désactivée d'elle-même si la clé n'est pas configurée
 // Avant le premier envoi d'une photo à l'IA, on explique et on demande l'accord (retenu sur l'appareil).
@@ -758,7 +766,7 @@ async function analyse(cv) {
     const r = await identify(cv);
     if (r.nums[0]) { $('#scn').value = r.nums[0].num; $('#sct').value = r.nums[0].total; Game.track('scan'); }
     clearInterval(analyse.t);
-    if (!r.list.length) { $('#scr').innerHTML = ''; $('#scman').open = true; return $('#scs').innerHTML = `😕 Carte non reconnue en ${secs(r.how?.ms || performance.now() - tA)}. Rapproche-toi pour que le <b>numéro en bas</b> soit net, évite les reflets, ou saisis le numéro ci-dessous.`; }
+    if (!r.list.length && !aiRead(r.how)) { $('#scr').innerHTML = ''; $('#scman').open = true; return $('#scs').innerHTML = `😕 Carte non reconnue en ${secs(r.how?.ms || performance.now() - tA)}. Rapproche-toi pour que le <b>numéro en bas</b> soit net, évite les reflets, ou saisis le numéro ci-dessous.`; }
     showRanked(r);
   } catch (err) { clearInterval(analyse.t); $('#scr').innerHTML = ''; $('#scs').textContent = err.message; }
 }
@@ -796,14 +804,14 @@ async function tickBurst() {
   setTimeout(tickBurst, 600);
 }
 async function burstAdd(c, g) {
-  c = await toLang(c, wantLang()); // rafale : on respecte la langue choisie
+  if (!c.aiPick) c = await toLang(c, wantLang()); // rafale : on respecte la langue choisie (sauf la langue imprimée lue par l'IA)
   const had = owned(c); burst.last = g; burst.cleared = false; burst.added.unshift({ ...c, had: had.length > 0 }); beep();
   camtip(`✅ ${nm(c)} ajoutée${had.length ? ` (tu l'avais déjà : ${had.map(x => `×${x.q} ${lcode(x.lang)}`).join(', ')})` : ''}`);
   await addMany({ [c.id]: 1 }); drawBurst();
 }
 function burstAsk(list, g) {
   camtip('🤔 Laquelle est-ce ?');
-  $('#scr').innerHTML = `<p class="small" style="margin:6px 0"><b>Pas sûr : touche la bonne carte</b> (ou passe)</p><div class="alts">${list.map((c, i) => `<button type="button" data-ba="${i}">${img(c)}${ownBadge(c)}<small>${flag(c.lang)} ${esc(nm(c))}<br>${esc(c.set_name)} · ${esc(c.local_id)}</small></button>`).join('')}</div><button type="button" class="btn sm ghost" data-ba="-1" style="margin-top:8px">Passer cette carte</button>`;
+  $('#scr').innerHTML = `<p class="small" style="margin:6px 0"><b>Pas sûr : touche la bonne carte</b> (ou passe)</p><div class="alts">${list.map((c, i) => `<button type="button" data-ba="${i}"${aiCls(c)}>${aiBadge(c)}${img(c)}${ownBadge(c)}<small>${flag(c.lang)} ${esc(nm(c))}<br>${esc(c.set_name)} · ${esc(c.local_id)}</small></button>`).join('')}</div><button type="button" class="btn sm ghost" data-ba="-1" style="margin-top:8px">Passer cette carte</button>`;
   $('#scr').onclick = async e => { const b = e.target.closest('[data-ba]'); if (!b) return; $('#scr').innerHTML = ''; $('#scr').onclick = null;
     if (+b.dataset.ba >= 0) await burstAdd(list[+b.dataset.ba], g); else { burst.last = g; burst.cleared = false; }
     burst.busy = false; setTimeout(tickBurst, 600); };
@@ -895,7 +903,7 @@ async function scanPage(file) {
   const draw = () => {
     const n = res.filter(r => r.on && r.pick).length;
     $('#scr').innerHTML = `<div class="langsw" id="pglang"><span class="small mut">Langue de la page :</span>${ALL_LANGS.map(l => `<button type="button" class="chip lg${wantLang() === l ? ' on' : ''}" data-pl="${l}" aria-pressed="${wantLang() === l}">${lcode(l)}</button>`).join('')}</div>
-      <div class="pagegrid" style="--cols:${cols}">${res.map((r, i) => `<button type="button" class="pcell ${r.st}${r.on ? ' on' : ''}" data-pc="${i}">${r.pick ? img(r.pick) + ownBadge(r.pick) : `<span>${{ wait: '…', blank: 'vide', none: '✖', run: '🔎' }[r.st] || '?'}</span>`}${r.st === 'unsure' ? '<i>?</i>' : r.on ? '<i>✓</i>' : ''}${r.ms ? `<small class="ms">${secs(r.ms)}</small>` : ''}</button>`).join('')}</div>
+      <div class="pagegrid" style="--cols:${cols}">${res.map((r, i) => `<button type="button" class="pcell ${r.st}${r.on ? ' on' : ''}" data-pc="${i}">${r.pick ? img(r.pick) + ownBadge(r.pick) + (r.pick.aiPick ? '<b class="aim" title="Choix de l\'IA">🤖</b>' : '') : `<span>${{ wait: '…', blank: 'vide', none: '✖', run: '🔎' }[r.st] || '?'}</span>`}${r.st === 'unsure' ? '<i>?</i>' : r.on ? '<i>✓</i>' : ''}${r.ms ? `<small class="ms">${secs(r.ms)}</small>` : ''}</button>`).join('')}</div>
       <div id="pcpick"></div><button type="button" class="btn" id="pcadd" ${n ? '' : 'disabled'}>➕ Ajouter ${n} carte${n > 1 ? 's' : ''} au classeur</button>`;
     $('#pcadd').onclick = async () => { const m = {}; res.forEach(r => { if (r.on && r.pick) m[r.pick.id] = (m[r.pick.id] || 0) + 1; }); await addMany(m); toast(`${n} carte${n > 1 ? 's' : ''} ajoutée${n > 1 ? 's' : ''} au classeur`); $('#scr').innerHTML = '<p class="okline">✅ Page ajoutée ! Photographie la suivante.</p>'; };
   };
@@ -911,11 +919,11 @@ async function scanPage(file) {
     const r = res[i]; if (!r.list?.length && !r.jpeg) return;
     r.list ||= [];
     const vs = r.pick ? await langVersions(r.pick) : [];
-    const read = r.how?.t === 'ai' ? r.how.read : null;
-    const aiBtn = read ? `<button type="button" class="btn sm aipick" data-pai="take">\u{1F916} Prendre la carte lue par l'IA : <b>${esc(read.name || read.name_en || '?')}</b>${read.number ? ' n° ' + esc(read.number) + (read.total ? '/' + esc(read.total) : '') : ''}${read.language ? ' · ' + esc(lcode(String(read.language).toLowerCase())) : ''}</button>`
-      : r.jpeg ? `<button type="button" class="btn sm ghost" data-pai="ask">\u{1F916} Pas la bonne ? Demander à l'IA pour cette case</button>` : '';
-    $('#pcpick').innerHTML = `<p class="small" style="margin:8px 0 4px"><b>Case ${i + 1}</b> : laquelle ?</p>${aiBtn}
-      <div class="alts">${r.list.slice(0, 6).map((c, j) => `<button type="button" data-pp="${j}">${img(c)}<small>${flag(c.lang)} ${esc(nm(c))}<br>${esc(c.local_id)}</small></button>`).join('')}<button type="button" data-pp="-1"><small>Ne pas ajouter</small></button></div>
+    const read = aiRead(r.how), aiP = r.list.find(c => c.aiPick), shown = aiP ? [aiP, ...r.list.filter(c => c !== aiP)] : r.list;
+    // la lecture de l'IA est toujours une case : sa carte (badge « Choix de l'IA »), sinon une case qui la cherche
+    const askBtn = !read && r.jpeg ? `<button type="button" class="btn sm ghost" data-pai="ask">\u{1F916} Pas la bonne ? Demander à l'IA pour cette case</button>` : '';
+    $('#pcpick').innerHTML = `<p class="small" style="margin:8px 0 4px"><b>Case ${i + 1}</b> : laquelle ?</p>${askBtn}
+      <div class="alts">${read && !aiP ? aiTile(r.how, 'data-pai="take"') : ''}${shown.slice(0, 8).map(c => `<button type="button" data-pp="${r.list.indexOf(c)}"${aiCls(c)}>${aiBadge(c)}${img(c)}<small>${flag(c.lang)} ${esc(nm(c))}<br>${esc(c.local_id)}</small></button>`).join('')}<button type="button" data-pp="-1"><small>Ne pas ajouter</small></button></div>
       ${r.pick ? `<div class="langsw"><span class="small mut">Langue de cette carte :</span>${ALL_LANGS.map(l => {
         const v = r.pick.lang === l ? r.pick : vs.find(x => x.lang === l);
         return v ? `<button type="button" class="chip lg${v.id === r.pick.id ? ' on' : ''}" data-pcl="${esc(l)}" aria-pressed="${v.id === r.pick.id}">${lcode(l)}${S.coll[v.id] ? ` <small>✓${S.coll[v.id]}</small>` : ''}</button>`
@@ -924,16 +932,18 @@ async function scanPage(file) {
     $('#pcpick').onclick = async ev => {
       // l'IA : soit on prend ce qu'elle a lu, soit on lui fait lire cette case maintenant
       const ab = ev.target.closest('[data-pai]');
-      if (ab) { ev.stopPropagation(); ab.disabled = true; ab.textContent = '\u{1F916} L’IA lit la case…';
-        let rd = read;
-        if (!rd) { try { const bmp = await createImageBitmap(r.jpeg), c = Object.assign(document.createElement('canvas'), { width: bmp.width, height: bmp.height });
+      if (ab) { ev.stopPropagation(); ab.disabled = true;
+        let rd = read, srv = [];
+        if (!rd) { ab.textContent = '\u{1F916} L’IA lit la case…';
+          try { const bmp = await createImageBitmap(r.jpeg), c = Object.assign(document.createElement('canvas'), { width: bmp.width, height: bmp.height });
             c.getContext('2d').drawImage(bmp, 0, 0); bmp.close?.(); const ai = await identifyAI(c); freeCanvas(c);
-            if (ai?.read && ai.read.is_card !== false) { rd = ai.read; r.how = { t: 'ai', read: rd, model: ai.model }; } } catch { } }
+            if (ai?.read && ai.read.is_card !== false) { rd = ai.read; srv = ai.cards || []; r.how = { t: 'ai', read: rd, model: ai.model }; } } catch { } }
         if (!rd) { ab.disabled = false; ab.textContent = '\u{1F916} Réessayer avec l’IA'; return toast(S.aiErr || 'L’IA n’a pas pu lire cette case', true); }
-        const { list, hit } = await aiCandidates(rd);
-        r.list = [...list, ...r.list.filter(y => !list.some(g => g.id === y.id))];
-        if (hit) { r.pick = hit; r.on = true; r.st = 'sure'; } else if (list.length) toast('Touche la bonne carte parmi celles trouvées par l’IA.');
-        else toast(`Rien au catalogue pour « ${rd.name || rd.name_en || '?'} »`, true);
+        const { list } = r.how.widened ? { list: [] } : await aiCandidates(rd); r.how.widened = true;
+        r.list = aiSort([...srv, ...list, ...r.list].filter((c, k, a) => a.findIndex(y => y.id === c.id) === k), rd);
+        const hit = r.list.find(c => c.aiPick);
+        if (hit) { r.pick = hit; r.on = true; r.st = 'sure'; }
+        else toast(r.list.some(c => c.aiName) ? `« ${rd.name || rd.name_en} » n° ${rd.number || '?'} n’est pas au catalogue : les cartes à ce nom sont en premier.` : `Rien au catalogue pour « ${rd.name || rd.name_en || '?'} »`, !r.list.some(c => c.aiName));
         draw(); return cellPick(i); }
       // langue absente de cette illustration : on va la chercher par le nom (numérotation différente)
       const x = ev.target.closest('[data-pxl]');
@@ -978,7 +988,7 @@ async function scanPage(file) {
         const r = await identify(cv, SCAN_BUDGET);
         Object.assign(res[i], { list: r.list, pick: r.list[0] || null, st: !r.list.length ? 'none' : r.sure ? 'sure' : 'unsure', on: r.sure, ms: r.how?.ms, how: r.how });
         try { res[i].jpeg = await new Promise(ok => (cv.raw || cv).toBlob(ok, 'image/jpeg', .85)); } catch { }
-        if (res[i].pick) { const v = await toLang(res[i].pick, wantLang());
+        if (res[i].pick && !res[i].pick.aiPick) { const v = await toLang(res[i].pick, wantLang());
           if (v !== res[i].pick) { res[i].pick = v; if (!res[i].list.some(x => x.id === v.id)) res[i].list.unshift(v); } }
       } catch (e) { res[i].st = 'none'; if (/mémoire|memory|allocation/i.test(e?.message || '')) res[i].err = 'mémoire'; }
       finally { freeCanvas(cv); }
@@ -1008,74 +1018,81 @@ async function manualSearch() {
   if (!data.length) return $('#scs').textContent = 'Aucune carte trouvée. Vérifie le numéro.';
   showRanked(scanState.cv ? await rank(data, scanState.cv, S.lang) : { list: data, sure: data.length === 1 });
 }
-// comment la carte a été reconnue : affiché sur chaque résultat (et bouton pour demander l'avis de l'IA)
-const howLine = h => {
+// ce que l'IA a lu, en clair : nom (et nom anglais), numéro, langue
+const aiLabel = r => `${esc(r.name || r.name_en || '?')}${r.name_en && r.name && nkey(r.name_en) !== nkey(r.name) ? ` <span class="mut">(${esc(r.name_en)})</span>` : ''}${r.number ? ` · ${esc(r.number)}${r.total ? '/' + esc(r.total) : ''}` : ''}${r.language ? ` · ${esc(lcode(String(r.language).toLowerCase()))}` : ''}`;
+// comment la carte a été reconnue : affiché sur chaque résultat. La lecture de l'IA est un bouton.
+const howLine = (h, c) => {
   if (!h) return '';
-  const r = h.read, err = h.aiErr ? ` <span class="err">· ⚠️ ${esc(h.aiErr)}</span>` : '', t = h.ms ? ` <span class="mut">· ${secs(h.ms)}</span>` : '';
+  const r = aiRead(h), err = h.aiErr ? ` <span class="err">· ⚠️ ${esc(h.aiErr)}</span>` : '', t = h.ms ? ` <span class="mut">· ${secs(h.ms)}</span>` : '';
+  if (r && (h.t === 'ai' || h.t === 'stop')) return `<button type="button" class="small readline ailine" data-aiw>🤖 <b>Lu par l'IA</b>${h.model ? ` (${esc(String(h.model).split('/').pop())})` : ''} : ${aiLabel(r)}${r.set_name_en ? ` · ${esc(r.set_name_en)}` : ''}${t} ${c && isExact(c, r) ? '<u>✓ choisie</u>' : '<u>Choisir</u>'}</button>`;
   if (h.t === 'stop') return `<p class="small mut readline">⏱️ <b>Abandon au bout de ${secs(h.ms || SCAN_BUDGET)}</b>${err}</p>`;
-  if (h.t === 'ai') return `<p class="small mut readline">🤖 <b>Lu par l'IA</b>${h.model ? ` (${esc(String(h.model).split('/').pop())})` : ''} : ${esc(r?.name || '?')}${r?.number ? ` · ${esc(r.number)}${r.total ? '/' + esc(r.total) : ''}` : ''}${r?.language ? ` · ${esc(String(r.language).toUpperCase())}` : ''}${r?.set_name_en ? ` · ${esc(r.set_name_en)}` : ''}${t}</p>`;
   if (h.t === 'vis') return `<p class="small mut readline">🖼️ <b>Reconnue par le dessin</b> (ressemblance ${Math.round(h.s * 100)} %)${t}${err}</p>`;
   return `<p class="small mut readline">🔢 <b>Reconnue par le numéro lu</b>${t}${err}</p>`;
 };
-// L'IA lit souvent la bonne carte alors que le catalogue ne la retrouve pas (s\u00e9rie absente,
-// nom en cor\u00e9en ou en chinois). On propose toujours de chercher ce qu'elle a lu, partout.
-const widenBtn = h => { const r = h?.read, n = r && (r.name_en || r.name);
-  const num = r.number ? ` n\u00b0 ${esc(r.number)}${r.total ? '/' + esc(r.total) : ''}` : '', lg = r.language ? ` \u00b7 ${esc(lcode(String(r.language).toLowerCase()))}` : '';
-  return n ? `<button type="button" class="btn sm aipick" id="scwide">\u{1F916} Prendre la carte lue par l'IA : <b>${esc(String(r.name || n).slice(0, 26))}</b>${num}${lg}</button>` : ''; };
+// Le choix de l'IA est TOUJOURS proposé (l'IA a souvent raison) :
+// - sa carte exacte (nom + numéro + langue) passe en tête avec le badge « Choix de l'IA » ;
+// - sinon une case « Choix de l'IA » montre sa lecture et va chercher la carte.
+const aiBadge = c => c?.aiPick ? '<span class="aibadge">🤖 Choix de l\'IA</span>' : '';
+const aiCls = c => c?.aiPick ? ' class="aichoice"' : '';
+const aiTile = (h, attr) => { const r = aiRead(h); return r ? `<button type="button" class="aitile" ${attr}><b>🤖 Choix de l'IA</b><small>${aiLabel(r)}</small><em>${h.widened ? 'Absente du catalogue · toucher pour chercher' : 'Toucher pour la prendre'}</em></button>` : ''; };
+const aiTake = (h, c) => { const r = aiRead(h); return r && !(c && isExact(c, r)) ? `<button type="button" class="btn sm aipick" data-aiw>\u{1F916} Prendre la carte lue par l'IA : <b>${aiLabel(r)}</b></button>` : ''; };
 // Tout ce que l'IA a lu (nom, numéro, langue) -> les cartes du catalogue qui y correspondent.
-// hit : même langue et même numéro que la lecture, c'est la carte.
+// hit : même nom, même numéro, même langue. Un numéro seul ne suffit pas (030 existe dans dix séries).
 async function aiCandidates(r = {}) {
   const name = String(r.name_en || r.name || '').trim(), words = name.split(/\s+/).filter(w => w.length >= 4);
-  const got = new Map(), add = d => { for (const c of d || []) got.set(c.id, c); };
-  const lang = String(r.language || '').toLowerCase() || S.lang, num = r.number ? String(r.number).replace(/\s/g, '') : null;
+  const got = new Map(), add = d => { for (const c of d || []) if (!got.has(c.id)) got.set(c.id, c); };
+  const lang = String(r.language || '').toLowerCase() || S.lang, num = r.number ? String(r.number).replace(/\s/g, '') : null, rr = { ...r, language: lang };
   if (num) add((await sb.rpc('scan_match', { p_num: num, p_total: /^\d+$/.test(String(r.total || '')) ? +r.total : null, p_words: words, p_lang: lang }).then(x => x, () => ({}))).data);
   if (words.length) add((await sb.rpc('scan_match', { p_num: null, p_total: null, p_words: words, p_lang: lang }).then(x => x, () => ({}))).data);
   for (const q of [...new Set([r.name, r.name_en].map(x => String(x || '').trim()).filter(x => x.length >= 2))]) {
-    if (got.size >= 24) break;
+    if (got.size >= 40) break;
     const { data } = await sb.rpc('search_cards', { p_q: q, p_lang: null }).then(x => x, () => ({}));
     add((data || []).map(c => ({ ...c, set_name: setName(S.sets.find(x => x.id === c.set_id)) || '' })));
   }
-  const rn = String(r.number || '').replace(/^0+/, ''), same = c => rn && String(c.local_id).replace(/^0+/, '').toUpperCase() === rn.toUpperCase();
-  const list = [...got.values()].sort((x, y) => ((y.lang === lang) - (x.lang === lang)) || (same(y) - same(x)));
-  let hit = list.find(c => c.lang === lang && same(c)) || null;
-  // même numéro trouvé dans une autre langue seulement : on va chercher la version dans la langue lue
-  if (!hit) { const o = list.find(same);
-    if (o && lang !== o.lang) { const { data } = await sb.rpc('card_in_lang', { p_card: o.id, p_lang: lang }).then(x => x, () => ({}));
-      if (data?.length) { list.unshift(...data); hit = data.find(d => d.same_num) || data[0]; } } }
+  let list = aiSort([...got.values()], rr);
+  // même nom et même numéro trouvés dans une autre langue seulement : on va chercher la version dans la langue lue
+  if (num && !list.some(c => c.aiPick)) { const o = list.find(c => c.aiName && isExact({ ...c, lang }, rr));
+    if (o) { const { data } = await sb.rpc('card_in_lang', { p_card: o.id, p_lang: lang }).then(x => x, () => ({}));
+      if (data?.length) list = aiSort([...data, ...list.filter(c => !data.some(d => d.id === c.id))], rr); } }
   remember(list);
-  return { list, hit, name };
+  return { list, hit: list.find(c => c.aiPick) || null, name };
 }
-async function runWiden() {
-  const r = scanState.how?.read || {}, b = $('#scwide');
-  if (b) { b.disabled = true; b.textContent = '\u{1F916} Recherche de la carte lue par l’IA…'; }
-  const { list, hit, name } = await aiCandidates(r);
-  if (!list.length) { if (b) { b.disabled = false; b.textContent = '\u{1F50E} Réessayer la recherche'; }
-    $('#scw').value = name; $('#scman').open = true;
-    return $('#scs').innerHTML = `Rien au catalogue pour « ${esc(name)} » : corrige le nom ci-dessous et relance la recherche.`;
+// toucher le choix de l'IA : sa carte si elle existe, sinon les cartes à son nom et la recherche pré-remplie
+async function takeAI() {
+  const h = scanState.how, r = aiRead(h); if (!r) return;
+  let list = scanState.list || [], p = list.find(c => c.aiPick);
+  if (!p && !h.widened) {
+    $('#scr').querySelectorAll('[data-aiw]').forEach(b => { b.disabled = true; });
+    const w = await aiCandidates(r); h.widened = true;
+    list = aiSort([...w.list, ...list.filter(c => !w.list.some(g => g.id === c.id))], r); p = list.find(c => c.aiPick);
   }
-  if (hit) { scanState.list = list; scanState.autoLang = true; return showScan(hit); }
-  showRanked({ list, sure: false, how: scanState.how });
-  $('#scs').innerHTML = `Toutes les cartes nommées « <b>${esc(name)}</b> » : touche la bonne.`;
+  if (p) { scanState.list = list; scanState.autoLang = true; return showScan(p); }
+  showRanked({ list, sure: false, how: h });
+  const q = String(r.name_en || r.name || '').trim(); $('#scw').value = q; $('#scman').open = true;
+  $('#scs').innerHTML = `🤖 L'IA a lu « <b>${esc(r.name || q)}</b> »${r.number ? ` n° ${esc(r.number)}${r.total ? '/' + esc(r.total) : ''}` : ''} : cette carte n'est pas au catalogue. ${list.some(c => c.aiName) ? 'Les cartes à ce nom sont en premier : touche la bonne, ou corrige' : 'Corrige'} la recherche ci-dessous.`;
 }
-const askAI = h => h && h.t !== 'ai' && scanState.cv ? `<button type="button" class="btn sm ghost" id="askai">🤖 Pas la bonne ? Demander à l'IA</button>` : '';
+const askAI = h => h && !aiRead(h) && scanState.cv ? `<button type="button" class="btn sm ghost" id="askai">🤖 Pas la bonne ? Demander à l'IA</button>` : '';
 async function runAskAI() {
   const b = $('#askai'); if (b) { b.disabled = true; b.textContent = '🤖 L\'IA lit la carte… (quelques secondes)'; }
   const ai = await identifyAI(scanState.cv);
-  if (ai?.read && ai.read.is_card !== false) { scanState.how = { t: 'ai', read: ai.read, model: ai.model };
-    const { list, hit } = await aiCandidates(ai.read), all = [...(ai.cards || []), ...list.filter(c => !(ai.cards || []).some(a => a.id === c.id))];
-    if (hit) { scanState.list = all; scanState.autoLang = true; return showScan(hit); }
-    if (all.length) return showRanked({ list: all, sure: false, how: scanState.how }); }
-  if (ai?.cards?.length) return showRanked(fromAI(ai, scanState.list || []));
+  if (ai?.read && ai.read.is_card !== false) {
+    const w = await aiCandidates(ai.read);
+    const all = aiSort([...(ai.cards || []), ...w.list, ...(scanState.list || [])].filter((c, k, a) => a.findIndex(y => y.id === c.id) === k), ai.read);
+    scanState.how = { t: 'ai', read: ai.read, model: ai.model, widened: true };
+    const p = all.find(c => c.aiPick);
+    if (p) { scanState.list = all; scanState.autoLang = true; return showScan(p); }
+    return showRanked({ list: all, sure: false, how: scanState.how });
+  }
   if (b) { b.disabled = false; b.textContent = '🤖 Réessayer avec l\'IA'; }
   toast(ai?.read?.is_card === false ? 'L\'IA ne voit pas de carte sur la photo' : S.aiErr || 'L\'IA n\'a pas trouvé cette carte', true);
 }
 function showRanked({ list, sure, how }) {
   remember(list); scanState.list = list; scanState.how = how; scanState.autoLang = false;
   if (sure) return showScan(list[0]);
-  $('#scs').textContent = list.length > 1 ? 'Plusieurs cartes possibles : touche la bonne.' : '';
-  $('#scr').innerHTML = howLine(how) + widenBtn(how) + `<div class="alts big">${list.map((c, i) => c.alt ? '' : `<button type="button" data-alt="${i}">${img(c)}${ownBadge(c)}<small>${flag(c.lang)} ${esc(nm(c))}<br>${esc(c.set_name)} · ${esc(c.local_id)}</small></button>`).join('')}</div>`;
-  $('#scr').insertAdjacentHTML('beforeend', askAI(how));
-  $('#scr').onclick = e => { if (e.target.closest('#askai')) return runAskAI(); if (e.target.closest('#scwide')) return runWiden();
+  const r = aiRead(how), pick = list.find(c => c.aiPick), shown = pick ? [pick, ...list.filter(c => c !== pick)] : list;
+  $('#scs').textContent = list.length > 1 ? 'Plusieurs cartes possibles : touche la bonne.' : r && !list.length ? 'Seule l\'IA a lu cette carte : touche sa case.' : '';
+  $('#scr').innerHTML = howLine(how) + `<div class="alts big">${r && !pick ? aiTile(how, 'data-aiw') : ''}${shown.map(c => c.alt ? '' : `<button type="button" data-alt="${list.indexOf(c)}"${aiCls(c)}>${aiBadge(c)}${img(c)}${ownBadge(c)}<small>${flag(c.lang)} ${esc(nm(c))}<br>${esc(c.set_name)} · ${esc(c.local_id)}</small></button>`).join('')}</div>` + askAI(how);
+  $('#scr').onclick = e => { if (e.target.closest('#askai')) return runAskAI(); if (e.target.closest('[data-aiw]')) return takeAI();
     const b = e.target.closest('[data-alt]'); if (b) showScan(list[+b.dataset.alt]); };
 }
 const artKey = id => id.replace(/^[a-z]{2}(?:-[a-z]{2})?:/, ''), langCache = new Map();
@@ -1136,8 +1153,8 @@ function showScan(c) {
   $('#scs').textContent = '';
   $('#scr').innerHTML = `<div class="scanres panel"><div class="sr-img">${img(c, true)}</div><div class="sr-txt">
     <p class="small" style="margin:0"><span class="pill p-NM">✓ Carte reconnue</span></p>
-    <h3>${flag(c.lang)} ${esc(nm(c))}</h3><div class="langsw" id="langsw"></div>${ownedLine(c)}${howLine(scanState.how)}<p class="small mut">${esc(c.set_name)} · n° ${esc(c.local_id)} · cote <button type="button" class="cote" data-cote="${c.id}">${eur(c.price_eur)}${trend(c)} 📈</button></p>
-    </div><div class="sr-acts"><p class="small" style="margin:0"><b>C'est bien elle ?</b></p>${add ? bAdd + bAuth : bAuth + bAdd}${askAI(scanState.how)}${widenBtn(scanState.how)}
+    <h3>${flag(c.lang)} ${esc(nm(c))}</h3><div class="langsw" id="langsw"></div>${ownedLine(c)}${howLine(scanState.how, c)}<p class="small mut">${esc(c.set_name)} · n° ${esc(c.local_id)} · cote <button type="button" class="cote" data-cote="${c.id}">${eur(c.price_eur)}${trend(c)} 📈</button></p>
+    </div><div class="sr-acts"><p class="small" style="margin:0"><b>C'est bien elle ?</b></p>${add ? bAdd + bAuth : bAuth + bAdd}${askAI(scanState.how)}${aiTake(scanState.how, c)}
     <p class="small" style="margin:6px 0 0">${wishStar(c.id)} ${S.wish.has(c.id) ? 'Dans ta liste de souhaits' : 'La chercher : ajouter à mes souhaits'}</p></div></div>
     ${others.length ? `<details class="small"><summary>Pas la bonne ? (${others.length} autres)</summary><div class="alts">${others.map(x => `<button type="button" data-tw="${x.id}">${img(x)}<small>${flag(x.lang)} ${esc(nm(x))}<br>${esc(x.set_name)} · ${esc(x.local_id)}</small></button>`).join('')}</div></details>` : ''}`;
   if (!artUrl(c)) artPicker(c, list);
@@ -1152,17 +1169,17 @@ function showScan(c) {
     for (const v of vs) if (!list.some(x => x.id === v.id)) list.push(v);
     remember(vs); scanState.list = list;
     // bonne langue d'office : celle lue par l'IA, sinon la dernière choisie, sinon celle du classeur
-    if (!scanState.autoLang) { scanState.autoLang = true; const h = scanState.how, want = (h?.t === 'ai' && h.read?.language) || scanLang || S.lang, v = vs.find(x => x.lang === want);
+    if (!scanState.autoLang) { scanState.autoLang = true; const h = scanState.how, want = aiRead(h)?.language || scanLang || S.lang, v = vs.find(x => x.lang === want);
       if (v && v.id !== c.id) return showScan(list.find(x => x.id === v.id) || v);
       // l'IA a lu une autre langue que celle proposée, et cette langue n'est pas rattachée au même dessin :
       // on va la chercher par le nom (séries japonaises, coréennes, chinoises : numéros différents)
-      const read = h?.t === 'ai' && String(h.read?.language || '').toLowerCase();
+      const read = String(aiRead(h)?.language || '').toLowerCase();
       if (!v && read && read !== c.lang && ALL_LANGS.includes(read)) return pickLang(c, read, true); }
     $('#langsw').innerHTML = langChipsAll(c, [c, ...vs.filter(v => v.id !== c.id)]);
   });
   $('#scr').onclick = async e => {
     if (e.target.closest('#askai')) return runAskAI();
-    if (e.target.closest('#scwide')) return runWiden();
+    if (e.target.closest('[data-aiw]')) return takeAI();
     const x = e.target.closest('[data-xl]'); if (x) return pickLang(c, x.dataset.xl);
     const t = e.target.closest('[data-tw],[data-q],#sadd,#sauth'); if (!t) return;
     if (t.dataset.tw) { const v = list.find(x => x.id === t.dataset.tw); if (t.closest('#langsw')) setScanLang(v.lang); return showScan(v); }

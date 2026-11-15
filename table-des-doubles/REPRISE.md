@@ -133,3 +133,86 @@
 - **Audit corrigé** : contrôle visuel (plus « authentification »), Stripe idempotent, accord IA + `ai_hits`, confidentialité, Permissions-Policy.
 - **Encore à coller par le propriétaire** : `supabase/sql/2026-10-21-moderation-rgpd-echanges.sql` (purge RGPD + remboursements automatiques). Les DELETE bloquent l'outil MCP.
 - **PikaQian** : fonction `pikaqian`, état dans `pq_state`, cron toutes les 3 min + relecture le 2 du mois. Quota 500 demandes/mois.
+
+
+<!-- Rapatrié depuis la branche claude/kind-ritchie-xx2ouo (session Gazette, 14-15/11) -->
+## Publications automatiques — « La Gazette » (ajout 14/11)
+Un seul moteur alimente tous les canaux. **Une ligne de `blog` = une publication déclinée.**
+
+```
+lundi 5h41  pg_cron `gazette-learn`  → blog/learn    : note les publications passées, écrit 3 enseignements dans `content_learn`
+lundi 6h13  pg_cron `blog-weekly`    → blog/generate : faits réels + mémoire → IA → article + forum + FB + IG + script TikTok
+                                                        auto-contrôle `contact_violation()`, 1 reprise, sinon version « maison »
+                                                        → `blog` status=draft + jeton `k` à usage unique
+                                        appelle n8n `sc-gazette-valider` → UN mail Brevo « Publier / Jeter »
+clic Publier → blog/approve?id&k     : status=published · fil du forum signé `LaGazette` (épinglé, `posts.blog_id`) 
+                                        → appelle n8n `sc-gazette-reseaux` → Facebook + Instagram
+```
+
+- **Edge function `blog`** (`supabase/functions/blog/index.ts`, verify_jwt off) : `/generate`, `/approve`, `/reject`, `/learn`, `/pending`.
+  `/approve` et `/reject` ne sont pas protégés par le jeton cron mais par `blog.k`, aléatoire et à usage unique (lien du mail).
+- **Colonnes ajoutées à `blog`** : `forum_body`, `fb`, `ig`, `tiktok`, `k`, `post_id`, `social_at`, `social_log`, `score`, `reviewed_at`.
+- **Table `content_learn`** : mémoire de la boucle (lesson, weight, evidence), 30 lignes max, relue par le prompt.
+- **RPC `gazette_movers(limit)`** : cartes dont la cote a vraiment bougé. Garde-fous indispensables — le fournisseur sort des
+  valeurs aberrantes (171 cartes pile à −80 %, des +4947 % sur des cotes de départ à 5 €). Retenu : cote et cote précédente ≥ 2 €,
+  mouvement ≥ 0,50 €, variation entre 8 % et 40 %, relevé < 21 jours, une ligne par nom de carte.
+- **RPC `gazette_id()`** : compte robot `LaGazette` (pseudo sans espace : `profiles_pseudo_check`). Recrée le profil s'il manque.
+- **n8n** workflow `StcinxUjfXgoNGIQ` « 🃏 SHARING CARDS — La Gazette » (actif) : 2 webhooks (`sc-gazette-valider`,
+  `sc-gazette-reseaux`), mail via l'identifiant Brevo existant, 4 nœuds Facebook/Instagram **grisés** jusqu'à la Page + le jeton.
+- **Coût : 0 €** (Gemini gratuit, Groq en secours, Brevo 300 mails/jour, n8n sur le VPS déjà en place).
+
+### Le journal du site (ajout 14/11)
+`blog` existait depuis octobre, **mais aucune page ne l'affichait** : les articles étaient écrits dans le vide,
+et le lien que la Gazette posait sur Facebook ne menait nulle part. C'est réparé.
+- Route **`#/journal`** (liste) et **`#/journal/<slug>`** (article), fichier `journal.js` (rendu + markdown
+  minimal : `##`, `###`, listes, `**gras**`, `*italique*`, `![image](url)`, liens — tout est échappé avant mise en forme).
+- Lien dans la navigation, styles `.jr-*` en fin de `style.css`, `sw.js` passé en `tdd-v29`.
+- RPC `blog_view(slug)` : compteur de lectures. **Sans lui la boucle d'amélioration notait à l'aveugle**,
+  `views` restant à 0.
+- Trigger `blog_cover_bi` : un article sans illustration reçoit l'image de la carte vedette de la semaine
+  (convention TCGdex `<image>/high.webp`), sinon le visuel du site.
+- Trois articles de fond écrits et publiés le 14/11 (Règne Delta, grille d'état NM/EX/GD/PL, six réflexes
+  d'échange), chacun avec son fil de forum. Le filtre `contact_violation` a refusé le premier essai : le mot
+  **« signal »** est dans la liste noire (« signal d'alerte »). Bon rappel que les textes du forum doivent
+  éviter aussi : tel, numero, fb, snap, rib, signal.
+
+### Vidéo — YouTube (ajout 14/11)
+La Gazette ne refait pas de chaîne vidéo : elle **appelle celle qui existe**, `LnHApbawsIE4dw70`
+« 🎬 Shorts — Faits racontés (Pexels + voix off) », 39 nœuds déjà éprouvés (TTS Google, sous-titres ASS
+calés au dixième de seconde, ducking de la musique, loudnorm en deux passes, upload YouTube **en privé**).
+
+Deux retouches chirurgicales seulement, le comportement d'origine est intact :
+- nœud **« Appel depuis la Gazette »** (`executeWorkflowTrigger`) → « Preparer le dossier » ;
+- `Choisir le theme` accepte un `domaine` injecté ; sans appel extérieur, la rotation habituelle reprend
+  (la référence au nœud échoue, on retombe dans le `catch`) ;
+- `Preparer le montage` ajoute le lien du site à la description YouTube quand l'appel vient de nous.
+
+Côté Gazette (`StcinxUjfXgoNGIQ`) : « Réglages Sharing Cards » → **« Sujet de la vidéo »** → **« Lancer la
+vidéo (YouTube) »** (`waitForSubWorkflow: false`, le montage prend plusieurs minutes). Le domaine injecté est
+*« les cartes Pokémon à collectionner : rareté, cotes, contrefaçons, état et conservation »* : l'agent éditorial
+y cherche un fait qui corrige une idée reçue, le **vérifie dans une encyclopédie**, puis écrit le script.
+Ce n'est donc pas un résumé des cotes mais un Short qui tient tout seul — c'est ce qui marche sur YouTube.
+
+**TikTok et Instagram Reels restent manuels** : aucune API gratuite ne publie dessus (la chaîne
+`EFZy3OZHCzikCqQS` existe mais finit par un envoi par mail, pas par une publication). La même vidéo verticale
+sert aux trois. Piste : Reels est publiable via l'API Graph, à faire après la Page Facebook.
+
+### Points de vigilance
+- `GEMINI_API_KEY` **absente** : `ai_hits` est à 0, tout a été rédigé par le moteur de secours. C'est le seul verrou qui sépare
+  d'un rendu vraiment pro (étape 1 ter d'`A-FAIRE.md`).
+- Trigger `blog_slug_bi` (slug unique en cas de double rédaction le même jour) : **migration en attente de confirmation**.
+- **Noms de modèles Gemini : ils expirent.** Le 15/11/2026, `gemini-2.0-flash` et `gemini-2.0-flash-lite`
+  répondaient `404 : no longer available`, Google renvoyant vers `gemini-3.8-flash` / `gemini-3.5-flash-lite`.
+  La Gazette retombait donc sur son moteur de secours alors que la clé était bonne. Le code vise maintenant
+  `gemini-flash-latest` d'abord (alias qui suit les sorties). **À revérifier si `source` repasse à « maison ».**
+- Le workflow n8n `LnHApbawsIE4dw70` utilise peut-être encore d'anciens noms de modèles : à contrôler.
+- **TTS Google en panne (403)** : `texttospeech.googleapis.com` répond `PERMISSION_DENIED / ACCESS_DENIED`.
+  Les 3 derniers passages programmés du workflow Shorts ont échoué (13/11 18h, 14/11 6h, 14/11 18h) : **aucune
+  vidéo ne se monte plus**, et ce depuis avant la Gazette. À débloquer dans Google Cloud (étape 7 bis d'`A-FAIRE.md`).
+  Sans carte bancaire, l'alternative est le TTS de Gemini, mais son palier gratuit (3 requêtes/min, 15/jour)
+  ne tient pas : la chaîne appelle le TTS une fois par phrase pour mesurer chaque durée de sous-titre.
+- Le modèle principal du workflow Shorts, `gemini-flash-latest`, échoue (`fetch failed`) : seul le modèle de
+  secours répond, ce qui fait durer l'agent éditorial 5 minutes au lieu de quelques secondes. À revoir.
+- Instagram refuse une publication sans image : à défaut de `blog.cover`, le moteur envoie `img/og.jpg`. Un visuel par article
+  serait mieux (piste : la carte vedette via la fonction `img`, à arbitrer côté droits Nintendo).
+

@@ -191,7 +191,7 @@ function legal() {
   view.innerHTML = renderLegal(esc, sub);
   if (sub) document.getElementById('lg-' + sub)?.scrollIntoView();
 }
-const routes = { '': home, trophees, legal, classeur, table, offres, forum, blog, compte, regles, guide, membre, souhaits, boutiques, moderation };
+const routes = { '': home, trophees, legal, classeur, table, offres, forum, blog, journal: blog, compte, regles, guide, membre, souhaits, boutiques, moderation }; // #/journal : liens de la Gazette (Facebook)
 function guide() {
   const k = location.hash.split('/')[2]; view.innerHTML = renderGuide();
   const el = k && document.getElementById('g-' + k); if (!el) return;

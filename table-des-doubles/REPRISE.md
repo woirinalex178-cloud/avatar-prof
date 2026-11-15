@@ -218,3 +218,16 @@ sert aux trois. Piste : Reels est publiable via l'API Graph, à faire après la 
 - Instagram refuse une publication sans image : à défaut de `blog.cover`, le moteur envoie `img/og.jpg`. Un visuel par article
   serait mieux (piste : la carte vedette via la fonction `img`, à arbitrer côté droits Nintendo).
 
+
+### Piège n8n : brouillon ≠ version publiée (15/11)
+n8n 2.x garde un **brouillon** et une **version publiée**. Les modifications faites par l'API atterrissent
+dans le brouillon : un workflow appelé comme sous-workflow continue de tourner sur son ancienne version, et
+l'appel échoue **en silence** (le nœud `executeWorkflow` affiche « réussi » parce qu'avec
+`waitForSubWorkflow: false` il renvoie son entrée sans attendre).
+Le symptôme : aucune exécution du sous-workflow, aucune erreur nulle part.
+Le diagnostic qui le révèle : retirer `onError: continueRegularOutput` — n8n répond alors
+*« references workflow ... which is not published »*.
+**Pour publier** un workflow modifié par l'API : `n8n_update_partial_workflow` avec
+`deactivateWorkflow` puis `activateWorkflow`. À refaire après chaque modification d'un workflow
+appelé par un autre.
+

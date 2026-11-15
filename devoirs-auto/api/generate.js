@@ -38,6 +38,10 @@ DIVERSITÉ : la banque doit mélanger AU MOINS 5 types différents (qcm, vraifau
  et les types visuels de la matière). Pas plus d'un tiers de qcm. Ton ludique : petites mises en situation, défis, devinettes.
 "niveau" : 1 facile, 2 moyen, 3 difficile. Varie vraiment les questions : autres exemples, autres nombres, autres angles,
 jamais deux fois la même question reformulée. Explications courtes, encourageantes, sans jargon.
+LISTE DE MOTS À MÉMORISER : si la consigne donne une liste de mots, travaille CHAQUE mot de la liste et UNIQUEMENT ceux-là,
+ écrits EXACTEMENT comme dans la liste. Beaucoup de "dictee" (un mot par question), plus des "trou", "intrus" (l'intrus mal orthographié),
+ "classer" (nom / verbe / adjectif / invariable), "associer" (mot ↔ définition), familles de mots, homophones, féminin/pluriel, conjugaison des verbes de la liste.
+ La fiche donne la liste complète des mots, les mots invariables, et des astuces pour retenir les mots difficiles.
 Reste strictement dans le programme de CM2 et le thème du devoir.`;
 
 const VISUELS = `VISUELS selon la matière :

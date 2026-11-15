@@ -187,3 +187,4 @@ select.hole.ok{border:2px solid var(--ok);background:var(--okbg)}select.hole.ko{
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .indice-box{background:#3d3410;color:#ffe9a8}}
 .choice.barre{opacity:.35;text-decoration:line-through}
 select.hole.aide{border:2px solid var(--sun);background:#fff3c4}
+.mots-set{align-items:center;gap:12px;margin-top:6px}.mots-set b{min-width:110px;text-align:center}

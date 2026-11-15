@@ -70,6 +70,7 @@ async function sync() {
     }
     $('#cloud').className = 'pill cloud' + (r.off ? ' off' : '');
     $('#cloud').title = r.off ? 'Synchro non configurée' : 'Sauvegardé sur tous les appareils';
+    motsSemaine();   // une correction du n° faite sur un autre appareil
     if (!$('#v-home').hidden) render();
     if (document.activeElement !== $('#commune')) $('#commune').value = S.profil?.commune || '';
     if (!$('#v-fiches').hidden) renderFiches();
@@ -890,7 +891,45 @@ $('#cloud').onclick = () => { home(); status('☁️ ' + $('#cloud').title); };
 
 // Réglage : la commune de Céleste (cartes « mon lieu de vie » en géographie).
 $('#commune').value = S.profil?.commune || '';
-$('#commune').onchange = e => { S.profil = { commune: e.target.value.trim(), at: Date.now() }; save(); status('📍 Commune enregistrée : les prochaines cartes en tiendront compte.'); };
+$('#commune').onchange = e => { S.profil = { ...S.profil, commune: e.target.value.trim(), at: Date.now() }; save(); status('📍 Commune enregistrée : les prochaines cartes en tiendront compte.'); };
+
+// ---------- Mots à mémoriser : une liste par semaine, à savoir le lundi ----------
+const lundiVise = () => { const d = new Date(today() + 'T12:00'); d.setDate(d.getDate() + (8 - d.getDay()) % 7); return d.toLocaleDateString('sv'); };
+const enVacances = iso => VACANCES.some(([a, b]) => iso >= a && iso <= b);
+function numeroListe(lundi) {   // n° de liste pour ce lundi (les lundis de vacances ne comptent pas)
+  const ref = S.profil?.mots || MOTS_REF;
+  let n = ref.n; const d = new Date(ref.lundi + 'T12:00'), sens = lundi >= ref.lundi ? 7 : -7;
+  while (d.toLocaleDateString('sv') !== lundi && Math.abs(n) < 200) {
+    d.setDate(d.getDate() + sens); const iso = d.toLocaleDateString('sv');
+    if (!enVacances(iso)) n += Math.sign(sens);
+  }
+  return n;
+}
+function motsSemaine() {
+  const lundi = lundiVise(), n = numeroListe(lundi), v = MOTS[n];
+  $('#mots-n').textContent = enVacances(lundi) ? '🏖️ Vacances' : n >= 1 && n <= DERNIERE ? `Semaine ${n}` : '—';
+  let x = null;
+  if (v && !enVacances(lundi)) {
+    const mots = motsDe(n), inv = mots.filter(m => m.inv).map(m => m.mot);
+    const titre = Array.isArray(v) ? `Révision des listes ${v[0]} à ${v[1]}` : `Liste de la semaine ${n}`;
+    x = { matiere: 'Orthographe – mots à mémoriser', pour: lundi, source: 'mots', liste: n,
+      consigne: `${titre} : ${mots.map(m => m.mot).join(', ')}.` + (inv.length ? ` Mots invariables : ${inv.join(', ')}.` : '') };
+    x.id = idOf(x) + '#' + (S.profil?.mots?.t || 0);   // nouvel id après chaque correction du n°
+  }
+  // une seule mission « mots » à venir : les autres (ex. avant correction du n°) sont retirées partout
+  let change = false;
+  for (const d of S.devoirs) if (d.source === 'mots' && d.pour >= today() && d.id !== x?.id) { S.deleted[d.id] = Date.now(); change = true; }
+  S.devoirs = S.devoirs.filter(d => !S.deleted[d.id]);
+  if (x && !S.deleted[x.id] && !S.devoirs.some(o => o.id === x.id)) { S.devoirs.push(x); S.devoirs.sort((a, b) => a.pour.localeCompare(b.pour)); change = true; }
+  if (change) { save(); render(); }
+}
+function corrigeListe(k) {   // − / + dans les réglages : la liste du lundi visé devient n ± 1
+  const lundi = lundiVise();
+  S.profil = { ...S.profil, mots: { n: Math.min(DERNIERE, Math.max(1, numeroListe(lundi) + k)), lundi, t: Date.now() }, at: Date.now() };
+  motsSemaine(); prepareAll();
+}
+$('#mots-moins').onclick = () => corrigeListe(-1);
+$('#mots-plus').onclick = () => corrigeListe(1);
 
 function home() { show('home'); $('#tip').textContent = TIPS[Math.random() * TIPS.length | 0]; render(); }
 $('#back').onclick = home;
@@ -898,6 +937,6 @@ $('#f-pin').onsubmit = e => { e.preventDefault(); store.set('pin', $('#pin').val
 
 function start() {
   if (!store.get('pin', '')) return show('pin');
-  home(); sync(); syncOne(); prepareAll();
+  home(); motsSemaine(); sync(); syncOne(); prepareAll();
 }
 start();

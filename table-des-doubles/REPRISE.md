@@ -106,6 +106,11 @@ sert aux trois. Piste : Reels est publiable via l'API Graph, à faire après la 
 - `GEMINI_API_KEY` **absente** : `ai_hits` est à 0, tout a été rédigé par le moteur de secours. C'est le seul verrou qui sépare
   d'un rendu vraiment pro (étape 1 ter d'`A-FAIRE.md`).
 - Trigger `blog_slug_bi` (slug unique en cas de double rédaction le même jour) : **migration en attente de confirmation**.
+- **Noms de modèles Gemini : ils expirent.** Le 15/11/2026, `gemini-2.0-flash` et `gemini-2.0-flash-lite`
+  répondaient `404 : no longer available`, Google renvoyant vers `gemini-3.8-flash` / `gemini-3.5-flash-lite`.
+  La Gazette retombait donc sur son moteur de secours alors que la clé était bonne. Le code vise maintenant
+  `gemini-flash-latest` d'abord (alias qui suit les sorties). **À revérifier si `source` repasse à « maison ».**
+- Le workflow n8n `LnHApbawsIE4dw70` utilise peut-être encore d'anciens noms de modèles : à contrôler.
 - **TTS Google en panne (403)** : `texttospeech.googleapis.com` répond `PERMISSION_DENIED / ACCESS_DENIED`.
   Les 3 derniers passages programmés du workflow Shorts ont échoué (13/11 18h, 14/11 6h, 14/11 18h) : **aucune
   vidéo ne se monte plus**, et ce depuis avant la Gazette. À débloquer dans Google Cloud (étape 7 bis d'`A-FAIRE.md`).

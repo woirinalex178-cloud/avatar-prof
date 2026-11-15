@@ -86,7 +86,7 @@ Tu produis la publication de la semaine, en français, ton chaleureux et concret
 Appuie-toi UNIQUEMENT sur ces données réelles du site (cotes Cardmarket via TCGdex). Dans "movers", "delta" est la variation en % depuis le relevé précédent, daté par "releve" : écris « depuis le dernier relevé » ou cite la date, jamais « en un jour ». N'arrondis ni ne modifie aucun chiffre :
 ${JSON.stringify(f)}
 ${mem ? `\nCe que l'expérience des semaines passées a appris (à respecter) :\n${mem}\n` : ''}${correctif ? `\nCORRECTION OBLIGATOIRE : la version précédente a été refusée par le filtre du site (${correctif}). Réécris sans le mot ou la tournure en cause.\n` : ''}
-INTERDIT dans le champ "forum" : les mots tel, telephone, numero, insta, fb, discord, snap, mail, gmail, whatsapp, iban, virement, cash, especes, liquide, main propre, ainsi que toute adresse, tout lien et toute invitation à discuter hors du site. Le filtre automatique du site refuse la publication sinon. Écris « un pareil » plutôt que « un tel ».
+INTERDIT dans le champ "forum" : les mots tel, telephone, numero, insta, fb, discord, snap, signal, rib, mail, gmail, whatsapp, iban, virement, cash, especes, liquide, main propre, ainsi que toute adresse, tout lien et toute invitation à discuter hors du site. Le filtre automatique du site refuse la publication sinon. Écris « un pareil » plutôt que « un tel », et « avertissement » plutôt que « signal ».
 
 Réponds en JSON strict avec exactement ces clés :
 {
@@ -101,12 +101,16 @@ Réponds en JSON strict avec exactement ces clés :
 }`;
 
 async function gemini(p: string) {
-  for (const m of ['gemini-2.0-flash', 'gemini-2.0-flash-lite']) {
+  // Les noms de modèles expirent : Google a retiré gemini-2.0-flash le 15/11/2026
+  // (« no longer available »). `gemini-flash-latest` est un alias qui suit les sorties,
+  // les deux suivants sont des repêchages si l'alias venait à bouger.
+  for (const m of ['gemini-flash-latest', 'gemini-3.8-flash', 'gemini-3.5-flash-lite']) {
     const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent?key=${GEM}`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ contents: [{ parts: [{ text: p }] }], generationConfig: { temperature: 0.8, responseMimeType: 'application/json' } })
     });
     if (r.ok) { const j = await r.json(); const t = j.candidates?.[0]?.content?.parts?.[0]?.text; if (t) return t; }
+    else console.error('gemini', m, r.status, (await r.text()).slice(0, 200));
   }
   return null;
 }

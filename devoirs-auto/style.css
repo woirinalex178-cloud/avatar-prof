@@ -180,3 +180,10 @@ select.hole.ok{border:2px solid var(--ok);background:var(--okbg)}select.hole.ko{
 .cat{border:2px solid var(--line);background:var(--card);border-radius:99px;padding:5px 12px;font-weight:800;font-size:14px;cursor:pointer}
 .cat.on{background:var(--pri);border-color:var(--pri);color:#fff}
 .ecoute{font-size:18px}
+/* indice */
+.indice{justify-self:start;padding:7px 14px;font-size:15px}
+.indice-box{background:#fff8d6;border:2px dashed #f2c230;border-radius:14px;padding:8px 12px;color:#4a3700;font-weight:700}
+.indice-box p{margin:2px 0}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .indice-box{background:#3d3410;color:#ffe9a8}}
+.choice.barre{opacity:.35;text-decoration:line-through}
+select.hole.aide{border:2px solid var(--sun);background:#fff3c4}

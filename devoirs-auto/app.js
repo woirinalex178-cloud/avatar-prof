@@ -325,6 +325,33 @@ async function train(d, goal = false) {
     fill.style.width = rocket.style.left = (Math.min(k, n) / Math.max(queue.length, n) * 100) + '%'; bar.append(fill, rocket);
     box.append(head, bar, el('p', 'q-text', q.enonce));
 
+    // 💡 Indice : d'abord la piste de l'IA, puis une aide automatique adaptée au jeu (2 indices au plus).
+    let aide = 0;
+    const indiceBtn = el('button', 'btn alt sm indice', '💡 Indice'), indiceBox = el('div', 'indice-box');
+    indiceBtn.type = 'button'; indiceBox.hidden = true;
+    const auto = () => {
+      const faux = [...box.querySelectorAll('.choices .choice')].filter(b => !b.disabled && q.reponse && norm(b.textContent) !== norm(q.reponse));
+      if (faux.length > 1) { const b = faux[Math.random() * faux.length | 0]; b.disabled = true; b.classList.add('barre'); return 'J\'ai retiré une mauvaise réponse ✂️'; }
+      const vides = [...box.querySelectorAll('select.hole')].filter(x => !x.value), sel = vides.length > 1 && vides[0];   // jamais la dernière case
+      if (sel) { sel.value = sel.dataset.attendu; sel.disabled = true; sel.classList.add('aide'); sel.dispatchEvent(new Event('change')); return 'J\'ai rempli une case pour toi ✨'; }
+      if (q.type === 'ordre' && q.etapes?.length) return `La première étape est : ${q.etapes[0].icone || ''} ${q.etapes[0].nom}`;
+      if (q.type === 'associer' && q.paires?.length) { const x = q.paires[Math.random() * q.paires.length | 0]; return `« ${x.a} » va avec « ${x.b} »`; }
+      if (q.type === 'classer' && q.elements?.length) { const x = q.elements[Math.random() * q.elements.length | 0]; return `« ${x.nom} » va dans « ${x.cat} »`; }
+      if (q.type === 'vraifaux') return 'Relis bien la phrase : un seul mot peut tout changer 😉';
+      if (q.reponse) {
+        const r = String(q.reponse).trim(), mots = r.split(/\s+/).length;
+        return `Ça commence par « ${r[0].toUpperCase()} »` + (mots > 1 ? ` et il y a ${mots} mots.` : ` et ça fait ${r.replace(/[^\p{L}\d]/gu, '').length} lettres.`);
+      }
+      return 'Relis ta fiche 📘 : la réponse s\'y trouve.';
+    };
+    indiceBtn.onclick = () => {
+      aide++;
+      const txt = aide === 1 && q.indice ? q.indice : auto();
+      indiceBox.hidden = false; indiceBox.append(el('p', null, '💡 ' + txt));
+      if (aide >= 2 || (aide === 1 && !q.indice && !/retiré|rempli/.test(txt))) indiceBtn.disabled = true;
+    };
+    box.append(indiceBtn, indiceBox);
+
     // good : true (juste), 'presque' (dictée avec une petite faute : pas de point, mais pas « faux »), false.
     const finish = (good, correction, note) => {
       const juste = good === true;
@@ -336,6 +363,7 @@ async function train(d, goal = false) {
       const fb = el('div', 'fb ' + (juste ? (note ? 'mid' : 'ok') : good === 'presque' ? 'mid' : 'ko'));
       fb.append(el('strong', null, juste ? BRAVO[tries % BRAVO.length] : good === 'presque' ? '' : `Presque ! ${correction} `));
       if (note) fb.append(el('div', 'note', '✏️ ' + note));
+      if (aide && juste) fb.append(el('div', 'small mut', '💡 Trouvé avec un indice : bien joué quand même !'));
       fb.append(document.createTextNode(q.explication || ''));
       if (combo >= 3) fb.prepend(el('div', 'combo', `🔥 Combo x${combo} !`));
       if (!good && goal) fb.append(el('div', 'small', '🔁 Cette question reviendra à la fin.'));
@@ -363,8 +391,8 @@ async function train(d, goal = false) {
     // Frise / carte à trous : une liste déroulante par trou, on valide quand tout est rempli.
     const holes = (pairs, render) => {
       const opts = shuffle(pairs.map(x => x.attendu));
-      const sels = pairs.map(() => {
-        const sel = el('select', 'hole'); sel.append(el('option', null, '— choisis —'));
+      const sels = pairs.map((pr) => {
+        const sel = el('select', 'hole'); sel.dataset.attendu = pr.attendu; sel.append(el('option', null, '— choisis —'));
         opts.forEach(o => sel.append(Object.assign(el('option', null, o), { value: o })));
         sel.firstChild.value = ''; return sel;
       });

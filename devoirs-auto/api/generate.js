@@ -7,10 +7,11 @@ import { checkPin, gemini } from './_lib.js';
 const NIVEAU = 'CM2 (programme officiel français, cycle 3)';
 
 const READ = `Tu reçois les devoirs d'une élève de ${NIVEAU} : une photo ou un document (PDF) de son cahier de textes et/ou un texte écrit par elle ou ses parents.
-Le texte est prioritaire : il précise ou corrige la photo ou le document. Extrais chaque devoir séparément, reformulé clairement. Date du jour : {TODAY} ({JOUR}). Si une date est "lundi", "demain"... convertis en AAAA-MM-JJ (le prochain jour correspondant).
+Le texte est prioritaire : il précise ou corrige la photo ou le document.
+L'élève est en CM2 dans une classe à double niveau : ne garde QUE ce qui concerne les CM2 (ou toute la classe) ; ignore ce qui est marqué CM1, CE2… Extrais chaque devoir séparément, reformulé clairement. Date du jour : {TODAY} ({JOUR}). Si une date est "lundi", "demain"... convertis en AAAA-MM-JJ (le prochain jour correspondant).
 Réponds en JSON : {"devoirs":[{"matiere":"","consigne":"consigne claire et complète","pour":"AAAA-MM-JJ ou vide"}]}`;
 
-const FORMAT_Q = `{"type":"qcm|vraifaux|courte|trou|intrus|associer|classer|dictee|frise|carte|schema|ordre","niveau":1,"enonce":"","choix":[],"reponse":"","accepte":[],"items":[],"trous":[],"lieux":[],"etapes":[],"forme":"chaine","texte":"","phrase":"","paires":[],"categories":[],"elements":[],"explication":""}`;
+const FORMAT_Q = `{"type":"qcm|vraifaux|courte|trou|intrus|associer|classer|dictee|frise|carte|schema|ordre","niveau":1,"enonce":"","choix":[],"reponse":"","accepte":[],"items":[],"trous":[],"lieux":[],"etapes":[],"forme":"chaine","texte":"","phrase":"","paires":[],"categories":[],"elements":[],"indice":"","explication":""}`;
 const REGLES_Q = `Types de questions :
  - "qcm" : "choix" (3-4 propositions), "reponse" = texte exact d'un choix
  - "vraifaux" : "reponse" = "Vrai" ou "Faux"
@@ -29,6 +30,7 @@ const REGLES_Q = `Types de questions :
  - "dictee" (FRANÇAIS : orthographe, dictée, mots à apprendre) : l'app LIT À VOIX HAUTE et l'élève écrit.
    "reponse" = le mot (ou un groupe de 2-4 mots) à écrire, "phrase" = une courte phrase qui contient ce mot (lue à voix haute),
    "enonce" = "Écoute et écris le mot que tu entends" (sans jamais écrire le mot)
+"indice" (pour CHAQUE question) : une petite piste qui aide à trouver SANS donner la réponse (rappel de la règle, astuce, question qui met sur la voie).
 RÈGLE ABSOLUE : la réponse ne doit JAMAIS apparaître dans "enonce" ni dans "texte" (ni le mot bien écrit, ni recopié).
  Exemple INTERDIT : « Quelle est la bonne orthographe du mot "savant" ? ». À la place : une "dictee", une définition
  (« Comment s'écrit le nom de la personne qui sait beaucoup de choses ? »), une phrase "trou", ou un "qcm" dont l'énoncé ne contient pas le mot.
@@ -63,6 +65,7 @@ const VISUELS = `VISUELS selon la matière :
 
 const MAKE = `Tu es un professeur des écoles bienveillant et pédagogue. Élève : Céleste, ${NIVEAU}.
 Devoir noté : matière "{MAT}", consigne "{TXT}", à rendre le {POUR} (aujourd'hui {TODAY}).
+Céleste est en CM2 : si la consigne mentionne d'autres niveaux (CM1…), ne traite que la partie CM2 et reste au programme de CM2.
 
 1. Classe le devoir :
  - "evaluation" : contrôle, évaluation, test, dictée, interro, "apprendre pour" une évaluation

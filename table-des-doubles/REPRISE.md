@@ -211,6 +211,19 @@ vient de la Gazette, **les plans sont fabriqués à partir des cartes de l'artic
   (les couvertures sont tantôt `.webp`, tantôt `.jpg`).
 Essai du 16/11 : 37 nœuds, 12 min, `short.mp4` 1080x1920 h264+aac de 29,4 s, 5,6 Mo, envoyé en privé.
 
+### Comptes sociaux et aiguillage YouTube (16/11)
+- Chaîne YouTube dédiée **Sharing Cards** `UC5MxlsPbgQULOajb-NLQzCg`, identifiant n8n `sPciQswHm7BZKqO6`
+  « Youtube - sharing cards ». Le compte Google de la chaîne diffère de celui qui porte l'application :
+  il a fallu l'ajouter en **utilisateur test** de l'écran de consentement, et autoriser l'URI de retour
+  `https://n8n.clairargent.fr/rest/oauth2-credential/callback` sur le client OAuth (erreur `redirect_uri_mismatch`).
+- Dans `LnHApbawsIE4dw70`, nœud **« Vidéo Sharing Cards ? »** entre « Charger la video » et l'envoi :
+  `origine === 'sharing-cards'` part sur la nouvelle chaîne (catégorie 20, Gaming), tout le reste suit
+  le chemin d'origine. Penser à **republier** après chaque modification (brouillon ≠ version publiée).
+- Autres comptes ouverts : X `@Sharing_Cards`, TikTok `@sharing_cards`, Threads `@sharing_cards`.
+  État des API au 16/11 : **X n'a plus de palier gratuit** pour les nouveaux comptes depuis février 2026
+  (environ 0,20 $ par publication contenant un lien) ; **Threads est gratuite** mais demande un jeton
+  dédié sur l'application Meta ; **TikTok** exige une revue d'application, donc publication manuelle.
+
 ### Points de vigilance
 - `GEMINI_API_KEY` **absente** : `ai_hits` est à 0, tout a été rédigé par le moteur de secours. C'est le seul verrou qui sépare
   d'un rendu vraiment pro (étape 1 ter d'`A-FAIRE.md`).

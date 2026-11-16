@@ -14,6 +14,9 @@
     interests: ['sciences expliquées', 'documentaire animalier', 'dessin et peinture',
       'espace et astronomie', 'bricolage et expériences', 'histoire racontée',
       'musique instruments', 'nature et randonnée'],
+    agePreset: '10-12',       // tranche d'âge : décide des thèmes proposés
+    whitelist: [],            // chaînes approuvées [{ id, name, avatar }]
+    whitelistOnly: false,     // n'afficher QUE ces chaînes
     baitStrength: 1,          // sévérité du filtre anti-appât à clic (0 à 2)
     shortsBudgetMin: 10,      // minutes de format court par jour (0 = désactivé)
     shortsUsed: { day: '', seconds: 0 },

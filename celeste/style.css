@@ -467,3 +467,19 @@ body.rail .main { margin-left: var(--rail-w); }
 .diag-row.ok .diag-mark { color: #2ecc71; }
 .diag-row.ko .diag-mark { color: #e74c3c; }
 .diag-row.wait .diag-mark { color: var(--text-dim); }
+
+
+/* ---------- Chaînes approuvées ---------- */
+.chan-list { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0; }
+.chan-chip {
+  display: inline-flex; align-items: center; gap: 8px; padding: 4px 6px 4px 4px;
+  border-radius: 18px; background: var(--chip); font-size: 13px;
+}
+.chan-chip img { width: 24px; height: 24px; border-radius: 50%; object-fit: cover; }
+.chan-x {
+  border: 0; background: none; cursor: pointer; font-size: 16px; line-height: 1;
+  color: var(--text-dim); padding: 0 4px;
+}
+.chan-x:hover { color: #e74c3c; }
+.description .switch { margin-top: 10px; }
+.description select { flex: 0 0 140px; }

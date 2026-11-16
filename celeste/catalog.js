@@ -5,6 +5,31 @@
 (function (global) {
   'use strict';
 
+  /* Thèmes par tranche d'âge : ce sont eux qui décident ce que la recherche
+     va chercher. Modifiables un par un dans les paramètres. */
+  var AGE_THEMES = {
+    '4-6': ['histoires pour enfants', 'comptines', 'animaux de la ferme documentaire',
+      'dessin facile pour enfants', 'imagier des animaux'],
+    '7-9': ['expériences scientifiques faciles', 'documentaire animalier enfant',
+      'dessin pas à pas', 'espace expliqué aux enfants', 'bricolage facile enfant',
+      'histoire racontée pour enfants'],
+    '10-12': ['sciences expliquées', 'documentaire animalier', 'dessin et peinture',
+      'espace et astronomie', 'bricolage et expériences', 'histoire racontée',
+      'musique instruments', 'nature et randonnée'],
+    '13+': ['sciences expliquées', 'documentaire', 'histoire', 'informatique et programmation',
+      'musique composition', 'photographie', 'cuisine', 'économie expliquée']
+  };
+
+  function whitelist() { return Store.state.whitelist || []; }
+
+  function whitelistOnly() {
+    return !!Store.state.whitelistOnly && whitelist().length > 0;
+  }
+
+  function inWhitelist(v) {
+    return whitelist().some(function (c2) { return c2.id === v.channelId; });
+  }
+
   function mode() {
     if (Ytb.hasKey() || Ytb.hasServerKey() || (global.Auth && Auth.isSignedIn())) { return 'yt'; }
     if ((Store.state.links || []).length) { return 'links'; }
@@ -98,9 +123,30 @@
       return Catalog.discover();
     },
 
+    agePresets: function () { return AGE_THEMES; },
+    themesForAge: function (age) { return (AGE_THEMES[age] || AGE_THEMES['10-12']).slice(); },
+    whitelistOnly: whitelistOnly,
+
+    /* Liste blanche : on ne cherche plus rien, on prend les dernières vidéos
+       des chaînes approuvées. Le moteur de recherche ne décide plus rien. */
+    fromWhitelist: function () {
+      var ids = whitelist().map(function (c2) { return c2.id; });
+      if (!ids.length) { return Promise.resolve([]); }
+      return Ytb.channels(ids).then(function (channels) {
+        return Promise.all(channels.map(function (c2) {
+          return Ytb.channelVideos(c2.uploads, 8).catch(function () { return []; });
+        }));
+      }).then(function (lists) { return rank(Ranker.interleave(lists)); });
+    },
+
     /* L'accueil ne reprend pas le classement du moteur : on part des chaînes
-       suivies et de centres d'intérêt choisis par le parent, puis on reclasse. */
+       approuvées ou suivies et de thèmes choisis, puis on reclasse. */
     discover: function () {
+      if (whitelistOnly()) { return Catalog.fromWhitelist(); }
+      return Catalog.discoverOpen();
+    },
+
+    discoverOpen: function () {
       var signedIn = global.Auth && Auth.isSignedIn();
       var subs = Store.state.subs.filter(function (id) { return /^UC/.test(id); });
       var interests = (Store.state.interests || []).slice(0, 4);
@@ -127,6 +173,11 @@
 
     /* Formats courts : seulement ici, seulement dans la limite du temps alloué. */
     shorts: function () {
+      if (whitelistOnly()) {
+        return Catalog.fromWhitelist().then(function (list) {
+          return list.filter(function (v) { return Ytb.isShort(v); });
+        });
+      }
       var interests = (Store.state.interests || []).slice(0, 3);
       var queries = interests.length ? interests : ['science amusante', 'animaux', 'dessin'];
       return Promise.all(queries.map(function (q) {
@@ -138,6 +189,7 @@
     },
 
     trending: function () {
+      if (whitelistOnly()) { return Catalog.fromWhitelist(); }
       if (mode() === 'yt') { return Ytb.trending(Store.state.region).then(rank); }
       if (mode() === 'links') { return linkVideos(); }
       return Promise.resolve(DB.videos.map(fromDemo).sort(function (a, b) { return b.views - a.views; }));
@@ -149,7 +201,10 @@
         return Promise.all([
           Ytb.search(q, { region: Store.state.region }),
           Ytb.searchChannels(q).catch(function () { return []; })
-        ]).then(function (r) { return { videos: rank(r[0]), channels: r[1] }; });
+        ]).then(function (r) {
+          var videos = whitelistOnly() ? r[0].filter(inWhitelist) : r[0];
+          return { videos: rank(videos), channels: whitelistOnly() ? [] : r[1] };
+        });
       }
       var pool = m === 'links' ? linkVideos() : Promise.resolve(DB.videos.map(fromDemo));
       return pool.then(function (list) {
@@ -305,6 +360,26 @@
       return Promise.all(ids.map(function (id) {
         return Catalog.video(id).catch(function () { return null; });
       })).then(function (l) { return l.filter(Boolean); });
+    },
+
+    addChannel: function (input) {
+      var parsed = Ytb.parseChannel(input);
+      if (!parsed) { return Promise.reject(new Error('adresse-invalide')); }
+      var lookup = parsed.id ? Ytb.channels([parsed.id]).then(function (l) { return l[0]; })
+        : Ytb.channelByHandle(parsed.handle);
+      return lookup.then(function (ch) {
+        if (!ch) { throw new Error('chaine-introuvable'); }
+        var list = whitelist().slice();
+        if (!list.some(function (c2) { return c2.id === ch.id; })) {
+          list.push({ id: ch.id, name: ch.name, avatar: ch.avatar });
+          Store.set('whitelist', list);
+        }
+        return ch;
+      });
+    },
+
+    removeChannel: function (id) {
+      Store.set('whitelist', whitelist().filter(function (c2) { return c2.id !== id; }));
     },
 
     addLink: function (input) {

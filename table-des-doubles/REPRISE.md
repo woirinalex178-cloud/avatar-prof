@@ -62,6 +62,13 @@ clic Publier → blog/approve?id&k     : status=published · fil du forum signé
   valeurs aberrantes (171 cartes pile à −80 %, des +4947 % sur des cotes de départ à 5 €). Retenu : cote et cote précédente ≥ 2 €,
   mouvement ≥ 0,50 €, variation entre 8 % et 40 %, relevé < 21 jours, une ligne par nom de carte.
 - **RPC `gazette_id()`** : compte robot `LaGazette` (pseudo sans espace : `profiles_pseudo_check`). Recrée le profil s'il manque.
+- **Comptes sociaux** (branchés le 16/11) : Page Facebook **Sharing Cards** `1363021123568443`,
+  compte Instagram professionnel **@sharing.cards** `17841433769076646` (relié à la Page, condition
+  obligatoire pour publier). Identifiant n8n `8PHRtWZARsHsZRti` « Facebook — Sharing Cards » : **jeton de
+  Page**, obtenu via une application Meta maison (`Sharing cards Auto`) puis `me/accounts` avec un jeton
+  utilisateur étendu. Ce type de jeton **n'expire pas**, mais tout changement de mot de passe Facebook
+  l'invalide — c'est ce qui avait tout cassé le 14/11, y compris FRESKO et Yumélia.
+  Autres Pages du même compte, si besoin un jour : Yumélia `1424713507397927`, Studio Céleste `1436820879512879`.
 - **n8n** workflow `StcinxUjfXgoNGIQ` « 🃏 SHARING CARDS — La Gazette » (actif) : 2 webhooks (`sc-gazette-valider`,
   `sc-gazette-reseaux`), mail via l'identifiant Brevo existant, 4 nœuds Facebook/Instagram **grisés** jusqu'à la Page + le jeton.
 - **Coût : 0 €** (Gemini gratuit, Groq en secours, Brevo 300 mails/jour, n8n sur le VPS déjà en place).

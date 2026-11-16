@@ -78,7 +78,7 @@ async function violation(txt: string): Promise<string | null> {
   return (data as string | null) ?? null;
 }
 
-type Art = { title: string; excerpt: string; tag: string; body: string; forum: string; facebook: string; instagram: string; tiktok: string };
+type Art = { title: string; excerpt: string; tag: string; body: string; forum: string; facebook: string; instagram: string; tiktok: string; x: string; threads: string };
 
 const PROMPT = (f: unknown, mem: string, correctif = '') => `Tu es le rédacteur de « Sharing Cards », un site français d'échange de cartes Pokémon entre collectionneurs passionnés (18+, 0 % de frais vendeur, échange gratuit, paiement sécurisé par séquestre, livraison en point relais).
 Tu produis la publication de la semaine, en français, ton chaleureux et concret, tutoiement, sans superlatif publicitaire et sans conseil d'investissement.
@@ -97,8 +97,11 @@ Réponds en JSON strict avec exactement ces clés :
  "forum": "le même sujet lancé sur le forum du site : 600 à 1200 caractères, pas de markdown, 2 ou 3 chiffres marquants, et une question ouverte à la fin pour faire répondre les membres",
  "facebook": "300 à 500 caractères, chaleureux, un ou deux emojis, une question à la fin, sans lien (il est ajouté automatiquement)",
  "instagram": "2 ou 3 phrases courtes, puis « Lien en bio », puis 6 à 10 hashtags français pertinents",
- "tiktok": "script d'une vidéo verticale de 25 secondes : une accroche de 3 secondes, 3 plans décrits entre crochets, une chute, et la phrase finale « Sharing Cards, l'espace des collectionneurs »"
-}`;
+ "tiktok": "script d'une vidéo verticale de 25 secondes : une accroche de 3 secondes, 3 plans décrits entre crochets, une chute, et la phrase finale « Sharing Cards, l'espace des collectionneurs »",
+ "x": "moins de 240 caractères, un seul chiffre marquant, ton sec et direct, aucun hashtag",
+ "threads": "2 à 4 phrases, ton conversationnel comme si tu parlais à un copain collectionneur, finit par une question ouverte, aucun hashtag"
+}
+Chaque réseau a sa propre version : ne recopie jamais le même texte d'un champ à l'autre, les plateformes le pénalisent.`;
 
 async function gemini(p: string) {
   // Les noms de modèles expirent : Google a retiré gemini-2.0-flash le 15/11/2026
@@ -150,7 +153,9 @@ function maison(f: F): Art {
     tag: 'Cotes', body, forum,
     facebook: `📈 Le point de la semaine sur les cotes Pokémon.\n\n${m.slice(0, 3).map(x => `${x.nom} : ${x.cote} € ${x.delta > 0 ? '▲' : '▼'} ${Math.abs(x.delta)} %`).join('\n') || 'Semaine calme côté cotes.'}\n\nEt toi, tu gardes ou tu échanges ? 🃏`,
     instagram: `Les cotes bougent cette semaine.\n${m[0] ? `${m[0].nom} : ${m[0].cote} €.` : ''}\nLien en bio.\n\n#pokemon #cartespokemon #pokemontcg #collectionpokemon #echangedecartes #pokemonfr #tcgfrance #collectionneur`,
-    tiktok: `[Plan 1 : une carte posée sur un tapis vert, lumière rasante] "Cette carte a ${m[0] && m[0].delta > 0 ? 'pris' : 'perdu'} ${m[0] ? Math.abs(m[0].delta) : 0} % depuis le dernier relevé."\n[Plan 2 : le classeur qui défile] "Et ton double, il vaut combien ?"\n[Plan 3 : le site à l'écran] "Tu le poses, quelqu'un le cherche."\nSharing Cards, l'espace des collectionneurs`
+    tiktok: `[Plan 1 : une carte posée sur un tapis vert, lumière rasante] "Cette carte a ${m[0] && m[0].delta > 0 ? 'pris' : 'perdu'} ${m[0] ? Math.abs(m[0].delta) : 0} % depuis le dernier relevé."\n[Plan 2 : le classeur qui défile] "Et ton double, il vaut combien ?"\n[Plan 3 : le site à l'écran] "Tu le poses, quelqu'un le cherche."\nSharing Cards, l'espace des collectionneurs`,
+    x: m[0] ? `${m[0].nom} : ${m[0].cote} € ${m[0].delta > 0 ? 'en hausse de' : 'en baisse de'} ${Math.abs(m[0].delta)} % depuis le dernier relevé. Tu la gardes ou tu l'échanges ?` : 'Semaine calme sur les cotes. Le bon moment pour trier ses doubles.',
+    threads: `${m[0] ? `${m[0].nom} vient de ${m[0].delta > 0 ? 'prendre' : 'perdre'} ${Math.abs(m[0].delta)} %, à ${m[0].cote} €.` : 'Semaine calme côté cotes.'}\nCeci dit, une cote reste un repère : c'est l'état de la carte qui décide du prix réel.\nVous regardez les cotes avant d'échanger, ou vous y allez au feeling ?`
   };
 }
 
@@ -191,14 +196,15 @@ async function generate() {
   const { data, error } = await db.from('blog').insert({
     slug, title: art.title.slice(0, 140), excerpt: (art.excerpt || '').slice(0, 240),
     tag: art.tag || 'Cotes', body: art.body, status: 'draft', k,
-    forum_body: art.forum.slice(0, FORUM_MAX), fb: art.facebook, ig: art.instagram, tiktok: art.tiktok
+    forum_body: art.forum.slice(0, FORUM_MAX), fb: art.facebook, ig: art.instagram, tiktok: art.tiktok,
+    x: (art.x || '').slice(0, 280), threads: (art.threads || '').slice(0, 500)
   }).select('id,slug,title,excerpt,status').single();
   if (error) return json({ error: error.message }, 400);
 
   const base = `${Deno.env.get('SUPABASE_URL')}/functions/v1/blog`;
   const charge = {
     id: data.id, titre: data.title, resume: data.excerpt, tag: art.tag, source: ia ? 'ia' : 'maison',
-    article_md: art.body, forum: art.forum.slice(0, FORUM_MAX), facebook: art.facebook, instagram: art.instagram, tiktok: art.tiktok,
+    article_md: art.body, forum: art.forum.slice(0, FORUM_MAX), facebook: art.facebook, instagram: art.instagram, tiktok: art.tiktok, x: art.x || '', threads: art.threads || '',
     lien_publier: `${base}/approve?id=${data.id}&k=${k}`, lien_jeter: `${base}/reject?id=${data.id}&k=${k}`,
     lien_article: `${SITE}/#/blog/${data.slug}`
   };

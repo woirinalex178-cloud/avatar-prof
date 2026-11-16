@@ -224,6 +224,24 @@ Essai du 16/11 : 37 nœuds, 12 min, `short.mp4` 1080x1920 h264+aac de 29,4 s, 5,
   (environ 0,20 $ par publication contenant un lien) ; **Threads est gratuite** mais demande un jeton
   dédié sur l'application Meta ; **TikTok** exige une revue d'application, donc publication manuelle.
 
+### Répartition par canal (arrêtée le 16/11)
+| Canal | Format | Qui publie |
+|---|---|---|
+| Site (blog) + forum | article long illustré | automatique |
+| Facebook, Instagram | image + texte | automatique |
+| YouTube (chaîne Sharing Cards) | vidéo verticale | automatique, en privé |
+| TikTok | la même vidéo | à la main |
+| X, Threads | texte court + image | à la main |
+
+- Colonnes `blog.x` et `blog.threads` : chaque réseau a **sa** version, recopier le même texte partout
+  est pénalisé par les plateformes. Les deux arrivent dans le mail de validation, prêtes à coller.
+- La vidéo finie est **envoyée par mail** (nœud « Envoyer la vidéo (TikTok, Reels) », identifiant Gmail
+  `d6RUrGTG2afQJob7`) pour servir à TikTok et, de temps en temps, aux Reels Facebook et Instagram.
+  Reposter le même fichier sur des plateformes différentes ne pose pas de problème ; c'est le répéter
+  à l'identique **sur une même** plateforme qui est pénalisé.
+- X : pas de reprise prévue tant que le palier gratuit n'existe plus. Threads : à brancher plus tard,
+  l'occasion idéale étant le prochain renouvellement du jeton Facebook.
+
 ### Points de vigilance
 - `GEMINI_API_KEY` **absente** : `ai_hits` est à 0, tout a été rédigé par le moteur de secours. C'est le seul verrou qui sépare
   d'un rendu vraiment pro (étape 1 ter d'`A-FAIRE.md`).

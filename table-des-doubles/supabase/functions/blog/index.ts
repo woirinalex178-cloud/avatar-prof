@@ -49,7 +49,7 @@ h1{margin:0 0 .5rem;font-size:1.4rem;color:#d4af37}a{color:#d4af37}</style>
 async function facts() {
   const sem = new Date(Date.now() - 7 * 864e5).toISOString();
   const [{ data: mv }, { data: sets }, { count: listings }, { count: members }, { data: pricey }, { count: neufs }, { count: poses }, { data: wish }] = await Promise.all([
-    db.rpc('gazette_movers', { p_limit: 6 }),
+    db.rpc('gazette_movers_v2', { p_limit: 6 }),
     db.from('sets').select('name,name_fr,code,released,card_count').eq('lang', 'fr').not('released', 'is', null).order('released', { ascending: false }).limit(3),
     db.from('listings').select('id', { count: 'exact', head: true }).eq('status', 'active'),
     db.from('profiles').select('id', { count: 'exact', head: true }),
@@ -58,7 +58,7 @@ async function facts() {
     db.from('listings').select('id', { count: 'exact', head: true }).gte('created_at', sem),
     db.from('wishlist').select('card_id').limit(200)
   ]);
-  const movers = (mv ?? []) as { nom: string; num: string; cote: number; avant: number; delta: number; releve: string }[];
+  const movers = (mv ?? []) as { nom: string; num: string; cote: number; avant: number; delta: number; releve: string; image: string | null }[];
   return {
     movers, sets: sets ?? [], listings: listings ?? 0, members: members ?? 0,
     top: (pricey ?? []).map(c => ({ nom: c.name_fr || c.name, cote: c.price_eur })),
@@ -93,7 +93,7 @@ Réponds en JSON strict avec exactement ces clés :
  "title": "titre de l'article, moins de 70 caractères, sobre",
  "excerpt": "une phrase de résumé",
  "tag": "Cotes|Extensions|Conseils|Communauté",
- "body": "l'article, 450 à 700 mots, markdown avec des titres '## ' et '### ', une liste à puces des cartes qui bougent avec leur cote en euros, un paragraphe pratique (état, protection, double à poser), et une question ouverte pour finir",
+ "body": "l'article, 450 à 700 mots, markdown avec des titres '## ' et '### ', une liste à puces des cartes qui bougent avec leur cote en euros, un paragraphe pratique (état, protection, double à poser), et une question ouverte pour finir. ILLUSTRATION OBLIGATOIRE : place DEUX images de cartes dans l'article, chacune sur une ligne seule, au format ![Nom de la carte (n° X)](url). Recopie l'url EXACTEMENT depuis le champ \"image\" des données, n'en invente jamais, et ignore les cartes dont \"image\" est vide. La première juste après la liste des cotes, la seconde plus bas.",
  "forum": "le même sujet lancé sur le forum du site : 600 à 1200 caractères, pas de markdown, 2 ou 3 chiffres marquants, et une question ouverte à la fin pour faire répondre les membres",
  "facebook": "300 à 500 caractères, chaleureux, un ou deux emojis, une question à la fin, sans lien (il est ajouté automatiquement)",
  "instagram": "2 ou 3 phrases courtes, puis « Lien en bio », puis 6 à 10 hashtags français pertinents",
@@ -141,7 +141,8 @@ type F = Awaited<ReturnType<typeof facts>>;
 function maison(f: F): Art {
   const s = f.sets[0], m = f.movers;
   const liste = m.length ? m.map(x => `- **${x.nom}** (n° ${x.num}) : ${x.cote} € ${x.delta > 0 ? '▲' : '▼'} ${Math.abs(x.delta)} %`).join('\n') : '- Rien de spectaculaire cette semaine : les cotes sont stables.';
-  const body = `## Les cotes qui bougent cette semaine\n\n${liste}\n\n_Variation depuis le dernier relevé des cotes Cardmarket._\n\n### Ce qu'il faut en retenir\n\nUne cote n'est qu'un repère : c'est l'état réel de la carte qui décide du prix final. Une Near Mint se négocie au prix affiché, une carte jouée perd vite 30 à 50 %.\n\n## Côté extensions\n\n${s ? `La dernière extension française référencée est **${s.name_fr || s.name}** (${s.card_count} cartes, sortie le ${new Date(s.released).toLocaleDateString('fr-FR')}).` : ''}\n\n## La table cette semaine\n\n${f.listings} double(s) posé(s) par ${f.members} collectionneur(s), dont ${f.semaine.doubles_poses} posé(s) ces sept derniers jours.\n\n### Le réflexe emballage\n\nSleeve, toploader, carton, enveloppe à bulles, envoi suivi. Dix minutes de soin évitent un litige.\n\n## À toi\n\nQuelle carte cherches-tu depuis trop longtemps ?`;
+  const illus = m.filter(x => x.image).slice(0, 2);
+  const body = `## Les cotes qui bougent cette semaine\n\n${liste}\n\n${illus[0] ? `![${illus[0].nom} (n° ${illus[0].num})](${illus[0].image})\n\n` : ''}_Variation depuis le dernier relevé des cotes Cardmarket._\n\n### Ce qu'il faut en retenir\n\nUne cote n'est qu'un repère : c'est l'état réel de la carte qui décide du prix final. Une Near Mint se négocie au prix affiché, une carte jouée perd vite 30 à 50 %.\n\n## Côté extensions\n\n${s ? `La dernière extension française référencée est **${s.name_fr || s.name}** (${s.card_count} cartes, sortie le ${new Date(s.released).toLocaleDateString('fr-FR')}).` : ''}\n\n## La table cette semaine\n\n${f.listings} double(s) posé(s) par ${f.members} collectionneur(s), dont ${f.semaine.doubles_poses} posé(s) ces sept derniers jours.\n\n${illus[1] ? `![${illus[1].nom} (n° ${illus[1].num})](${illus[1].image})\n\n` : ''}### Le réflexe emballage\n\nSleeve, toploader, carton, enveloppe à bulles, envoi suivi. Dix minutes de soin évitent un litige.\n\n## À toi\n\nQuelle carte cherches-tu depuis trop longtemps ?`;
   const forum = `Le point de la semaine sur les cotes, depuis le dernier relevé.\n\n${m.slice(0, 3).map(x => `${x.nom} (n° ${x.num}) : ${x.cote} € ${x.delta > 0 ? 'en hausse de' : 'en baisse de'} ${Math.abs(x.delta)} %`).join('\n') || 'Les cotes sont restées stables.'}\n\nSur la table : ${f.listings} double(s) posé(s) par ${f.members} collectionneur(s).\n\nRappel utile : la cote est un repère, l'état décide du prix. Une carte jouée perd vite 30 à 50 % par rapport au prix affiché.\n\nEt vous, quelle carte cherchez-vous depuis trop longtemps ?`;
   return {
     title: `Les cotes de la semaine${m[0] ? ` : ${m[0].nom} en ${m[0].delta > 0 ? 'hausse' : 'baisse'}` : ''}`,
@@ -199,7 +200,7 @@ async function generate() {
     id: data.id, titre: data.title, resume: data.excerpt, tag: art.tag, source: ia ? 'ia' : 'maison',
     article_md: art.body, forum: art.forum.slice(0, FORUM_MAX), facebook: art.facebook, instagram: art.instagram, tiktok: art.tiktok,
     lien_publier: `${base}/approve?id=${data.id}&k=${k}`, lien_jeter: `${base}/reject?id=${data.id}&k=${k}`,
-    lien_article: `${SITE}/#/journal/${data.slug}`
+    lien_article: `${SITE}/#/blog/${data.slug}`
   };
   let mail = 'non envoyé';
   try {
@@ -235,7 +236,11 @@ async function approve(id: string, k: string) {
   try {
     const r = await fetch(`${N8N}/sc-gazette-reseaux`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id: a.id, titre: a.title, facebook: a.fb, instagram: a.ig, tiktok: a.tiktok, image: a.cover || `${SITE}/img/og.jpg`, lien_article: `${SITE}/#/journal/${a.slug}` })
+      body: JSON.stringify({ id: a.id, titre: a.title, facebook: a.fb, instagram: a.ig, tiktok: a.tiktok,
+        image: a.cover || `${SITE}/img/og.jpg`,
+        // les cartes illustrées dans l'article servent aussi de plans à la vidéo
+        images: [...new Set([a.cover, ...[...String(a.body || '').matchAll(/!\[[^\]]*\]\((https?:\/\/[^)\s]+)\)/g)].map(x => x[1])].filter(Boolean))],
+        lien_article: `${SITE}/#/blog/${a.slug}` })
     });
     social = r.ok ? 'envoyé aux réseaux' : `n8n a répondu ${r.status}`;
     await db.from('blog').update({ social_at: new Date().toISOString(), social_log: { n8n: social } }).eq('id', id);

@@ -1619,6 +1619,8 @@ const md = t => {
     const t2 = l.trim();
     if (/^- /.test(t2)) { if (!ul) { out.push('<ul>'); ul = true; } out.push(`<li>${inline(t2.slice(2))}</li>`); continue; }
     if (ul) { out.push('</ul>'); ul = false; }
+    const im = t2.match(/^!\[([^\]]*)\]\((https?:\/\/[^)\s]+)\)$/);   // ![légende](url) sur sa propre ligne
+    if (im) { out.push(`<figure class="artimg"><img src="${im[2]}" alt="${im[1]}" loading="lazy" decoding="async">${im[1] ? `<figcaption>${inline(im[1])}</figcaption>` : ''}</figure>`); continue; }
     if (/^### /.test(t2)) out.push(`<h4>${inline(t2.slice(4))}</h4>`);
     else if (/^## /.test(t2)) out.push(`<h3>${inline(t2.slice(3))}</h3>`);
     else if (/^# /.test(t2)) out.push(`<h2>${inline(t2.slice(2))}</h2>`);
@@ -1631,10 +1633,11 @@ const blogDate = d => d ? new Date(d).toLocaleDateString('fr-FR', { day: 'numeri
 async function blog() {
   const slug = location.hash.split('/')[2];
   if (slug) return article(slug);
-  const { data } = await sb.from('blog').select('id,slug,title,excerpt,tag,published_at,status').eq('status', 'published').order('published_at', { ascending: false }).limit(30);
+  const { data } = await sb.from('blog').select('id,slug,title,excerpt,tag,cover,published_at,status').eq('status', 'published').order('published_at', { ascending: false }).limit(30);
   view.innerHTML = `<h2>📰 Le blog de Sharing Cards</h2>
   <p class="mut small">Un article par semaine, écrit à partir des cotes et des extensions du site. Les commentaires ouvrent une discussion dans le <a href="#/forum">forum</a>.</p>
   ${(data || []).length ? `<div class="bloglist">${data.map(a => `<a class="panel blogcard" href="#/blog/${esc(a.slug)}">
+    ${a.cover ? `<img class="blogcover" src="${esc(a.cover)}" alt="" loading="lazy" decoding="async">` : ''}
     <span class="pill p-tr">${esc(a.tag || 'Article')}</span>
     <h3>${esc(a.title)}</h3><p class="small mut">${blogDate(a.published_at)}</p><p>${esc(a.excerpt || '')}</p></a>`).join('')}</div>`
   : '<div class="empty">Le premier article arrive lundi. 📅</div>'}`;
@@ -1647,6 +1650,7 @@ async function article(slug) {
   view.innerHTML = `<article class="panel post-art">
     <p class="small mut"><a href="#/blog">← Le blog</a> · ${esc(a.tag || '')} · ${blogDate(a.published_at)}${a.status !== 'published' ? ' · <b>brouillon</b>' : ''}</p>
     <h1>${esc(a.title)}</h1>${a.excerpt ? `<p class="lead">${esc(a.excerpt)}</p>` : ''}
+    ${a.cover ? `<figure class="artimg artcover"><img src="${esc(a.cover)}" alt="" decoding="async"></figure>` : ''}
     <div class="artbody">${md(a.body)}</div>
     <p class="small mut">Cotes Cardmarket via TCGdex, relevées la nuit précédant la publication. Les prix bougent : vérifie toujours la fiche de la carte.</p></article>
   <h2>Commentaires <span class="mut small">${(cs || []).length}</span></h2>

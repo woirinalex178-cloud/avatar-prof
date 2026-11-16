@@ -19,9 +19,9 @@ export default async function handler(req, res) {
     let prepares = 0;
     for (const d of S.devoirs.filter(d => d.pour >= today && !S.packs[d.id])) {
       if (Date.now() - t0 > 35000) break;   // limite de temps du plan gratuit : le reste au prochain passage / à l'ouverture
-      const p = { ...(await makePack(d, today)), at: Date.now() };
+      const p = { ...(await makePack(d, today, S.profil)), at: Date.now() };
       S.packs[d.id] = p;
-      S.fiches[d.id] = { matiere: d.matiere, consigne: d.consigne, titre: p.titre, type: p.type, fiche: p.fiche || {}, date: today, at: Date.now() };
+      S.fiches[d.id] = { matiere: d.matiere, consigne: d.consigne, titre: p.titre, type: p.type, fiche: { ...(p.fiche || {}), visuels: 2 }, date: today, at: Date.now() };
       prepares++;
     }
     // relit juste avant d'écrire pour ne rien écraser fait entre-temps sur un appareil

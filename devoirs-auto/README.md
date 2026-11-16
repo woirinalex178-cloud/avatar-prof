@@ -17,7 +17,7 @@ Devoirs de Céleste → entraînement adapté, **automatiquement**. Coût : **0 
 
 Chaque nouveau devoir est préparé tout seul : **fiche pédagogique** (cours, exemples, à retenir, astuce, pièges) + **banque de questions** qui change à chaque partie (l'IA en ajoute quand il en manque). Évaluations : mode **🎯 Objectif 20/20** (20 questions, les erreurs reviennent jusqu'à être réussies). Toutes les fiches restent dans **📚 Mes fiches** (classées par matière, recherche, impression).
 
-**Visuels** (gratuits) : frise chronologique et portraits de personnages (Wikipédia, lien Vikidia) en histoire, carte (fond Esri gratuit sans clé) en géographie ; exercices **frise à trous** et **carte à trous** ; en sciences **schéma** (chaîne ou cycle + schéma illustré Wikipédia), **schéma à trous** et jeu **remets dans l'ordre**.
+**Visuels** (gratuits) : frise chronologique et portraits de personnages (Wikipédia, lien Vikidia) en histoire, **cartes d'atlas** en géographie (vrais contours des régions, départements, pays et continents, fleuves, massifs, mers ; données libres IGN/Etalab et Natural Earth intégrées dans `geo/`, régénérables avec `tools/build-geo.py`) ; exercices **frise à trous** et **carte à trous** ; en sciences **schéma** (chaîne ou cycle + schéma illustré Wikipédia), **schéma à trous** et jeu **remets dans l'ordre**.
 
  Étoiles ⭐, série de jours 🔥, trophées et confettis pour motiver.
 
@@ -33,3 +33,8 @@ Chaque nouveau devoir est préparé tout seul : **fiche pédagogique** (cours, e
 - ONE n'a pas d'API publique : la synchro imite le navigateur. À vérifier dès que l'instit remplit le cahier de textes (si ça casse : photo ou saisie).
 - Un compte ONE avec double authentification bloquera la synchro.
 - Offre gratuite Gemini : largement suffisante pour quelques devoirs par jour.
+
+
+**Jeux** : QCM, vrai/faux, réponse écrite, texte à trous, intrus, relier, classer, dictée lue à voix haute (français), frises, cartes, schémas, remettre dans l'ordre ; combos 🔥. Réponse écrite avec une petite faute d'orthographe : comptée juste avec un conseil (en dictée : « presque »). Les questions qui contiennent leur réponse sont écartées.
+
+**Réglage « 📍 Ma commune »** (en bas de l'accueil) : sert aux cartes « mon lieu de vie » (commune → département → région → France → Europe → monde).

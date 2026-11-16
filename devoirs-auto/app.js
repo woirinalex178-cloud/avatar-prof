@@ -53,7 +53,7 @@ function merge(a = {}, b = {}) {
   const pick = (x = {}, y = {}, all) => Object.fromEntries([...new Set([...Object.keys(x), ...Object.keys(y)])]
     .filter(id => all || devoirs[id]).map(id => [id, later(x[id], y[id])]));
   return { devoirs: Object.values(devoirs).sort((p, q) => p.pour.localeCompare(q.pour)), packs: pick(a.packs, b.packs),
-    results: pick(a.results, b.results), deleted, fiches: pick(a.fiches, b.fiches, true),
+    results: pick(a.results, b.results), deleted, fiches: pick(a.fiches, b.fiches, true), profil: later(a.profil, b.profil),
     jours: [...new Set([...(a.jours || []), ...(b.jours || [])])].sort().slice(-60) };
 }
 
@@ -70,7 +70,9 @@ async function sync() {
     }
     $('#cloud').className = 'pill cloud' + (r.off ? ' off' : '');
     $('#cloud').title = r.off ? 'Synchro non configurée' : 'Sauvegardé sur tous les appareils';
+    motsSemaine();   // une correction du n° faite sur un autre appareil
     if (!$('#v-home').hidden) render();
+    if (document.activeElement !== $('#commune')) $('#commune').value = S.profil?.commune || '';
     if (!$('#v-fiches').hidden) renderFiches();
     prepareAll();
   } catch { $('#cloud').className = 'pill cloud off'; $('#cloud').title = 'Hors ligne : sauvegardé sur cet appareil'; }
@@ -157,9 +159,9 @@ async function prepare(d) {
   if (busy.has(d.id) || S.packs[d.id]) return;
   busy.add(d.id); render();
   try {
-    const p = { ...(await api('generate', { action: 'make', devoir: d })), at: Date.now() };
+    const p = { ...(await api('generate', { action: 'make', devoir: d, profil: S.profil })), at: Date.now() };
     S.packs[d.id] = p;
-    S.fiches[d.id] = { matiere: d.matiere, consigne: d.consigne, titre: p.titre, type: p.type, fiche: ficheOf(p), date: today(), at: Date.now() };
+    S.fiches[d.id] = { matiere: d.matiere, consigne: d.consigne, titre: p.titre, type: p.type, fiche: { ...ficheOf(p), visuels: 2 }, date: today(), at: Date.now() };
     save();
   }
   catch (e) { status('⚠️ ' + e.message); }
@@ -232,10 +234,54 @@ const norm = s => String(s ?? '').toLowerCase().normalize('NFD').replace(/[̀-ͯ
   .replace(/(\d),(\d)/g, '$1.$2').replace(/[^a-z0-9.]+/g, ' ').replace(/\b(le|la|les|l|un|une|des)\b/g, '').replace(/\s+/g, ' ').trim();
 const BRAVO = ['Bravo ! ', 'Super ! ', 'Génial ! ', 'Exactement ! ', 'Tu gères ! '];
 
+// Distance d'édition (lettres oubliées, en trop ou inversées).
+function lev(a, b) {
+  const d = Array.from({ length: a.length + 1 }, (_, i) => [i, ...Array(b.length).fill(0)]);
+  for (let j = 1; j <= b.length; j++) d[0][j] = j;
+  for (let i = 1; i <= a.length; i++) for (let j = 1; j <= b.length; j++)
+    d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+  return d[a.length][b.length];
+}
+const brut = s => String(s ?? '').toLowerCase().replace(/[’']/g, "'").replace(/[.!?;:,]+$/g, '').replace(/\s+/g, ' ').trim();
+// Verdict d'une réponse écrite : juste, juste avec un conseil d'orthographe, presque (dictée), ou faux.
+function verdict(given, q) {
+  const cands = [q.reponse, ...(q.accepte || [])].filter(Boolean);
+  if (cands.some(c => brut(c) === brut(given))) return { etat: 'ok' };
+  const proche = cands.find(c => norm(c) === norm(given));
+  if (proche) return /[^\x00-\x7f]/.test(proche) && brut(proche).normalize('NFD').replace(/[\u0300-\u036f]/g, '') === brut(given).normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    ? (q.type === 'dictee' ? { etat: 'presque', note: `Attention aux accents : on écrit « ${proche} ».` } : { etat: 'ok', note: `Attention aux accents : on écrit « ${proche} ».` })
+    : { etat: 'ok' };
+  if (/^[\d.,\s]+$/.test(String(given).trim())) return { etat: 'ko' };   // un nombre : pas d'à-peu-près
+  const g = norm(given), c = cands.map(x => ({ x, d: lev(g, norm(x)), n: norm(x).length })).sort((a, b) => a.d - b.d)[0];
+  const tol = c.n >= 8 ? 2 : c.n >= 4 ? 1 : 0;
+  if (c.d > 0 && c.d <= tol) return q.type === 'dictee'
+    ? { etat: 'presque', note: `Presque ! Une petite erreur d'orthographe : on écrit « ${c.x} ».` }
+    : { etat: 'ok', note: `Ta réponse est juste, mais attention à l'orthographe : on écrit « ${c.x} ».` };
+  return { etat: 'ko' };
+}
+// Question qui donne sa réponse dans l'énoncé (« bonne orthographe du mot "savant" ? ») : écartée.
+const fuite = q => {
+  if (['vraifaux', 'frise', 'carte', 'schema', 'ordre', 'associer', 'classer'].includes(q.type)) return false;
+  const r = norm(q.reponse);
+  return r.length >= 3 && !/^\d+$/.test(r) && (' ' + norm(`${q.enonce} ${q.texte || ''}`) + ' ').includes(' ' + r + ' ');
+};
+// Lecture à voix haute (dictée), gratuite, intégrée au téléphone.
+function dire(txt) {
+  try { speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(txt); u.lang = 'fr-FR'; u.rate = .85; speechSynthesis.speak(u); } catch {}
+}
+
 // Tire des questions variées : d'abord les moins vues, ordre progressif, propositions mélangées.
 function draw(p, n) {
   p.vus ||= {};
-  const idx = shuffle(p.questions.map((_, i) => i)).sort((a, b) => (p.vus[a] || 0) - (p.vus[b] || 0)).slice(0, n);
+  const tri = shuffle(p.questions.map((_, i) => i)).filter(i => !fuite(p.questions[i])).sort((a, b) => (p.vus[a] || 0) - (p.vus[b] || 0));
+  const deja = new Set(), idx = [];
+  for (const i of tri) {   // pas deux fois la même question ni la même réponse dans une partie
+    const q = p.questions[i], cle = norm(q.reponse || '') || norm(q.enonce);
+    if (idx.length >= n) break;
+    if (deja.has(cle) || deja.has(norm(q.enonce))) continue;
+    deja.add(cle); deja.add(norm(q.enonce)); idx.push(i);
+  }
+  for (const i of tri) if (idx.length < n && !idx.includes(i)) idx.push(i);   // banque trop petite : on complète
   idx.forEach(i => p.vus[i] = (p.vus[i] || 0) + 1);
   p.at = Date.now();
   return idx.map(i => ({ ...p.questions[i], choix: shuffle(p.questions[i].choix || []) }))
@@ -244,28 +290,31 @@ function draw(p, n) {
 
 // Ajoute de nouvelles questions à la banque (jamais les mêmes).
 async function more(d, n = 12) {
-  const r = await api('generate', { action: 'more', devoir: d, deja: S.packs[d.id].questions.map(q => q.enonce), n });
+  const r = await api('generate', { action: 'more', profil: S.profil, devoir: d, deja: S.packs[d.id].questions.map(q => q.enonce), n });
   const p = S.packs[d.id];   // relu après l'attente : la synchro a pu remplacer l'objet
   if (!p) return;
   const seen = new Set(p.questions.map(q => norm(q.enonce)));
   for (const q of r.questions || []) if (q.enonce && !seen.has(norm(q.enonce))) { seen.add(norm(q.enonce)); p.questions.push(q); }
   p.vus ||= {}; p.at = Date.now(); save();
 }
-const unseen = p => p.questions.filter((_, i) => !(p.vus || {})[i]).length;
+const unseen = p => p.questions.filter((q, i) => !(p.vus || {})[i] && !fuite(q)).length;
 
 async function train(d, goal = false) {
   let p = S.packs[d.id];
-  const n = goal ? 20 : Math.min(SIZE[p.type] || 8, p.questions.length);
-  if (goal && p.questions.length < 20) {
-    status('🦉 Je prépare 20 questions pour ton objectif 20/20…');
-    try { await more(d, 20 - p.questions.length + 4); p = S.packs[d.id]; } catch (e) { return status('⚠️ ' + e.message); }
-    status('');
+  let n = goal ? 20 : SIZE[p.type] || 8;
+  // Pas assez de questions jamais vues : on en fait fabriquer AVANT de commencer (sinon les mêmes reviennent).
+  for (let essai = 0; essai < 2 && unseen(p) < n; essai++) {
+    status(goal ? '🦉 Je prépare 20 nouvelles questions pour ton objectif 20/20…' : '🦉 Je prépare de nouvelles questions…');
+    try { await more(d, Math.min(20, n - unseen(p) + 4)); p = S.packs[d.id]; } catch { break; }   // hors ligne : on joue avec ce qu'on a
   }
+  status('');
+  n = Math.min(n, p.questions.length);
   const qs = draw(p, n);
-  if (unseen(p) < n) more(d).catch(() => {});   // en arrière-plan : de quoi varier la prochaine fois
+  n = qs.length;   // des questions écartées (réponse dans l'énoncé) : le total suit ce qui est vraiment posé
+  if (unseen(p) < 20) more(d, 20).catch(() => {});   // en arrière-plan : de quoi varier la prochaine partie (et le 20/20)
   save();
 
-  let k = 0, score = 0, tries = 0;
+  let k = 0, score = 0, tries = 0, combo = 0;
   const queue = qs.map(q => ({ ...q, first: true }));
   show('train'); status('');
   $('#t-kind').textContent = goal ? '🎯 Objectif 20/20' : KIND[p.type] || 'Entraînement';
@@ -287,30 +336,74 @@ async function train(d, goal = false) {
     fill.style.width = rocket.style.left = (Math.min(k, n) / Math.max(queue.length, n) * 100) + '%'; bar.append(fill, rocket);
     box.append(head, bar, el('p', 'q-text', q.enonce));
 
-    const finish = (good, correction) => {
-      if (good && q.first) score++;
-      tries++;
+    // 💡 Indice : d'abord la piste de l'IA, puis une aide automatique adaptée au jeu (2 indices au plus).
+    let aide = 0;
+    const indiceBtn = el('button', 'btn alt sm indice', '💡 Indice'), indiceBox = el('div', 'indice-box');
+    indiceBtn.type = 'button'; indiceBox.hidden = true;
+    const auto = () => {
+      const faux = [...box.querySelectorAll('.choices .choice')].filter(b => !b.disabled && q.reponse && norm(b.textContent) !== norm(q.reponse));
+      if (faux.length > 1) { const b = faux[Math.random() * faux.length | 0]; b.disabled = true; b.classList.add('barre'); return 'J\'ai retiré une mauvaise réponse ✂️'; }
+      const vides = [...box.querySelectorAll('select.hole')].filter(x => !x.value), sel = vides.length > 1 && vides[0];   // jamais la dernière case
+      if (sel) { sel.value = sel.dataset.attendu; sel.disabled = true; sel.classList.add('aide'); sel.dispatchEvent(new Event('change')); return 'J\'ai rempli une case pour toi ✨'; }
+      if (q.type === 'ordre' && q.etapes?.length) return `La première étape est : ${q.etapes[0].icone || ''} ${q.etapes[0].nom}`;
+      if (q.type === 'associer' && q.paires?.length) { const x = q.paires[Math.random() * q.paires.length | 0]; return `« ${x.a} » va avec « ${x.b} »`; }
+      if (q.type === 'classer' && q.elements?.length) { const x = q.elements[Math.random() * q.elements.length | 0]; return `« ${x.nom} » va dans « ${x.cat} »`; }
+      if (q.type === 'vraifaux') return 'Relis bien la phrase : un seul mot peut tout changer 😉';
+      if (q.reponse) {
+        const r = String(q.reponse).trim(), mots = r.split(/\s+/).length;
+        return `Ça commence par « ${r[0].toUpperCase()} »` + (mots > 1 ? ` et il y a ${mots} mots.` : ` et ça fait ${r.replace(/[^\p{L}\d]/gu, '').length} lettres.`);
+      }
+      return 'Relis ta fiche 📘 : la réponse s\'y trouve.';
+    };
+    indiceBtn.onclick = () => {
+      aide++;
+      const txt = aide === 1 && q.indice ? q.indice : auto();
+      indiceBox.hidden = false; indiceBox.append(el('p', null, '💡 ' + txt));
+      if (aide >= 2 || (aide === 1 && !q.indice && !/retiré|rempli/.test(txt))) indiceBtn.disabled = true;
+    };
+    box.append(indiceBtn, indiceBox);
+
+    // good : true (juste), 'presque' (dictée avec une petite faute : pas de point, mais pas « faux »), false.
+    const finish = (good, correction, note) => {
+      const juste = good === true;
+      if (juste && q.first) score++;
+      tries++; combo = juste ? combo + 1 : 0;
       // Objectif 20/20 : une question ratée revient à la fin jusqu'à ce qu'elle soit réussie.
-      if (!good && goal) queue.push({ ...q, first: false, choix: shuffle(q.choix || []) });
+      if (!juste && goal) queue.push({ ...q, first: false, choix: shuffle(q.choix || []) });
       box.querySelectorAll('button,input,select').forEach(x => x.disabled = true);
-      const fb = el('div', 'fb ' + (good ? 'ok' : 'ko'));
-      fb.append(el('strong', null, good ? BRAVO[tries % BRAVO.length] : `Presque ! ${correction} `), document.createTextNode(q.explication || ''));
+      const fb = el('div', 'fb ' + (juste ? (note ? 'mid' : 'ok') : good === 'presque' ? 'mid' : 'ko'));
+      fb.append(el('strong', null, juste ? BRAVO[tries % BRAVO.length] : good === 'presque' ? '' : `Presque ! ${correction} `));
+      if (note) fb.append(el('div', 'note', '✏️ ' + note));
+      if (aide && juste) fb.append(el('div', 'small mut', '💡 Trouvé avec un indice : bien joué quand même !'));
+      fb.append(document.createTextNode(q.explication || ''));
+      if (combo >= 3) fb.prepend(el('div', 'combo', `🔥 Combo x${combo} !`));
       if (!good && goal) fb.append(el('div', 'small', '🔁 Cette question reviendra à la fin.'));
       const next = el('button', 'btn', k + 1 < queue.length ? 'Suivant →' : 'Voir mon score 🎉');
       next.onclick = () => { k++; k < queue.length ? step() : end(); };
       box.append(fb, next); next.focus();
     };
     const answer = (given, btn) => {
-      const good = [q.reponse, ...(q.accepte || [])].some(a => norm(a) === norm(given));
-      box.querySelectorAll('.choice').forEach(c => { if (norm(c.textContent) === norm(q.reponse)) c.classList.add('ok'); });
-      if (btn && !good) btn.classList.add('ko');
-      finish(good, `La réponse : ${q.reponse}.`);
+      if (btn) {   // bouton : c'est juste ou faux
+        const good = norm(given) === norm(q.reponse) || (q.accepte || []).some(a => norm(a) === norm(given));
+        box.querySelectorAll('.choice').forEach(c => { if (norm(c.textContent) === norm(q.reponse)) c.classList.add('ok'); });
+        if (!good) btn.classList.add('ko');
+        return finish(good, `La réponse : ${q.reponse}.`);
+      }
+      const v = verdict(given, q);   // réponse écrite : un peu d'indulgence sur l'orthographe
+      finish(v.etat === 'ok' ? true : v.etat, `La réponse : ${q.reponse}.`, v.note);
+    };
+    const ecrire = (placeholder = 'Ta réponse') => {
+      const fm = el('form', 'row'), inp = el('input'); inp.placeholder = placeholder; inp.autocomplete = 'off';
+      inp.setAttribute('autocapitalize', 'off'); inp.spellcheck = false;   // pas de correcteur du téléphone : c'est Céleste qui écrit
+      fm.append(inp, el('button', 'btn', 'Valider'));
+      fm.onsubmit = e => { e.preventDefault(); if (inp.value.trim()) answer(inp.value); };
+      box.append(fm); inp.focus();
     };
     // Frise / carte à trous : une liste déroulante par trou, on valide quand tout est rempli.
     const holes = (pairs, render) => {
       const opts = shuffle(pairs.map(x => x.attendu));
-      const sels = pairs.map(() => {
-        const sel = el('select', 'hole'); sel.append(el('option', null, '— choisis —'));
+      const sels = pairs.map((pr) => {
+        const sel = el('select', 'hole'); sel.dataset.attendu = pr.attendu; sel.append(el('option', null, '— choisis —'));
         opts.forEach(o => sel.append(Object.assign(el('option', null, o), { value: o })));
         sel.firstChild.value = ''; return sel;
       });
@@ -357,18 +450,72 @@ async function train(d, goal = false) {
       };
       box.append(el('p', 'small mut', '👆 Touche les étapes dans le bon ordre :'), rep, pool);
       const row = el('div', 'row'); row.append(reset, ok); box.append(row); draw();
-    } else if (q.type === 'carte' && q.lieux?.length) {
-      const pairs = q.lieux.map(l => ({ attendu: l.nom }));
-      holes(pairs, sels => {
-        const m = el('div', 'map'); box.append(m); drawMap(m, q.lieux, { numeros: true });
-        const ul = el('ol', 'map-legend'); sels.forEach(x => { const li = el('li'); li.append(x); ul.append(li); }); box.append(ul);
+    } else if (q.type === 'carte' && carteItems(carteOf(q)).length) {
+      const m = el('div', 'map'); box.append(m);
+      drawMap(m, q, { quiz: true }).then(items => {
+        if (!items.length) return finish(false, 'Carte indisponible : passe à la suite.');
+        holes(items.map(it => ({ attendu: it.nom })), sels => {
+          const ul = el('ol', 'map-legend'); sels.forEach(x => { const li = el('li'); li.append(x); ul.append(li); }); box.append(ul);
+        });
       });
+    } else if (q.type === 'dictee' && q.reponse) {
+      // Dictée : la phrase puis le mot sont lus à voix haute.
+      const lire = () => dire(q.phrase ? `${q.phrase}. ... ${q.reponse}` : q.reponse);
+      const ecoute = el('button', 'btn alt ecoute', '🔊 Écouter'); ecoute.type = 'button'; ecoute.onclick = lire;
+      const lent = el('button', 'btn alt', '🐢 Le mot seul'); lent.type = 'button'; lent.onclick = () => dire(q.reponse);
+      const row = el('div', 'row'); row.append(ecoute, lent); box.append(row);
+      ecrire('Écris le mot ici'); setTimeout(lire, 300);
+    } else if (q.type === 'trou' && q.texte) {
+      const t = el('p', 'trou'), [avant, apres = ''] = q.texte.split(/_{2,}/);
+      const blanc = el('span', 'blanc', ' ? '); t.append(avant, blanc, apres); box.append(t);
+      if (q.choix?.length) {
+        const c = el('div', 'choices');
+        q.choix.forEach(ch => { const b = el('button', 'choice', ch); b.onclick = () => { blanc.textContent = ` ${q.reponse} `; answer(ch, b); }; c.append(b); });
+        box.append(c);
+      } else ecrire('Le mot qui manque');
+    } else if (q.type === 'associer' && q.paires?.length > 1) {
+      // Relier : toucher un élément à gauche puis son partenaire à droite.
+      const G = shuffle(q.paires), D = shuffle(q.paires), lien = new Map(), couleurs = ['#ffd6e0', '#fff1b8', '#cdf5e6', '#d9e4ff', '#f1dcff'];
+      let sel = null;
+      const grille = el('div', 'assoc'), colG = el('div'), colD = el('div'), ok = el('button', 'btn', 'Valider'); ok.disabled = true;
+      const peindre = () => {
+        [...colG.children].forEach((b, i) => { const n = [...lien.keys()].indexOf(G[i]); b.style.background = n >= 0 ? couleurs[n % 5] : ''; b.classList.toggle('sel', sel === G[i]); });
+        [...colD.children].forEach((b, i) => { const n = [...lien.values()].indexOf(D[i]); b.style.background = n >= 0 ? couleurs[[...lien.keys()].findIndex(k => lien.get(k) === D[i]) % 5] : ''; });
+        ok.disabled = lien.size < q.paires.length;
+      };
+      G.forEach(pr => { const b = el('button', 'choice', pr.a); b.onclick = () => { lien.delete(pr); sel = pr; peindre(); }; colG.append(b); });
+      D.forEach(pr => { const b = el('button', 'choice', pr.b); b.onclick = () => {
+        if (!sel) return; for (const [k, v] of lien) if (v === pr) lien.delete(k);
+        lien.set(sel, pr); sel = null; peindre(); }; colD.append(b); });
+      ok.onclick = () => {
+        let all = true;
+        [...colG.children].forEach((b, i) => { const bon = lien.get(G[i]) === G[i]; all &&= bon; b.classList.add(bon ? 'ok' : 'ko'); });
+        finish(all, 'Les bonnes paires : ' + q.paires.map(x => `${x.a} → ${x.b}`).join(' ; ') + '.');
+      };
+      grille.append(colG, colD);
+      box.append(el('p', 'small mut', '👆 Touche un élément à gauche, puis son partenaire à droite.'), grille, ok);
+    } else if (q.type === 'classer' && q.categories?.length > 1 && q.elements?.length) {
+      // Trier : chaque élément dans sa catégorie.
+      const choisi = new Map(), ok = el('button', 'btn', 'Valider'); ok.disabled = true;
+      const liste = el('div', 'classer');
+      shuffle(q.elements).forEach(it => {
+        const ligne = el('div', 'ligne'); ligne.append(el('b', null, it.nom));
+        const btns = el('div', 'cats');
+        q.categories.forEach(c => { const b = el('button', 'cat', c); b.onclick = () => {
+          choisi.set(it, c); [...btns.children].forEach(x => x.classList.toggle('on', x === b)); ok.disabled = choisi.size < q.elements.length; }; btns.append(b); });
+        ligne.append(btns); liste.append(ligne);
+      });
+      ok.onclick = () => {
+        let all = true;
+        [...liste.children].forEach(l => { const it = q.elements.find(e => e.nom === l.firstChild.textContent); const bon = choisi.get(it) === it.cat; all &&= bon;
+          l.classList.add(bon ? 'ok' : 'ko'); if (!bon) l.append(el('span', 'fix', '→ ' + it.cat)); });
+        finish(all, 'Regarde les corrections ci-dessus.');
+      };
+      box.append(liste, ok);
     } else if (q.type === 'courte') {
-      const fm = el('form', 'row'), inp = el('input'); inp.placeholder = 'Ta réponse'; inp.autocomplete = 'off';
-      fm.append(inp, el('button', 'btn', 'Valider'));
-      fm.onsubmit = e => { e.preventDefault(); if (inp.value.trim()) answer(inp.value); };
-      box.append(fm); inp.focus();
+      ecrire();
     } else {
+      if (q.type === 'intrus') box.append(el('p', 'small mut', '🕵️ Un de ces éléments ne va pas avec les autres : lequel ?'));
       const c = el('div', 'choices');
       for (const ch of q.type === 'vraifaux' ? ['Vrai', 'Faux'] : q.choix || []) {
         const b = el('button', 'choice', ch); b.onclick = () => answer(ch, b); c.append(b);
@@ -409,7 +556,7 @@ async function train(d, goal = false) {
 const ficheOf = p => {
   const f = p.fiche || {};
   return { intro: f.intro || '', sections: f.sections || [], a_retenir: f.a_retenir || p.memo || [], astuce: f.astuce || '', pieges: f.pieges || [],
-    frise: f.frise || [], personnages: f.personnages || [], carte: f.carte || null, schema: f.schema || null, visuels: f.visuels };
+    frise: f.frise || [], personnages: f.personnages || [], carte: f.carte || null, cartes: f.cartes || [], schema: f.schema || null, visuels: f.visuels };
 };
 
 function ficheNode(meta) {
@@ -449,10 +596,13 @@ function ficheNode(meta) {
     const sct = el('section'); sct.append(el('h3', null, '👤 Les personnages importants'));
     const g = el('div', 'persos'); f.personnages.forEach(pp => g.append(persoCard(pp))); sct.append(g); body.append(sct);
   }
-  if (f.carte?.lieux?.length) {
+  for (const c of [...(f.cartes || []), ...(f.carte && !f.cartes?.length ? [f.carte] : [])]) {
+    if (!carteItems(carteOf(c)).length && !FONDS[c.fond]) continue;
     const sct = el('section'), m = el('div', 'map');
-    sct.append(el('h3', null, '🗺️ ' + (f.carte.titre || 'La carte'))); sct.append(m); body.append(sct);
-    requestAnimationFrame(() => drawMap(m, f.carte.lieux, { noms: true }));
+    sct.append(el('h3', null, '🗺️ ' + (c.titre || 'La carte'))); sct.append(m);
+    if (c.legende) sct.append(el('p', 'small mut', c.legende));
+    body.append(sct);
+    requestAnimationFrame(() => drawMap(m, c));
   }
   box('box-retenir', '⭐ À retenir', f.a_retenir);
   box('box-astuce', '🦉 L\'astuce de Plume', f.astuce ? [f.astuce] : []);
@@ -479,16 +629,20 @@ function openFiche(id, from = 'fiches') {
 // Anciennes fiches d'histoire / géographie / sciences : on demande les visuels une seule fois.
 async function enrichir(id, meta) {
   const f = meta.fiche || {}, cat = catOf(meta);
-  if (f.visuels || !['Histoire', 'Géographie', 'Sciences'].includes(cat) || f.frise?.length || f.carte || f.schema || (cat !== 'Sciences' && f.personnages?.length)) return;
+  const vieilleCarte = cat === 'Géographie' && f.visuels !== 2;   // cartes « atlas » (version 2)
+  if (!vieilleCarte && (f.visuels || !['Histoire', 'Géographie', 'Sciences'].includes(cat) || f.frise?.length || f.carte || f.schema || (cat !== 'Sciences' && f.personnages?.length))) return;
   const d = S.devoirs.find(x => x.id === id) || { matiere: meta.matiere, consigne: meta.consigne };
   status('');
   const note = el('p', 'status', '🦉 J\'ajoute une frise, un schéma, des personnages ou une carte à ta fiche…'); $('#fiche-box').prepend(note);
   try {
-    const v = await api('generate', { action: 'visuels', devoir: d, titre: meta.titre });
-    const plus = { frise: v.frise || [], personnages: v.personnages || [], carte: v.carte || null, schema: v.schema || null, visuels: true };
+    const v = await api('generate', { action: 'visuels', devoir: d, titre: meta.titre, profil: S.profil });
+    const plus = { frise: v.frise || [], personnages: v.personnages || [], carte: null, cartes: v.cartes || (v.carte ? [v.carte] : []), schema: v.schema || null, visuels: 2 };
     S.fiches[id] = { ...S.fiches[id], ...meta, fiche: { ...f, ...plus }, at: Date.now() };
     const p = S.packs[id];
-    if (p) { p.fiche = { ...(p.fiche || {}), ...plus }; p.questions.push(...(v.questions || [])); p.at = Date.now(); }
+    if (p) {
+      if (vieilleCarte) p.questions = p.questions.filter(q => q.type !== 'carte' || q.fond);   // anciennes cartes à points remplacées
+      p.fiche = { ...(p.fiche || {}), ...plus }; p.questions.push(...(v.questions || [])); p.at = Date.now();
+    }
     save();
     if (!$('#v-fiche').hidden) openFiche(id, ficheFrom);
   } catch { note.textContent = '⚠️ Visuels indisponibles pour le moment.'; }
@@ -556,7 +710,7 @@ async function openPerso(pp) {
 }
 
 let leafletP;
-function leaflet() {
+function loadLeaflet() {   // (pas « leaflet » : la bibliothèque écrase window.leaflet)
   return leafletP ||= new Promise((ok, ko) => {
     const base = 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/';
     document.head.append(Object.assign(document.createElement('link'), { rel: 'stylesheet', href: base + 'leaflet.min.css' }));
@@ -564,24 +718,113 @@ function leaflet() {
     sc.onload = () => ok(window.L); sc.onerror = ko; document.head.append(sc);
   });
 }
-// Fond de carte sans noms (carte à trous) ou avec noms (fiche).
-async function drawMap(div, lieux, { numeros = false, noms = false } = {}) {
+// ---------- Cartes d'atlas : vrais contours (régions, départements, pays), mers, fleuves, massifs ----------
+// Données libres intégrées à l'app (dossier geo/, voir tools/build-geo.py) : pas de clé, pas de service extérieur.
+const FONDS = { france_regions: 'fr-regions', france_departements: 'fr-departements', europe: 'europe', monde: 'monde' };
+const geoCache = {};
+const geo = n => geoCache[n] ||= fetch(`geo/${n}.json`).then(r => r.json());
+const CONTINENTS = { europe: 'Europe', afrique: 'Africa', asie: 'Asia', 'amerique du nord': 'North America', 'amerique du sud': 'South America',
+  oceanie: 'Oceania', antarctique: 'Antarctica', amerique: 'North America' };
+const CONT_LBL = { Europe: [52, 15], Africa: [5, 20], Asia: [45, 90], 'North America': [45, -100], 'South America': [-15, -60], Oceania: [-25, 135], Antarctica: [-80, 0] };
+const PALETTE = ['#ff8fab', '#ffc857', '#7bdff2', '#b8f2a6', '#c8b6ff', '#ffb38a', '#90e0ef', '#f4a7d3'];
+const nomGeo = s => norm(String(s || '').replace(/^(r[ée]gion|d[ée]partement|massif|mont[s]?|fleuve|mer|oc[ée]an)\s+(de\s+|du\s+|des\s+|d')?/i, '')).replace(/\bst\b/g, 'saint');
+const memeNom = (a, b) => { a = nomGeo(a); b = nomGeo(b); return a === b || (a.length > 3 && b.length > 3 && (a.startsWith(b) || b.startsWith(a))); };
+// Nom exact d'abord (« Alpes » ≠ « Alpes de Transylvanie »), sinon nom approchant.
+const exact = (fc, nom) => fc?.features.find(x => nomGeo(x.properties.nom) === nomGeo(nom));
+const trouve = (fc, nom) => exact(fc, nom) || fc?.features.find(x => memeNom(x.properties.nom, nom));
+
+// Anciennes cartes (que des points) : on choisit un fond adapté.
+function carteOf(c) {
+  if (!c) return null;
+  const k = { ...c, zones: c.zones || [], fleuves: c.fleuves || [], mers: c.mers || [], lieux: (c.lieux || []).filter(l => isFinite(l.lat) && isFinite(l.lon)) };
+  if (!FONDS[k.fond]) {
+    const inFr = k.lieux.every(l => l.lat > 41 && l.lat < 51.5 && l.lon > -5.5 && l.lon < 10);
+    const inEu = k.lieux.every(l => l.lat > 34 && l.lat < 72 && l.lon > -25 && l.lon < 45);
+    k.fond = inFr ? 'france_regions' : inEu ? 'europe' : 'monde';
+  }
+  return k;
+}
+// Éléments à nommer, dans l'ordre des numéros de la carte à trous.
+const carteItems = c => [...c.zones.map(x => ({ ...x, k: 'zone' })), ...c.fleuves.map(x => ({ ...x, k: 'fleuve' })),
+  ...c.mers.map(x => ({ ...x, k: 'mer' })), ...c.lieux.map(x => ({ ...x, k: 'lieu' }))];
+
+async function drawMap(div, carte, { quiz = false } = {}) {
+  const c = carteOf(carte);
   try {
-    const L = await leaflet();
-    const map = L.map(div, { scrollWheelZoom: false, attributionControl: true });
-    // Fonds gratuits sans clé (Esri) : gris clair sans noms, + calque des noms seulement pour les fiches.
-    const esri = n => `https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/${n}/MapServer/tile/{z}/{y}/{x}`;
-    const attribution = 'Fond © Esri, HERE, Garmin, © contributeurs OpenStreetMap';
-    L.tileLayer(esri('World_Light_Gray_Base'), { attribution, maxZoom: 16 }).addTo(map);
-    if (!numeros) L.tileLayer(esri('World_Light_Gray_Reference'), { maxZoom: 16 }).addTo(map);
-    const pts = lieux.filter(l => isFinite(l.lat) && isFinite(l.lon)).map((l, i) => {
-      const icon = L.divIcon({ className: 'pin', html: `<span>${numeros ? i + 1 : '●'}</span>${noms ? `<em>${l.nom.replace(/</g, '')}</em>` : ''}`, iconSize: null });
-      const m = L.marker([l.lat, l.lon], { icon }).addTo(map);
-      if (noms && l.info) m.bindPopup(`<b>${l.nom.replace(/</g, '')}</b><br>${String(l.info).replace(/</g, '')}`);
-      return [l.lat, l.lon];
+    const L = await loadLeaflet();
+    const [fond, pays, reliefs, fleuves, mers] = await Promise.all([geo(FONDS[c.fond]), geo(c.fond === 'monde' ? 'monde' : 'europe'),
+      c.fond === 'monde' ? null : geo('reliefs'), c.fleuves.length ? geo('fleuves') : null, geo('mers')]);
+    div.classList.add('atlas');
+    const map = L.map(div, { scrollWheelZoom: false, zoomSnap: 0.25, attributionControl: true }).setView([46.6, 2.4], 5);   // vue de départ (requise pour placer les points)
+    map.attributionControl.setPrefix('').addAttribution('Données © IGN/Etalab, Natural Earth');
+    const tags = [];
+    const tag = (layer, i, it) => {
+      tags.push({ layer, it, txt: quiz ? String(i + 1) : it.nom });
+      if (!quiz && it.info) layer.bindPopup(`<b>${String(it.nom).replace(/</g, '')}</b><br>${String(it.info).replace(/</g, '')}`);
+    };
+    // Étiquette posée sur la partie VISIBLE de l'élément (les Alpes ou une mer débordent de la France).
+    const poser = () => tags.forEach(({ layer, it, txt }) => {
+      const v = map.getBounds();
+      let pos;
+      if (it.pos) pos = L.latLng(it.pos);   // point d'étiquette officiel (pays) ou fixe (continent)
+      else if (it.k === 'lieu') pos = layer.getLatLng();
+      else if (it.k === 'fleuve') {
+        const pts = layer.getLayers().flatMap(l => l.getLatLngs().flat(3)).filter(p => v.contains(p));
+        pos = pts[Math.floor(pts.length / 2)];
+      } else {
+        // Plus grand morceau visible (évite la Guyane pour la France, les îles…).
+        const parts = layer.getLayers().flatMap(l => (l.getLatLngs ? (Array.isArray(l.getLatLngs()[0]?.[0]) ? l.getLatLngs() : [l.getLatLngs()]) : []))
+          .map(poly => L.latLngBounds(poly.flat(2))).filter(pb => pb.isValid() && pb.intersects(v));
+        const aire = pb => (pb.getNorth() - pb.getSouth()) * (pb.getEast() - pb.getWest());
+        const b = parts.sort((x, y) => aire(y) - aire(x))[0] || layer.getBounds(), s = Math.max(b.getSouth(), v.getSouth()), n = Math.min(b.getNorth(), v.getNorth());
+        const w = Math.max(b.getWest(), v.getWest()), e = Math.min(b.getEast(), v.getEast());
+        if (s < n && w < e) pos = L.latLng((s + n) / 2, (w + e) / 2);
+      }
+      if (pos) L.tooltip({ permanent: true, direction: it.k === 'lieu' ? 'right' : 'center', className: 'lbl ' + it.k + (quiz ? ' num' : ''), offset: it.k === 'lieu' ? [6, 0] : [0, 0] })
+        .setLatLng(pos).setContent(txt).addTo(map);
     });
-    if (pts.length > 1) map.fitBounds(pts, { padding: [30, 30], maxZoom: 9 }); else map.setView(pts[0] || [46.6, 2.4], pts.length ? 8 : 5);
-  } catch { div.replaceChildren(el('p', 'mut small', 'Carte indisponible hors connexion.')); }
+    const bounds = [];
+    // 1. Terres autour (gris) puis le fond de la leçon (régions / départements / pays) avec ses frontières.
+    if (c.fond.startsWith('france')) L.geoJSON(pays, { style: { color: '#b9b2a6', weight: .6, fillColor: '#efe9df', fillOpacity: 1 }, interactive: false }).addTo(map);
+    const fondL = L.geoJSON(fond, { style: { color: '#6d6a8f', weight: c.fond === 'france_departements' ? .6 : 1, fillColor: '#fffdf8', fillOpacity: 1 }, interactive: false }).addTo(map);
+    // 2. Éléments de la leçon : zones (régions, départements, pays, massifs) coloriées, fleuves, mers, villes.
+    let col = 0; const drawn = [];
+    carteItems(c).forEach(it => {
+      let layer;
+      if (it.k === 'zone') {
+        // Ordre : nom exact (région, pays, massif), puis continent (« Afrique » ≠ « Afrique du Sud »), puis nom approchant.
+        const cont = CONTINENTS[nomGeo(it.nom)];
+        const f = !cont && (exact(fond, it.nom) || exact(pays, it.nom) || (!exact(reliefs, it.nom) && (trouve(fond, it.nom) || trouve(pays, it.nom))));
+        const r = !cont && !f && trouve(reliefs, it.nom);
+        if (cont) {   // continent : tous ses pays coloriés ensemble
+          const fs = pays.features.filter(x => x.properties.continent === cont && x.properties.nom !== 'Russie');   // Russie : à cheval sur 2 continents
+          it.pos = CONT_LBL[cont];
+          if (fs.length) layer = L.geoJSON({ type: 'FeatureCollection', features: fs }, { style: { color: '#4b3fbf', weight: .8, fillColor: PALETTE[col++ % PALETTE.length], fillOpacity: .8 } });
+        } else if (f) { if (f.properties.lx != null) it.pos = [f.properties.ly, f.properties.lx]; }
+        if (f) layer = L.geoJSON(f, { style: { color: '#4b3fbf', weight: 1.5, fillColor: PALETTE[col++ % PALETTE.length], fillOpacity: .85 } });
+        else if (r) layer = L.geoJSON(r, { style: { color: '#8a5a2b', weight: 1, fillColor: '#c99a6b', fillOpacity: .75, dashArray: '3' } });
+      } else if (it.k === 'fleuve') {
+        const f = trouve(fleuves, it.nom);
+        if (f) layer = L.geoJSON(f, { style: { color: '#1f6fd1', weight: 3.5, opacity: .95 } });
+      } else if (it.k === 'mer') {
+        const f = trouve(mers, it.nom);
+        if (f) layer = L.geoJSON(f, { style: { color: '#5aa9e6', weight: 1, fillColor: '#8cc8f2', fillOpacity: .55 } });
+      } else {
+        layer = L.circleMarker([it.lat, it.lon], { radius: 6, color: '#fff', weight: 2, fillColor: '#e9506b', fillOpacity: 1 });
+      }
+      if (!layer) return;   // nom inconnu des données : on l'ignore plutôt que d'afficher faux
+      layer.addTo(map); tag(layer, drawn.length, it); drawn.push(it);
+      bounds.push(it.k === 'lieu' ? L.latLngBounds([[it.lat, it.lon], [it.lat, it.lon]]) : layer.getBounds());
+    });
+    // Cadrage : la France entière pour les fonds France, sinon les éléments de la leçon.
+    const EUROPE = L.latLngBounds([35, -11], [62, 32]);   // sans les îles lointaines (Canaries, outre-mer…)
+    const b = c.fond.startsWith('france') ? fondL.getBounds() : c.fond === 'europe' ? c.lieux.reduce((a, l) => a.extend([l.lat, l.lon]), EUROPE) : bounds.reduce((a, x) => a.extend(x), bounds[0] ? L.latLngBounds(bounds[0].getSouthWest(), bounds[0].getNorthEast()) : fondL.getBounds());
+    // Département(s) à situer : on zoome dessus, avec les voisins autour.
+    const zonesB = c.fond === 'france_departements' && bounds.length ? bounds.reduce((a, x) => a.extend(x), L.latLngBounds(bounds[0].getSouthWest(), bounds[0].getNorthEast())) : null;
+    map.fitBounds(zonesB ? zonesB.pad(1.2) : b, { padding: [12, 12] });
+    poser();
+    return drawn;   // pour la carte à trous : seuls les éléments réellement dessinés sont demandés
+  } catch (e) { console.warn('carte', e); div.replaceChildren(el('p', 'mut small', 'Carte indisponible hors connexion.')); return []; }
 }
 $('#fiche-back').onclick = () => (ficheFrom === 'fiches' ? showFiches() : ficheFrom === 'train' ? show('train') : home());
 
@@ -646,12 +889,54 @@ $('#stars').parentElement.onclick = () => { home(); status('⭐ Tes étoiles : u
 $('#streak').parentElement.onclick = () => { home(); status('🔥 Ta série : le nombre de jours d\'affilée où tu t\'es entraînée. Entraîne-toi chaque jour pour la faire grandir ! Un jour sans entraînement et elle repart à zéro.'); };
 $('#cloud').onclick = () => { home(); status('☁️ ' + $('#cloud').title); };
 
+// Réglage : la commune de Céleste (cartes « mon lieu de vie » en géographie).
+$('#commune').value = S.profil?.commune || '';
+$('#commune').onchange = e => { S.profil = { ...S.profil, commune: e.target.value.trim(), at: Date.now() }; save(); status('📍 Commune enregistrée : les prochaines cartes en tiendront compte.'); };
+
+// ---------- Mots à mémoriser : une liste par semaine, à savoir le lundi ----------
+const lundiVise = () => { const d = new Date(today() + 'T12:00'); d.setDate(d.getDate() + (8 - d.getDay()) % 7); return d.toLocaleDateString('sv'); };
+const enVacances = iso => VACANCES.some(([a, b]) => iso >= a && iso <= b);
+function numeroListe(lundi) {   // n° de liste pour ce lundi (les lundis de vacances ne comptent pas)
+  const ref = S.profil?.mots || MOTS_REF;
+  let n = ref.n; const d = new Date(ref.lundi + 'T12:00'), sens = lundi >= ref.lundi ? 7 : -7;
+  while (d.toLocaleDateString('sv') !== lundi && Math.abs(n) < 200) {
+    d.setDate(d.getDate() + sens); const iso = d.toLocaleDateString('sv');
+    if (!enVacances(iso)) n += Math.sign(sens);
+  }
+  return n;
+}
+function motsSemaine() {
+  const lundi = lundiVise(), n = numeroListe(lundi), v = MOTS[n];
+  $('#mots-n').textContent = enVacances(lundi) ? '🏖️ Vacances' : n >= 1 && n <= DERNIERE ? `Semaine ${n}` : '—';
+  let x = null;
+  if (v && !enVacances(lundi)) {
+    const mots = motsDe(n), inv = mots.filter(m => m.inv).map(m => m.mot);
+    const titre = Array.isArray(v) ? `Révision des listes ${v[0]} à ${v[1]}` : `Liste de la semaine ${n}`;
+    x = { matiere: 'Orthographe – mots à mémoriser', pour: lundi, source: 'mots', liste: n,
+      consigne: `${titre} : ${mots.map(m => m.mot).join(', ')}.` + (inv.length ? ` Mots invariables : ${inv.join(', ')}.` : '') };
+    x.id = idOf(x) + '#' + (S.profil?.mots?.t || 0);   // nouvel id après chaque correction du n°
+  }
+  // une seule mission « mots » à venir : les autres (ex. avant correction du n°) sont retirées partout
+  let change = false;
+  for (const d of S.devoirs) if (d.source === 'mots' && d.pour >= today() && d.id !== x?.id) { S.deleted[d.id] = Date.now(); change = true; }
+  S.devoirs = S.devoirs.filter(d => !S.deleted[d.id]);
+  if (x && !S.deleted[x.id] && !S.devoirs.some(o => o.id === x.id)) { S.devoirs.push(x); S.devoirs.sort((a, b) => a.pour.localeCompare(b.pour)); change = true; }
+  if (change) { save(); render(); }
+}
+function corrigeListe(k) {   // − / + dans les réglages : la liste du lundi visé devient n ± 1
+  const lundi = lundiVise();
+  S.profil = { ...S.profil, mots: { n: Math.min(DERNIERE, Math.max(1, numeroListe(lundi) + k)), lundi, t: Date.now() }, at: Date.now() };
+  motsSemaine(); prepareAll();
+}
+$('#mots-moins').onclick = () => corrigeListe(-1);
+$('#mots-plus').onclick = () => corrigeListe(1);
+
 function home() { show('home'); $('#tip').textContent = TIPS[Math.random() * TIPS.length | 0]; render(); }
 $('#back').onclick = home;
 $('#f-pin').onsubmit = e => { e.preventDefault(); store.set('pin', $('#pin').value.trim()); start(); };
 
 function start() {
   if (!store.get('pin', '')) return show('pin');
-  home(); sync(); syncOne(); prepareAll();
+  home(); motsSemaine(); sync(); syncOne(); prepareAll();
 }
 start();

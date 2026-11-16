@@ -54,6 +54,12 @@
     <div class="h2row"><h2>Mes missions</h2><button id="go-fiches" class="btn alt">📚 Mes fiches</button></div>
     <ul id="list" class="list"></ul>
     <div id="empty" class="empty" hidden><span>🎒</span><p>Aucun devoir à venir.<br>Prends ton cahier de textes en photo !</p></div>
+    <details class="card reglages"><summary>⚙️ Réglages</summary>
+      <label for="commune">📍 Ma commune <span class="small mut">(pour les cartes « mon lieu de vie » en géographie)</span></label>
+      <input id="commune" autocomplete="address-level2" placeholder="Ex : Villeurbanne">
+      <label>📝 Liste de mots à savoir lundi prochain <span class="small mut">(à corriger après les vacances)</span></label>
+      <div class="row mots-set"><button type="button" id="mots-moins" class="btn alt sm">−</button><b id="mots-n"></b><button type="button" id="mots-plus" class="btn alt sm">+</button></div>
+    </details>
   </section>
 
   <!-- Entraînement -->
@@ -84,6 +90,7 @@
 </main>
 <dialog id="perso"><form method="dialog"><button class="ghost close" aria-label="Fermer">✕</button></form><div class="perso-box"></div></dialog>
 <canvas id="confetti" aria-hidden="true"></canvas>
+<script src="mots.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

@@ -48,17 +48,27 @@ function extract(node, ctx, out) {
 const ADMIN = /\b(faire signer|signer|signature|rapporter|apporter|ramener|permis|autorisation)\b/i;
 // Classe à double niveau : « CM1: … CM2: … » -> on ne garde que la partie du niveau de l'élève.
 const NIV = (process.env.NIVEAU || 'CM2').toUpperCase();
+// Classe à double niveau : ne garder que ce qui concerne le niveau de l'élève.
+// Gère « CM1: … CM2: … », « CM2 - … », « (CM1) … », « pour les CM2 : … », « CM1/CM2 : … », « CM1 et CM2 … »,
+// les retours à la ligne, et les entrées réservées à un autre niveau (« CM1 leçon H2 »).
+const NIVS = 'CP|CE1|CE2|CM1|CM2';
+const MARQUE = new RegExp(`(?:\\(\\s*)?(?:pour\\s+(?:les\\s+)?)?((?:${NIVS})(?:\\s*(?:\\/|-|et|&|,)\\s*(?:${NIVS}))*)\\b\\s*\\)?\\s*[:\\-–—]?\\s*`, 'gi');
 function pourNiveau(txt) {
-  const parts = txt.split(/\b(CM1|CM2|CE1|CE2|CP)\s*:\s*/i);
-  if (parts.length < 3) {
-    const seul = txt.match(/^\s*(CM1|CM2|CE1|CE2|CP)\b/i)?.[1];   // « CM1 leçon H2 » : autre niveau seulement
-    return seul && seul.toUpperCase() !== NIV ? '' : txt;
-  }
-  for (let i = 1; i < parts.length; i += 2) if (parts[i].toUpperCase() === NIV) return parts[i + 1].trim();
-  return parts[0].trim();   // aucune partie pour ce niveau -> consigne commune s'il y en a une
+  txt = String(txt || '').trim();
+  const reperes = [...txt.matchAll(MARQUE)];
+  if (!reperes.length) return txt;                                 // rien de précisé : pour toute la classe
+  const niveaux = m => m[1].toUpperCase().match(new RegExp(NIVS, 'g'));
+  const commun = txt.slice(0, reperes[0].index).trim();
+  const pourMoi = reperes.map((m, i) => ({ niv: niveaux(m), txt: txt.slice(m.index + m[0].length, reperes[i + 1]?.index ?? txt.length).trim() }))
+    .filter(x => x.niv.includes(NIV)).map(x => x.txt).filter(Boolean);
+  if (pourMoi.length) return [commun, ...pourMoi].filter(Boolean).join(' ').replace(/\s+/g, ' ').trim();
+  return '';   // seulement des consignes pour d'autres niveaux (ou un intitulé commun qui les annonce) : pas pour l'élève
 }
+// Matière sans le niveau (« Histoire CM1 » -> « Histoire »).
+const sansNiveau = m => String(m || '').replace(new RegExp(`\\b(${NIVS})\\b`, 'gi'), '').replace(/\s*[-–:/]\s*$/, '').replace(/\s+/g, ' ').trim();
 
 // Devoirs à venir + petit diagnostic (pour comprendre si ONE change son format).
+export { pourNiveau };
 export async function fetchOne() {
   if (!process.env.ONE_LOGIN) return { devoirs: [], info: 'ONE non configuré' };
   const cookie = await login();
@@ -71,7 +81,11 @@ export async function fetchOne() {
   const horizon = new Date(Date.now() + 14 * 864e5).toISOString().slice(0, 10);   // 2 semaines
   const seen = new Set();
   const devoirs = out
-    .map(d => ({ ...d, consigne: pourNiveau(d.consigne) }))
+    .map(d => {   // le niveau peut aussi être écrit dans l'intitulé de l'entrée (« HISTOIRE CM1 »)
+      const niveauMatiere = d.matiere.match(new RegExp(`\\b(${NIVS})\\b`, 'gi'));
+      const hors = niveauMatiere && !niveauMatiere.some(n => n.toUpperCase() === NIV);
+      return { ...d, matiere: sansNiveau(d.matiere) || 'Devoir', consigne: hors ? '' : pourNiveau(d.consigne) };
+    })
     .filter(d => d.consigne && !ADMIN.test(d.consigne) && d.pour >= today && d.pour <= horizon
       && !seen.has(d.pour + d.consigne) && seen.add(d.pour + d.consigne))
     .sort((a, b) => a.pour.localeCompare(b.pour));

@@ -199,6 +199,18 @@ Ce n'est donc pas un résumé des cotes mais un Short qui tient tout seul — c'
 `EFZy3OZHCzikCqQS` existe mais finit par un envoi par mail, pas par une publication). La même vidéo verticale
 sert aux trois. Piste : Reels est publiable via l'API Graph, à faire après la Page Facebook.
 
+### Vidéos illustrées par les vraies cartes (16/11)
+Le workflow Shorts tournait avec des plans d'archive sans rapport avec le sujet. Désormais, quand l'appel
+vient de la Gazette, **les plans sont fabriqués à partir des cartes de l'article** :
+- la fonction `blog` envoie `images[]` (couverture + illustrations du corps) dans `sc-gazette-reseaux` ;
+- « Réglages Sharing Cards » et « Sujet de la vidéo » les transmettent au workflow `LnHApbawsIE4dw70` ;
+- `Choisir le theme` les passe plus loin, `Preparer le montage` remplace les `wget` de clips par, pour
+  chaque plan : téléchargement de la carte puis `ffmpeg -loop 1 … zoompan` vers un mp4 vertical 1080x1920
+  de la durée voulue (+0,4 s de marge pour les fondus). Sans images fournies, l'ancien chemin reprend tel quel.
+- ffmpeg reconnaît le format au contenu : l'extension du fichier téléchargé n'a pas d'importance
+  (les couvertures sont tantôt `.webp`, tantôt `.jpg`).
+Essai du 16/11 : 37 nœuds, 12 min, `short.mp4` 1080x1920 h264+aac de 29,4 s, 5,6 Mo, envoyé en privé.
+
 ### Points de vigilance
 - `GEMINI_API_KEY` **absente** : `ai_hits` est à 0, tout a été rédigé par le moteur de secours. C'est le seul verrou qui sépare
   d'un rendu vraiment pro (étape 1 ter d'`A-FAIRE.md`).

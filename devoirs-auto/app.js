@@ -274,7 +274,7 @@ function dire(txt) {
 // Tire des questions variées : d'abord les moins vues, ordre progressif, propositions mélangées.
 function draw(p, n) {
   p.vus ||= {};
-  const tri = shuffle(p.questions.map((_, i) => i)).filter(i => !fuite(p.questions[i])).sort((a, b) => (p.vus[a] || 0) - (p.vus[b] || 0));
+  const tri = shuffle(p.questions.map((_, i) => i)).filter(i => !fuite(p.questions[i]) && !(p.questions[i].type === 'carte' && !carteItems(carteOf(p.questions[i])).length)).sort((a, b) => (p.vus[a] || 0) - (p.vus[b] || 0));
   const deja = new Set(), idx = [];
   for (const i of tri) {   // pas deux fois la même question ni la même réponse dans une partie
     const q = p.questions[i], cle = norm(q.reponse || '') || norm(q.enonce);
@@ -745,9 +745,26 @@ const exact = (fc, nom) => fc?.features.find(x => nomGeo(x.properties.nom) === n
 const trouve = (fc, nom) => exact(fc, nom) || fc?.features.find(x => memeNom(x.properties.nom, nom));
 
 // Anciennes cartes (que des points) : on choisit un fond adapté.
+// L'IA n'écrit pas toujours la carte au bon format (noms seuls, autres clés, carte imbriquée) : on remet tout d'aplomb.
+const FLEUVES_RE = /^(la |le |l')?(loire|seine|garonne|rh[oô]ne|rhin|dordogne|sa[oô]ne|meuse|danube|moselle|marne|charente|lot|tarn|allier|vienne|escaut|somme|oise|adour|durance|is[eè]re|elbe|p[oô]|tage|tamise|volga|nil|amazone|mississippi)$/i;
+const MERS_RE = /\b(mer|oc[ée]an|manche|golfe|baie)\b/i;
+const nomDe = x => typeof x === 'string' ? x : x?.nom || x?.name || x?.label || x?.texte || '';
 function carteOf(c) {
   if (!c) return null;
-  const k = { ...c, zones: c.zones || [], fleuves: c.fleuves || [], mers: c.mers || [], lieux: (c.lieux || []).filter(l => isFinite(l.lat) && isFinite(l.lon)) };
+  if (c.carte && typeof c.carte === 'object') c = { ...c.carte, ...c, carte: null };
+  if (c.cartes?.[0]) c = { ...c.cartes[0], ...c, cartes: null };
+  const objs = l => (Array.isArray(l) ? l : typeof l === 'string' ? l.split(/[,;]/) : []).map(x => typeof x === 'string' ? { nom: x.trim() } : x).filter(x => nomDe(x)).map(x => ({ ...x, nom: nomDe(x) }));
+  const k = { ...c, zones: objs(c.zones).concat(objs(c.regions), objs(c.pays), objs(c.departements), objs(c.continents)),
+    fleuves: objs(c.fleuves), mers: objs(c.mers).concat(objs(c.oceans)), lieux: [] };
+  for (const l of objs(c.lieux)) (isFinite(l.lat) && isFinite(l.lon) ? k.lieux : k.zones).push(l);
+  if (!k.zones.length && !k.fleuves.length && !k.mers.length && !k.lieux.length) {   // seulement des noms (« items », « elements », réponse…)
+    const vrac = objs(c.items).concat(objs(c.elements), objs(c.trous?.some?.(t => typeof t === 'string' || t?.nom) ? c.trous : []), objs(c.etiquettes), objs(c.choix));
+    for (const x of vrac.length ? vrac : objs(Array.isArray(c.reponse) ? c.reponse : String(c.reponse || '').includes(',') ? c.reponse : []))
+      (FLEUVES_RE.test(x.nom) ? k.fleuves : MERS_RE.test(x.nom) ? k.mers : k.zones).push(x);
+  }
+  k.zones = k.zones.filter(z => { if (FLEUVES_RE.test(z.nom)) { k.fleuves.push(z); return false; } if (MERS_RE.test(z.nom)) { k.mers.push(z); return false; } return true; });
+  if (!FONDS[k.fond] && /r[ée]gion/i.test(k.fond || '')) k.fond = 'france_regions';
+  if (!FONDS[k.fond] && /d[ée]part/i.test(k.fond || '')) k.fond = 'france_departements';
   if (!FONDS[k.fond]) {
     const inFr = k.lieux.every(l => l.lat > 41 && l.lat < 51.5 && l.lon > -5.5 && l.lon < 10);
     const inEu = k.lieux.every(l => l.lat > 34 && l.lat < 72 && l.lon > -25 && l.lon < 45);

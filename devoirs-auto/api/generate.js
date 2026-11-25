@@ -19,7 +19,8 @@ const REGLES_Q = `Types de questions :
  - "frise" (HISTOIRE seulement) : frise à trous. "items" = 4 à 6 repères {"annee":nombre (négatif avant J.-C.),"label":"vers 3000 av. J.-C.","texte":"événement court"}
    dans l'ordre chronologique, "trous" = indices (2 ou 3) des textes à retrouver
  - "carte" (GÉOGRAPHIE seulement) : carte d'atlas à trous, mêmes champs qu'une carte de la fiche ("fond","zones","fleuves","mers","lieux"),
-   avec 3 à 6 éléments EN TOUT à retrouver ; l'élève voit les contours et les numéros, pas les noms
+   avec 3 à 6 éléments EN TOUT à retrouver ; l'élève voit les contours et les numéros, pas les noms.
+   Les noms vont DANS "zones" / "fleuves" / "mers" (ex. "fond":"france_regions","zones":[{"nom":"Bretagne"},{"nom":"Occitanie"}]), jamais dans "items" ni "reponse"
  - "schema" (SCIENCES) : schéma à trous. "forme" = "chaine" ou "cycle", "etapes" = 4 à 7 {"nom":"mot court","icone":"un emoji","desc":"courte"}
    dans l'ordre, "trous" = indices (2 ou 3) des noms à retrouver
  - "ordre" (SCIENCES ou HISTOIRE) : remettre dans l'ordre. "etapes" = 4 à 6 {"nom":"","icone":"emoji"} dans le BON ordre (l'app les mélange)

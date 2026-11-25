@@ -140,7 +140,9 @@ export default async function handler(req, res) {
       return res.json(await gemini(parts, { temperature: 0.1 }));
     }
     if (action === 'make' && devoir?.consigne) {
-      return res.json(await makePack(devoir, today, req.body.profil));
+      const out = await makePack(devoir, today, req.body.profil);
+      console.log('make', devoir.matiere, '| cartes:', out?.fiche?.cartes?.length ?? 0, '| questions carte:', (out?.questions || []).filter(q => q.type === 'carte').length);
+      return res.json(out);
     }
     if (action === 'more' && devoir?.consigne) {
       const p = MORE.replace('{LIEU}', lieu(req.body.profil)).replace('{MAT}', devoir.matiere || '?').replace('{TXT}', devoir.consigne.slice(0, 1500))
@@ -150,7 +152,9 @@ export default async function handler(req, res) {
     }
     if (action === 'visuels' && devoir?.consigne) {
       const p = PLUS.replace('{LIEU}', lieu(req.body.profil)).replace('{MAT}', devoir.matiere || '?').replace('{TXT}', devoir.consigne.slice(0, 1500)).replace('{TITRE}', String(req.body.titre || ''));
-      return res.json(propre(await gemini([{ text: p }], { temperature: 0.4 })));
+      const out = propre(await gemini([{ text: p }], { temperature: 0.4 }));
+      console.log('visuels', devoir.matiere, '| cartes:', JSON.stringify(out?.cartes || out?.carte || null).slice(0, 300));
+      return res.json(out);
     }
     res.status(400).json({ error: 'Requête invalide' });
   } catch (e) {

@@ -28,6 +28,16 @@ async function listModels(key) {
 }
 export async function modeles() { return listModels(process.env.GEMINI_API_KEY); }
 
+// JSON de l'IA parfois abîmé (virgule en trop, texte autour, commentaire) : on le répare avant d'abandonner.
+function lireJSON(txt) {
+  let t = String(txt).replace(/^\s*```(?:json)?\s*|```\s*$/g, '').trim();
+  try { return JSON.parse(t); } catch {}
+  const a = t.indexOf('{'), b = t.lastIndexOf('}');
+  if (a >= 0 && b > a) t = t.slice(a, b + 1);
+  t = t.replace(/,\s*([}\]])/g, '$1').replace(/^\s*\/\/.*$/gm, '').replace(/[\u201c\u201d](?=\s*:)/g, '"');
+  try { return JSON.parse(t); } catch (e) { const x = new Error('Réponse illisible de Gemini'); x.status = 'json'; throw x; }
+}
+
 // Un appel à un modèle. Réflexion réduite au minimum : sinon certains modèles dépassent la limite de 60 s.
 async function call(model, key, parts, { json, temperature }, ms, think = true) {
   const generationConfig = { temperature, ...(json && { responseMimeType: 'application/json' }) };
@@ -44,7 +54,7 @@ async function call(model, key, parts, { json, temperature }, ms, think = true) 
   }
   const d = await r.json();
   const txt = d.candidates?.[0]?.content?.parts?.filter(p => !p.thought).map(p => p.text || '').join('') || '';
-  return json ? JSON.parse(txt.replace(/^\s*```json\s*|```\s*$/g, '')) : txt;
+  return json ? lireJSON(txt) : txt;
 }
 
 // Essaie le modèle le plus récent puis bascule sur un autre si trop lent, saturé ou retiré (en restant sous 60 s).
@@ -58,9 +68,12 @@ export async function gemini(parts, { json = true, temperature = 0.7 } = {}) {
   for (const [i, model] of liste.entries()) {
     const reste = fin - Date.now();
     if (reste < 8000) break;
-    try { return await call(model, key, parts, { json, temperature }, i === 0 ? Math.min(32000, reste) : reste); }
-    catch (e) { err = e; if (e.status === 401 || e.status === 403) break; }   // clé refusée : inutile d'insister
+    try { console.log('gemini', model); return await call(model, key, parts, { json, temperature }, i === 0 ? Math.min(32000, reste) : reste); }
+    catch (e) { err = e; console.warn('gemini échec', model, e.name, String(e.message).slice(0, 150));
+      if (e.status === 503 || e.status === 429) await new Promise(ok => setTimeout(ok, 1500)); if (e.status === 401 || e.status === 403) break; }   // clé refusée : inutile d'insister
   }
   if (err?.name === 'TimeoutError' || err?.name === 'AbortError') throw new Error('Gemini trop lent : réessaie dans un instant');
+  if (err?.status === 503 || err?.status === 429) throw new Error('Gemini est débordé en ce moment : réessaie dans quelques minutes');
+  if (err?.status === 'json') throw new Error('Gemini a mal répondu : réessaie');
   throw err || new Error('Gemini indisponible');
 }

@@ -300,13 +300,20 @@ async function more(d, n = 12) {
 }
 const unseen = p => p.questions.filter((q, i) => !(p.vus || {})[i] && !fuite(q)).length;
 
+let partie = 0;   // n° de la partie en cours : un clic de plus ne relance pas une partie déjà commencée
 async function train(d, goal = false) {
+  const moi = ++partie;
   let p = S.packs[d.id];
   let n = goal ? 20 : SIZE[p.type] || 8;
-  // Pas assez de questions jamais vues : on en fait fabriquer AVANT de commencer (sinon les mêmes reviennent).
-  for (let essai = 0; essai < 2 && unseen(p) < n; essai++) {
-    status(goal ? '🦉 Je prépare 20 nouvelles questions pour ton objectif 20/20…' : '🦉 Je prépare de nouvelles questions…');
-    try { await more(d, Math.min(20, n - unseen(p) + 4)); p = S.packs[d.id]; } catch { break; }   // hors ligne : on joue avec ce qu'on a
+  if (catOf(d) === 'Géographie' && !ficheOf(p).cartes?.length) enrichir(d.id, S.fiches[d.id] || { ...d, titre: p.titre, fiche: ficheOf(p) });   // cartes manquantes : en arrière-plan
+  // Pas assez de questions jamais vues : on en fait fabriquer avant de commencer (20 s au plus, sinon on joue avec ce qu'on a).
+  if (unseen(p) < n) {
+    show('train'); $('#t-end').hidden = true; $('#t-memo').hidden = true; $('#t-kind').textContent = ''; $('#t-title').textContent = emojiOf(d) + ' ' + (p.titre || d.matiere);
+    $('#t-q').hidden = false;
+    $('#t-q').innerHTML = '<p class="status"><i class="spin"></i> ' + (goal ? '🦉 Je prépare de nouvelles questions pour ton objectif 20/20…' : '🦉 Je prépare de nouvelles questions…') + '</p>';
+    await Promise.race([more(d, Math.min(20, n - unseen(p) + 4)).catch(() => {}), new Promise(ok => setTimeout(ok, 20000))]);
+    if (moi !== partie || $('#v-train').hidden) return;   // une autre partie a été lancée, ou on est revenu en arrière
+    p = S.packs[d.id];
   }
   status('');
   n = Math.min(n, p.questions.length);
@@ -833,7 +840,7 @@ async function drawMap(div, carte, { quiz = false } = {}) {
 $('#fiche-back').onclick = () => (ficheFrom === 'fiches' ? showFiches() : ficheFrom === 'train' ? show('train') : home());
 
 const CATS = [['Maths', /math|calcul|fraction|g[ée]om[ée]trie|nombre|table|probl|mesure/i], ['Français', /fran[cç]|dict[ée]e|orthog|conjug|gramm|vocab|lecture|po[ée]s|homophon|r[ée]daction/i],
-  ['Histoire', /hist/i], ['Géographie', /g[ée]og/i], ['Sciences', /scien|svt|techno/i], ['Langues', /angl|allem|espagn|ital|langue/i]];
+  ['Histoire', /hist/i], ['Géographie', /g[ée]o(?!m)|carte|paysage|relief|fleuve/i], ['Sciences', /scien|svt|techno/i], ['Langues', /angl|allem|espagn|ital|langue/i]];
 const CAT_EMO = { Maths: '🔢', Français: '✍️', Histoire: '🏰', Géographie: '🌍', Sciences: '🔬', Langues: '🗣️', Autres: '📚' };
 const catOf = m => (CATS.find(([, re]) => re.test(m.matiere)) || CATS.find(([, re]) => re.test(m.consigne || '')) || ['Autres'])[0];
 let catSel = 'Toutes';

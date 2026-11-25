@@ -163,6 +163,7 @@ async function prepare(d) {
     S.packs[d.id] = p;
     S.fiches[d.id] = { matiere: d.matiere, consigne: d.consigne, titre: p.titre, type: p.type, fiche: { ...ficheOf(p), visuels: 2 }, date: today(), at: Date.now() };
     save();
+    if (catOf(d) === 'Géographie' && !ficheOf(p).cartes?.length) enrichir(d.id, S.fiches[d.id]);   // pas de carte reçue : on la redemande
   }
   catch (e) { status('⚠️ ' + e.message); }
   busy.delete(d.id); render();
@@ -627,10 +628,13 @@ function openFiche(id, from = 'fiches') {
 }
 
 // Anciennes fiches d'histoire / géographie / sciences : on demande les visuels une seule fois.
+const essaye = new Set();
 async function enrichir(id, meta) {
   const f = meta.fiche || {}, cat = catOf(meta);
   const vieilleCarte = cat === 'Géographie' && f.visuels !== 2;   // cartes « atlas » (version 2)
-  if (!vieilleCarte && (f.visuels || !['Histoire', 'Géographie', 'Sciences'].includes(cat) || f.frise?.length || f.carte || f.schema || (cat !== 'Sciences' && f.personnages?.length))) return;
+  const sansCarte = cat === 'Géographie' && !f.cartes?.length && !essaye.has(id);   // l'IA a oublié les cartes : on les redemande
+  essaye.add(id);
+  if (!vieilleCarte && !sansCarte && (f.visuels || !['Histoire', 'Géographie', 'Sciences'].includes(cat) || f.frise?.length || f.carte || f.schema || (cat !== 'Sciences' && f.personnages?.length))) return;
   const d = S.devoirs.find(x => x.id === id) || { matiere: meta.matiere, consigne: meta.consigne };
   status('');
   const note = el('p', 'status', '🦉 J\'ajoute une frise, un schéma, des personnages ou une carte à ta fiche…'); $('#fiche-box').prepend(note);
@@ -640,7 +644,7 @@ async function enrichir(id, meta) {
     S.fiches[id] = { ...S.fiches[id], ...meta, fiche: { ...f, ...plus }, at: Date.now() };
     const p = S.packs[id];
     if (p) {
-      if (vieilleCarte) p.questions = p.questions.filter(q => q.type !== 'carte' || q.fond);   // anciennes cartes à points remplacées
+      if (vieilleCarte || sansCarte) p.questions = p.questions.filter(q => q.type !== 'carte' || q.fond);   // anciennes cartes à points remplacées
       p.fiche = { ...(p.fiche || {}), ...plus }; p.questions.push(...(v.questions || [])); p.at = Date.now();
     }
     save();

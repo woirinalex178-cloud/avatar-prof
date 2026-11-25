@@ -30,6 +30,20 @@ La seule porte d'entrée est **« Pause courte »**, une dose quotidienne :
 
 Le temps restant s'affiche en permanence dans le menu.
 
+## D'où viennent les vidéos : deux niveaux
+
+**Niveau 1 — thèmes (par défaut).** Les thèmes partent en recherche chez
+YouTube : c'est *leur* moteur qui décide quelles vidéos reviennent, et le
+classement maison ne fait que **réordonner ce qui est revenu**. Large, mais
+jamais parfait. Les thèmes sont fournis par tranche d'âge (4-6, 7-9, 10-12,
+13+) et restent modifiables un par un.
+
+**Niveau 2 — chaînes approuvées (le plus sûr).** On ajoute des chaînes
+validées, et on coche « n'afficher que ces chaînes ». Le moteur de recherche
+ne choisit alors plus rien : l'accueil, la recherche et la pause courte ne
+montrent que les dernières vidéos de ces chaînes. C'est le seul réglage qui
+garantit ce qui s'affiche.
+
 ## Le classement : pas celui du moteur
 
 L'accueil ne reprend pas l'ordre proposé par YouTube. Il part des **chaînes
@@ -160,9 +174,9 @@ préversion et le site continue de servir l'ancienne.
 ## Vérification
 
 Une passe automatisée (Playwright headless, API Google, OAuth et lecteur
-simulés) couvre 70 parcours (plus 13 tests unitaires du classement) : les modes (serveur, compte, clé locale, liens, démo), la
+simulés) couvre 82 parcours (plus 13 tests unitaires du classement) : les modes (serveur, compte, clé locale, liens, démo), la
 connexion et la déconnexion, les abonnements et playlists du compte, le montage du lecteur, le
 filtrage des formats courts, la dose quotidienne et sa coupure, le code
-parent, le reclassement (l'appât à clic ne remonte jamais), les commentaires,
+parent, les thèmes par âge, la liste blanche de chaînes, le reclassement (l'appât à clic ne remonte jamais), les commentaires,
 le mini-lecteur, le message de quota dépassé et l'absence de scroll horizontal
 en mobile.

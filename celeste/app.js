@@ -203,7 +203,13 @@
   }
 
   function onboardingHtml() {
-    if (Catalog.mode() === 'yt') { return ''; }
+    if (Catalog.mode() === 'yt') {
+      return Catalog.whitelistOnly()
+        ? '<div class="banner"><strong>Chaînes approuvées uniquement.</strong> ' +
+          (Store.state.whitelist || []).length + ' chaînes ; le moteur de recherche ' +
+          'ne choisit rien. <a href="#/settings">Modifier</a></div>'
+        : '';
+    }
     var st = Ytb.serverStatus();
     var why = st.error
       ? 'Ces vidéos sont celles de la démonstration, pas YouTube : ' + esc(st.error) + '.'
@@ -857,9 +863,44 @@
         ? '<button class="pill" data-action="clear-links">Tout retirer</button>' : '') +
       '</div></div>' +
 
-      '<div class="description open"><div class="stats">Ce qu’on lui propose</div>' +
-      '<p>L’accueil ne reprend pas le classement de YouTube : il part de ces thèmes ' +
-      'et des chaînes suivies, puis reclasse selon la qualité (voir le README).</p>' +
+      '<div class="description open"><div class="stats">Chaînes approuvées (' +
+      (st.whitelist || []).length + ')</div>' +
+      '<p>Le plus sûr : n’afficher que des chaînes que tu as validées. ' +
+      'La recherche de YouTube ne choisit alors plus rien — on prend simplement ' +
+      'leurs dernières vidéos.</p>' +
+      ((st.whitelist || []).length
+        ? '<div class="chan-list">' + st.whitelist.map(function (c2) {
+            return '<span class="chan-chip">' +
+              (c2.avatar ? '<img src="' + esc(c2.avatar) + '" alt="" data-name="' + esc(c2.name) + '">' : '') +
+              esc(c2.name) +
+              '<button class="chan-x" data-action="rm-channel" data-id="' + esc(c2.id) +
+              '" aria-label="Retirer ' + esc(c2.name) + '">×</button></span>';
+          }).join('') + '</div>'
+        : '<p class="card-meta">Aucune chaîne pour l’instant.</p>') +
+      '<form data-action="add-channel">' +
+      '<input type="text" name="channel" placeholder="@nomdelachaine ou youtube.com/channel/UC…" ' +
+      'autocomplete="off">' +
+      '<div class="modal-actions"><button class="pill solid" type="submit">Ajouter</button></div>' +
+      '</form>' +
+      '<label class="switch"><input type="checkbox" data-action="whitelist-only"' +
+      (st.whitelistOnly ? ' checked' : '') + (st.whitelist && st.whitelist.length ? '' : ' disabled') +
+      '>N’afficher <strong>que</strong> ces chaînes (accueil, recherche, pause courte)</label>' +
+      '<p class="card-meta">Astuce : ouvre une chaîne qui te plaît dans l’application, ' +
+      'copie son adresse, colle-la ici.</p></div>' +
+
+      '<div class="description open"><div class="stats">Thèmes proposés' +
+      (st.whitelistOnly && (st.whitelist || []).length ? ' (inactifs : liste blanche active)' : '') +
+      '</div>' +
+      '<p>Sans liste blanche, l’accueil part de ces thèmes : ils décident ce que ' +
+      'la recherche va chercher. Le classement maison ne fait que réordonner ensuite.</p>' +
+      '<form data-action="save-age">' +
+      '<select name="agePreset">' +
+      ['4-6', '7-9', '10-12', '13+'].map(function (age) {
+        return '<option value="' + age + '"' + (st.agePreset === age ? ' selected' : '') + '>' +
+          age + ' ans</option>';
+      }).join('') + '</select>' +
+      '<div class="modal-actions"><button class="pill" type="submit">Appliquer ces thèmes</button></div>' +
+      '</form>' +
       '<form data-action="save-feed">' +
       '<input type="text" name="interests" value="' + esc((st.interests || []).join(', ')) +
       '" placeholder="sciences, animaux, dessin…">' +
@@ -870,8 +911,9 @@
       }).join('') + '</select>' +
       '<div class="modal-actions"><button class="pill solid" type="submit">Enregistrer</button></div>' +
       '</form>' +
-      '<p class="card-meta">Thèmes séparés par des virgules. Le filtre fait redescendre ' +
-      'les titres qui crient, les « 24 h », les défis et les réactions.</p></div>' +
+      '<p class="card-meta">Thèmes séparés par des virgules, à ajuster librement. ' +
+      'Le filtre fait redescendre les titres qui crient, les « 24 h », les défis ' +
+      'et les réactions.</p></div>' +
 
       '<div class="description open"><div class="stats">Vidéos courtes — dose quotidienne</div>' +
       '<form data-action="save-shorts">' +
@@ -1181,6 +1223,11 @@
           render();
         }
         return;
+      case 'rm-channel':
+        Catalog.removeChannel(id);
+        Ytb.clearCache();
+        render();
+        return;
       case 'shorts-start': viewShortsPlayer(++current.token); return;
       case 'shorts-next': playShort(shortsSession.index + 1); return;
       case 'shorts-quit': stopShortsTicker(); Player.stop(); mini.hidden = true; return;
@@ -1223,6 +1270,14 @@
   });
 
   document.addEventListener('change', function (e) {
+    if (e.target.dataset.action === 'whitelist-only') {
+      Store.set('whitelistOnly', e.target.checked);
+      Ytb.clearCache();
+      toast(e.target.checked
+        ? 'Seules les chaînes approuvées seront affichées'
+        : 'Retour aux thèmes');
+      render();
+    }
     if (e.target.dataset.action === 'autoplay') {
       Store.set('autoplay', e.target.checked);
       toast(e.target.checked ? 'Lecture auto activée' : 'Lecture auto désactivée');
@@ -1237,6 +1292,28 @@
       if (!input.value.trim()) { return; }
       Store.addComment(form.dataset.id, input.value.trim());
       input.value = '';
+      render();
+    }
+    if (form.dataset.action === 'add-channel') {
+      e.preventDefault();
+      var input = form.channel.value.trim();
+      Catalog.addChannel(input).then(function (ch) {
+        Ytb.clearCache();
+        toast('Chaîne ajoutée : ' + ch.name);
+        render();
+      }).catch(function (err) {
+        toast(err.message === 'adresse-invalide'
+          ? 'Adresse de chaîne non reconnue'
+          : 'Chaîne introuvable (clé API nécessaire)');
+      });
+    }
+    if (form.dataset.action === 'save-age') {
+      e.preventDefault();
+      var age = form.agePreset.value;
+      Store.set('agePreset', age);
+      Store.set('interests', Catalog.themesForAge(age));
+      Ytb.clearCache();
+      toast('Thèmes de la tranche ' + age + ' ans appliqués');
       render();
     }
     if (form.dataset.action === 'save-feed') {
